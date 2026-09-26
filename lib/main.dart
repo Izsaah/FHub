@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'Vinh/reminder/reminder.dart';
 
 void main() {
   runApp(const MyApp());
@@ -108,6 +109,54 @@ class _MyHomePageState extends State<MyHomePage> {
             Text(
               '$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0D7A68),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.notifications_active),
+              label: const Text(
+                'Mở Reminder Management (Vinh)',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => ReminderListScreen(
+                      familyId: 'family_1',
+                      currentUserId: 'user_minh',
+                      currentUserName: 'Minh',
+                      familyMembers: const [
+                        FamilyMember(
+                          id: 'user_minh',
+                          name: 'Minh',
+                          role: 'Owner',
+                          familyId: 'family_1',
+                        ),
+                        FamilyMember(
+                          id: 'user_mom',
+                          name: 'Mom',
+                          role: 'Member',
+                          familyId: 'family_1',
+                        ),
+                        FamilyMember(
+                          id: 'user_dad',
+                          name: 'Dad',
+                          role: 'Member',
+                          familyId: 'family_1',
+                        ),
+                      ],
+                      repository: InMemoryReminderRepository(),
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),
