@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/member_color_helper.dart';
 import '../models/reminder_model.dart';
 import '../reminder_repository/reminder_repository.dart';
 
@@ -188,7 +189,45 @@ class ReminderDetailBottomSheet extends StatelessWidget {
             _buildDetailRow(
               icon: Icons.person_outline,
               label: 'For',
-              value: reminder.assignedToName,
+              valueWidget: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: MemberColorHelper.getBackgroundColor(
+                      reminder.assignedToName),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 10,
+                      backgroundColor: MemberColorHelper.getPrimaryColor(
+                          reminder.assignedToName),
+                      child: Text(
+                        reminder.assignedToName.isNotEmpty
+                            ? reminder.assignedToName[0]
+                            : '?',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      reminder.assignedToName,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: MemberColorHelper.getPrimaryColor(
+                            reminder.assignedToName),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             _buildDetailRow(

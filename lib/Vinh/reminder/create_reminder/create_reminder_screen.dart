@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/family_member.dart';
+import '../models/member_color_helper.dart';
 import '../models/reminder_model.dart';
 import '../reminder_repository/reminder_repository.dart';
 import '../validators/reminder_validator.dart';
@@ -140,6 +141,22 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       _dateTimeError = error;
     });
     return error == null;
+  }
+
+  void _setQuickDate(int daysFromNow) {
+    final now = DateTime.now();
+    final target = now.add(Duration(days: daysFromNow));
+    setState(() {
+      _selectedDate = DateTime(target.year, target.month, target.day);
+      _validateDateTime();
+    });
+  }
+
+  void _setQuickTime(int hour, int minute) {
+    setState(() {
+      _selectedTime = TimeOfDay(hour: hour, minute: minute);
+      _validateDateTime();
+    });
   }
 
   Future<void> _submit() async {
@@ -302,21 +319,23 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                   ),
                 ),
                 items: widget.familyMembers.map((member) {
+                  final primary = MemberColorHelper.getPrimaryColor(member.name);
+                  final bg = MemberColorHelper.getBackgroundColor(member.name);
                   return DropdownMenuItem<FamilyMember>(
                     value: member,
                     child: Row(
                       children: [
                         CircleAvatar(
                           radius: 14,
-                          backgroundColor: const Color(0xFFE7F0EC),
+                          backgroundColor: bg,
                           child: Text(
                             member.name.isNotEmpty
                                 ? member.name[0].toUpperCase()
                                 : '?',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: primaryColor,
+                              color: primary,
                             ),
                           ),
                         ),
@@ -353,6 +372,39 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
               const SizedBox(height: 8),
+              // Quick Date Chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildQuickChip(
+                      label: 'Hôm nay',
+                      isSelected: _selectedDate != null &&
+                          _selectedDate!.day == DateTime.now().day &&
+                          _selectedDate!.month == DateTime.now().month &&
+                          _selectedDate!.year == DateTime.now().year,
+                      onTap: () => _setQuickDate(0),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildQuickChip(
+                      label: 'Ngày mai',
+                      isSelected: _selectedDate != null &&
+                          _selectedDate!.day ==
+                              DateTime.now().add(const Duration(days: 1)).day &&
+                          _selectedDate!.month ==
+                              DateTime.now().add(const Duration(days: 1)).month,
+                      onTap: () => _setQuickDate(1),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildQuickChip(
+                      label: 'Chọn ngày 📅',
+                      isSelected: false,
+                      onTap: _pickDate,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               InkWell(
                 onTap: _pickDate,
                 borderRadius: BorderRadius.circular(14),
@@ -394,6 +446,48 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
               const SizedBox(height: 8),
+              // Quick Time Chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildQuickChip(
+                      label: '08:00 (Sáng)',
+                      isSelected: _selectedTime?.hour == 8 &&
+                          _selectedTime?.minute == 0,
+                      onTap: () => _setQuickTime(8, 0),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildQuickChip(
+                      label: '12:00 (Trưa)',
+                      isSelected: _selectedTime?.hour == 12 &&
+                          _selectedTime?.minute == 0,
+                      onTap: () => _setQuickTime(12, 0),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildQuickChip(
+                      label: '18:00 (Chiều)',
+                      isSelected: _selectedTime?.hour == 18 &&
+                          _selectedTime?.minute == 0,
+                      onTap: () => _setQuickTime(18, 0),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildQuickChip(
+                      label: '20:00 (Tối)',
+                      isSelected: _selectedTime?.hour == 20 &&
+                          _selectedTime?.minute == 0,
+                      onTap: () => _setQuickTime(20, 0),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildQuickChip(
+                      label: 'Chọn giờ ⏰',
+                      isSelected: false,
+                      onTap: _pickTime,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               InkWell(
                 onTap: _pickTime,
                 borderRadius: BorderRadius.circular(14),
@@ -485,6 +579,38 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    const primaryColor = Color(0xFF0D7A68);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFE7F5F2) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? primaryColor : const Color(0xFFBDC9C4),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected ? primaryColor : const Color(0xFF151D1B),
           ),
         ),
       ),

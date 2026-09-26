@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../models/member_color_helper.dart';
 import '../../models/reminder_model.dart';
 
 class ReminderCard extends StatelessWidget {
@@ -106,12 +107,44 @@ class ReminderCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Text(
-                            'For ${reminder.assignedToName}',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: textMuted,
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: MemberColorHelper.getBackgroundColor(
+                                  reminder.assignedToName),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircleAvatar(
+                                  radius: 8,
+                                  backgroundColor:
+                                      MemberColorHelper.getPrimaryColor(
+                                          reminder.assignedToName),
+                                  child: Text(
+                                    reminder.assignedToName.isNotEmpty
+                                        ? reminder.assignedToName[0]
+                                        : '?',
+                                    style: const TextStyle(
+                                      fontSize: 9,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'For ${reminder.assignedToName}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: MemberColorHelper.getPrimaryColor(
+                                        reminder.assignedToName),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 8),

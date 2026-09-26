@@ -286,5 +286,35 @@ void main() {
       expect(find.text('Take medicine'), findsOneWidget);
       expect(find.text('Buy vegetables'), findsOneWidget);
     });
+
+    testWidgets(
+        'Weekly calendar strip and progress card render on Reminder List',
+        (tester) async {
+      final repo = InMemoryReminderRepository();
+      const members = [
+        FamilyMember(
+          id: 'user_minh',
+          name: 'Minh',
+          role: 'Owner',
+          familyId: 'f1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReminderListScreen(
+            familyId: 'f1',
+            currentUserId: 'user_minh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WeeklyCalendarStrip), findsOneWidget);
+      expect(find.byType(FamilyProgressCard), findsOneWidget);
+      expect(find.text('Tất cả'), findsOneWidget);
+    });
   });
 }

@@ -4,8 +4,10 @@ import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../reminder_detail/reminder_detail_bottom_sheet.dart';
 import '../reminder_repository/reminder_repository.dart';
+import 'widgets/family_progress_card.dart';
 import 'widgets/reminder_card.dart';
 import 'widgets/reminder_section_header.dart';
+import 'widgets/weekly_calendar_strip.dart';
 
 class ReminderListScreen extends StatefulWidget {
   final String familyId;
@@ -32,6 +34,14 @@ class ReminderListScreen extends StatefulWidget {
 class _ReminderListScreenState extends State<ReminderListScreen> {
   late String _currentUserId;
   late String _currentUserName;
+  DateTime _selectedDate = DateTime.now();
+  bool _showAll = true;
+
+  String _formatDate(DateTime dt) {
+    final d = dt.day.toString().padLeft(2, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    return '$d/$m/${dt.year}';
+  }
 
   @override
   void initState() {
@@ -252,55 +262,97 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         stream: widget.repository.watchReminders(familyId: widget.familyId),
         builder: (context, snapshot) {
           final allReminders = snapshot.data ?? [];
-          final pendingList = allReminders.where((r) => r.isPending).toList();
+          final selectedDateStr = _formatDate(_selectedDate);
+          final displayedReminders = _showAll
+              ? allReminders
+              : allReminders.where((r) => r.date == selectedDateStr).toList();
+
+          final pendingList =
+              displayedReminders.where((r) => r.isPending).toList();
           final completedList =
-              allReminders.where((r) => r.isCompleted).toList();
+              displayedReminders.where((r) => r.isCompleted).toList();
 
-          if (allReminders.isEmpty) {
-            return _buildEmptyState();
-          }
-
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+          return Column(
             children: [
-              // PENDING SECTION
-              if (pendingList.isNotEmpty) ...[
-                ReminderSectionHeader(
-                  title: 'PENDING',
-                  count: pendingList.length,
-                ),
-                ...pendingList.map(
-                  (reminder) => ReminderCard(
-                    reminder: reminder,
-                    currentUserId: _currentUserId,
-                    onTap: () => _showDetailBottomSheet(reminder),
-                    onComplete: reminder.assignedTo == _currentUserId
-                        ? () => _completeReminder(reminder)
-                        : null,
-                    onDelete: reminder.creatorId == _currentUserId
-                        ? () => _confirmAndDelete(reminder)
-                        : null,
-                  ),
-                ),
-              ],
+              // 1. Weekly Calendar Strip
+              WeeklyCalendarStrip(
+                selectedDate: _selectedDate,
+                showAll: _showAll,
+                reminders: allReminders,
+                onDateSelected: (date) {
+                  setState(() {
+                    _selectedDate = date;
+                    _showAll = false;
+                  });
+                },
+                onSelectAll: () {
+                  setState(() {
+                    _showAll = true;
+                  });
+                },
+              ),
 
-              // COMPLETED SECTION
-              if (completedList.isNotEmpty) ...[
-                ReminderSectionHeader(
-                  title: 'COMPLETED',
-                  count: completedList.length,
-                ),
-                ...completedList.map(
-                  (reminder) => ReminderCard(
-                    reminder: reminder,
-                    currentUserId: _currentUserId,
-                    onTap: () => _showDetailBottomSheet(reminder),
-                    onDelete: reminder.creatorId == _currentUserId
-                        ? () => _confirmAndDelete(reminder)
-                        : null,
-                  ),
-                ),
-              ],
+              // 2. Family Daily Progress Card
+              FamilyProgressCard(
+                reminders: _showAll ? allReminders : displayedReminders,
+                dateTitle: _showAll ? 'Tất cả' : selectedDateStr,
+              ),
+
+              // 3. Reminder List
+              Expanded(
+                child: allReminders.isEmpty
+                    ? _buildEmptyState()
+                    : (displayedReminders.isEmpty
+                        ? _buildDayEmptyState(selectedDateStr)
+                        : ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+                            children: [
+                              // PENDING SECTION
+                              if (pendingList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: 'PENDING',
+                                  count: pendingList.length,
+                                ),
+                                ...pendingList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: _currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onComplete:
+                                        reminder.assignedTo == _currentUserId
+                                            ? () => _completeReminder(reminder)
+                                            : null,
+                                    onDelete:
+                                        reminder.creatorId == _currentUserId
+                                            ? () => _confirmAndDelete(reminder)
+                                            : null,
+                                  ),
+                                ),
+                              ],
+
+                              // COMPLETED SECTION
+                              if (completedList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: 'COMPLETED',
+                                  count: completedList.length,
+                                ),
+                                ...completedList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: _currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onDelete:
+                                        reminder.creatorId == _currentUserId
+                                            ? () => _confirmAndDelete(reminder)
+                                            : null,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          )),
+              ),
             ],
           );
         },
@@ -316,6 +368,64 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             fontWeight: FontWeight.bold,
             fontSize: 15,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDayEmptyState(String dateStr) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE7F0EC),
+                borderRadius: BorderRadius.circular(32),
+              ),
+              child: const Icon(
+                Icons.event_available_outlined,
+                size: 32,
+                color: Color(0xFF0D7A68),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Chưa có việc cho ngày $dateStr',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF151D1B),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Nhấn "Tạo nhắc nhở" để thêm mới, hoặc xem "Tất cả" trên lịch.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF6E7A75),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              icon: const Icon(Icons.list_alt, color: Color(0xFF0D7A68)),
+              label: const Text(
+                'Xem tất cả nhắc nhở',
+                style: TextStyle(
+                  color: Color(0xFF0D7A68),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              onPressed: () {
+                setState(() => _showAll = true);
+              },
+            ),
+          ],
         ),
       ),
     );
