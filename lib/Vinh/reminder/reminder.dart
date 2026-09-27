@@ -1,6 +1,7 @@
 // Core & Security
 export 'core/member_color_helper.dart';
 export 'core/reminder_exceptions.dart';
+export 'core/supabase_config.dart';
 
 // Models
 export 'models/family_member.dart';
@@ -8,6 +9,7 @@ export 'models/reminder_model.dart';
 
 // Repository
 export 'reminder_repository/reminder_repository.dart';
+export 'reminder_repository/supabase_reminder_repository.dart';
 
 // Validators
 export 'validators/reminder_validator.dart';

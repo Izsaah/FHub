@@ -32,6 +32,23 @@ class ReminderCard extends StatelessWidget {
     return Icons.task_alt_outlined;
   }
 
+  String? _getRelativeTime(ReminderModel reminder) {
+    if (reminder.isCompleted) return null;
+    final dt = reminder.dueDateTime;
+    if (dt == null) return null;
+    final now = DateTime.now();
+    final diff = dt.difference(now);
+    if (diff.isNegative) {
+      return null;
+    }
+    if (diff.inMinutes < 60) {
+      return 'còn ${diff.inMinutes}p';
+    } else if (diff.inHours < 24 && dt.day == now.day) {
+      return 'còn ${diff.inHours}h';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isCompleted = reminder.isCompleted;
@@ -161,6 +178,25 @@ class ReminderCard extends StatelessWidget {
                               color: primaryColor,
                             ),
                           ),
+                          if (_getRelativeTime(reminder) != null) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF3E5),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                _getRelativeTime(reminder)!,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFF49D37),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ],

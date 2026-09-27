@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/member_color_helper.dart';
 import '../models/reminder_model.dart';
 import '../reminder_repository/reminder_repository.dart';
@@ -44,6 +45,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
 
   Future<void> _handleComplete(BuildContext context) async {
     try {
+      HapticFeedback.mediumImpact();
       await repository.completeReminder(
         reminderId: reminder.id,
         currentUserId: currentUserId,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../calendar_page/calendar_page.dart';
 import '../create_reminder/create_reminder_screen.dart';
 import '../models/family_member.dart';
@@ -37,11 +38,21 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   late String _currentUserName;
   DateTime _selectedDate = DateTime.now();
   bool _showAll = true;
+  bool _filterOnlyMine = false;
+  bool _isSearchOpen = false;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
 
   String _formatDate(DateTime dt) {
     final d = dt.day.toString().padLeft(2, '0');
     final m = dt.month.toString().padLeft(2, '0');
     return '$d/$m/${dt.year}';
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -157,6 +168,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
   Future<void> _completeReminder(ReminderModel reminder) async {
     try {
+      HapticFeedback.mediumImpact();
       await widget.repository.completeReminder(
         reminderId: reminder.id,
         currentUserId: _currentUserId,
@@ -200,17 +212,61 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF3FBF8),
       appBar: AppBar(
-        title: const Text(
-          'Reminders',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-            color: textPrimary,
-          ),
-        ),
+        title: _isSearchOpen
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: const TextStyle(color: textPrimary, fontSize: 16),
+                decoration: InputDecoration(
+                  hintText: 'Tìm kiếm nhắc nhở...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: Colors.grey.shade500),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _searchController.clear();
+                              _searchQuery = '';
+                            });
+                          },
+                        )
+                      : null,
+                ),
+                onChanged: (val) {
+                  setState(() {
+                    _searchQuery = val.trim();
+                  });
+                },
+              )
+            : const Text(
+                'Reminders',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                  color: textPrimary,
+                ),
+              ),
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
+          // Search toggle
+          IconButton(
+            icon: Icon(
+              _isSearchOpen ? Icons.close : Icons.search,
+              color: primaryColor,
+            ),
+            tooltip: _isSearchOpen ? 'Đóng tìm kiếm' : 'Tìm kiếm nhắc nhở',
+            onPressed: () {
+              setState(() {
+                _isSearchOpen = !_isSearchOpen;
+                if (!_isSearchOpen) {
+                  _searchController.clear();
+                  _searchQuery = '';
+                }
+              });
+            },
+          ),
           // Switch user for testing permissions
           PopupMenuButton<FamilyMember>(
             tooltip: 'Switch Active User',
@@ -292,10 +348,41 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         stream: widget.repository.watchReminders(familyId: widget.familyId),
         builder: (context, snapshot) {
           final allReminders = snapshot.data ?? [];
+
+          // 1. Filter by Scope: All vs Mine
+          final scopedReminders = _filterOnlyMine
+              ? allReminders.where((r) => r.assignedTo == _currentUserId).toList()
+              : allReminders;
+
+          // 2. Filter by Search Query
+          final searchedReminders = _searchQuery.isEmpty
+              ? scopedReminders
+              : scopedReminders.where((r) {
+                  final titleMatch = r.title
+                      .toLowerCase()
+                      .contains(_searchQuery.toLowerCase());
+                  final member = widget.familyMembers.firstWhere(
+                    (m) => m.id == r.assignedTo,
+                    orElse: () => const FamilyMember(
+                      id: '',
+                      name: '',
+                      role: '',
+                      familyId: '',
+                    ),
+                  );
+                  final assigneeMatch = member.name
+                          .toLowerCase()
+                          .contains(_searchQuery.toLowerCase()) ||
+                      member.role
+                          .toLowerCase()
+                          .contains(_searchQuery.toLowerCase());
+                  return titleMatch || assigneeMatch;
+                }).toList();
+
           final selectedDateStr = _formatDate(_selectedDate);
           final displayedReminders = _showAll
-              ? allReminders
-              : allReminders.where((r) => r.date == selectedDateStr).toList();
+              ? searchedReminders
+              : searchedReminders.where((r) => r.date == selectedDateStr).toList();
 
           final pendingList =
               displayedReminders.where((r) => r.isPending).toList();
@@ -304,11 +391,104 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
           return Column(
             children: [
+              // 0. Scope Filter Chips ([ Cả nhà ] vs [ Việc của tôi ])
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        avatar: Icon(
+                          Icons.groups_rounded,
+                          size: 18,
+                          color: !_filterOnlyMine
+                              ? primaryColor
+                              : const Color(0xFF49454F),
+                        ),
+                        label: const Center(
+                          child: Text(
+                            '👨‍👩‍👧 Cả nhà',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        selected: !_filterOnlyMine,
+                        selectedColor: const Color(0xFFE7F0EC),
+                        backgroundColor: const Color(0xFFF3FBF8),
+                        labelStyle: TextStyle(
+                          color: !_filterOnlyMine
+                              ? primaryColor
+                              : const Color(0xFF49454F),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(
+                            color: !_filterOnlyMine
+                                ? primaryColor
+                                : const Color(0xFFC4C7C5),
+                          ),
+                        ),
+                        onSelected: (selected) {
+                          if (selected) {
+                            setState(() => _filterOnlyMine = false);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ChoiceChip(
+                        avatar: Icon(
+                          Icons.person_rounded,
+                          size: 18,
+                          color: _filterOnlyMine
+                              ? primaryColor
+                              : const Color(0xFF49454F),
+                        ),
+                        label: const Center(
+                          child: Text(
+                            '👤 Việc của tôi',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        selected: _filterOnlyMine,
+                        selectedColor: const Color(0xFFE7F0EC),
+                        backgroundColor: const Color(0xFFF3FBF8),
+                        labelStyle: TextStyle(
+                          color: _filterOnlyMine
+                              ? primaryColor
+                              : const Color(0xFF49454F),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(
+                            color: _filterOnlyMine
+                                ? primaryColor
+                                : const Color(0xFFC4C7C5),
+                          ),
+                        ),
+                        onSelected: (selected) {
+                          if (selected) {
+                            setState(() => _filterOnlyMine = true);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
               // 1. Weekly Calendar Strip
               WeeklyCalendarStrip(
                 selectedDate: _selectedDate,
                 showAll: _showAll,
-                reminders: allReminders,
+                reminders: scopedReminders,
                 onDateSelected: (date) {
                   setState(() {
                     _selectedDate = date;
@@ -324,7 +504,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
               // 2. Family Daily Progress Card
               FamilyProgressCard(
-                reminders: _showAll ? allReminders : displayedReminders,
+                reminders: _showAll ? searchedReminders : displayedReminders,
                 dateTitle: _showAll ? 'Tất cả' : selectedDateStr,
               ),
 

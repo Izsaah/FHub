@@ -15,11 +15,11 @@ class FamilyMember {
 
   factory FamilyMember.fromJson(Map<String, dynamic> json) {
     return FamilyMember(
-      id: json['id'] as String,
-      name: json['name'] as String,
+      id: (json['user_id'] ?? json['id'] ?? '').toString(),
+      name: json['name'] as String? ?? 'Member',
       role: json['role'] as String? ?? 'Member',
-      avatarType: json['avatarType'] as String?,
-      familyId: json['familyId'] as String,
+      avatarType: (json['avatar_type'] ?? json['avatarType']) as String?,
+      familyId: (json['family_id'] ?? json['familyId'] ?? '').toString(),
     );
   }
 

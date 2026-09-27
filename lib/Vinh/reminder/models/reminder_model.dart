@@ -109,22 +109,26 @@ class ReminderModel {
 
   factory ReminderModel.fromJson(Map<String, dynamic> json) {
     return ReminderModel(
-      id: json['id'] as String,
-      familyId: json['familyId'] as String,
-      creatorId: json['creatorId'] as String,
-      creatorName: json['creatorName'] as String?,
-      assignedTo: json['assignedTo'] as String,
-      assignedToName: json['assignedToName'] as String? ?? '',
-      title: json['title'] as String,
-      date: json['date'] as String,
-      time: json['time'] as String,
+      id: (json['id'] ?? '').toString(),
+      familyId: (json['family_id'] ?? json['familyId'] ?? '').toString(),
+      creatorId: (json['creator_id'] ?? json['creatorId'] ?? '').toString(),
+      creatorName: json['creator_name'] as String? ?? json['creatorName'] as String?,
+      assignedTo: (json['assigned_to'] ?? json['assignedTo'] ?? '').toString(),
+      assignedToName: (json['assigned_to_name'] ?? json['assignedToName'] ?? '').toString(),
+      title: json['title'] as String? ?? '',
+      date: json['date'] as String? ?? '',
+      time: json['time'] as String? ?? '',
       status: json['status'] as String? ?? ReminderStatus.pending,
-      completedAt: json['completedAt'] != null
-          ? DateTime.tryParse(json['completedAt'] as String)
-          : null,
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'] as String)
-          : null,
+      completedAt: json['completed_at'] != null
+          ? DateTime.tryParse(json['completed_at'].toString())
+          : (json['completedAt'] != null
+              ? DateTime.tryParse(json['completedAt'].toString())
+              : null),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString())
+          : (json['createdAt'] != null
+              ? DateTime.tryParse(json['createdAt'].toString())
+              : null),
     );
   }
 
@@ -142,6 +146,22 @@ class ReminderModel {
       'status': status,
       'completedAt': completedAt?.toIso8601String(),
       'createdAt': createdAt?.toIso8601String(),
+    };
+  }
+
+  /// Maps directly to Supabase table `reminders`
+  Map<String, dynamic> toSupabaseMap() {
+    return {
+      if (id.isNotEmpty) 'id': id,
+      'family_id': familyId,
+      'creator_id': creatorId,
+      'assigned_to': assignedTo,
+      'title': title,
+      'date': date,
+      'time': time,
+      'status': status,
+      if (completedAt != null) 'completed_at': completedAt?.toIso8601String(),
+      if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
     };
   }
 

@@ -259,6 +259,49 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
               const SizedBox(height: 8),
+              // Quick Templates 1-Chạm
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildTemplateChip(
+                      icon: '💊',
+                      label: 'Uống thuốc',
+                      onTap: () {
+                        _titleController.text = 'Uống thuốc';
+                        _setQuickTime(8, 0);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    _buildTemplateChip(
+                      icon: '🛒',
+                      label: 'Đi chợ',
+                      onTap: () {
+                        _titleController.text = 'Đi chợ mua đồ';
+                        _setQuickTime(10, 0);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    _buildTemplateChip(
+                      icon: '🧹',
+                      label: 'Việc nhà',
+                      onTap: () {
+                        _titleController.text = 'Dọn dẹp việc nhà';
+                        _setQuickTime(17, 0);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    _buildTemplateChip(
+                      icon: '📝',
+                      label: 'Khác',
+                      onTap: () {
+                        _titleController.text = 'Nhắc nhở việc gia đình';
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               TextFormField(
                 controller: _titleController,
                 style: const TextStyle(fontSize: 17),
@@ -612,6 +655,40 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
             fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
             color: isSelected ? primaryColor : const Color(0xFF151D1B),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTemplateChip({
+    required String icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3FBF8),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFBDC9C4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(icon, style: const TextStyle(fontSize: 14)),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF0D7A68),
+              ),
+            ),
+          ],
         ),
       ),
     );

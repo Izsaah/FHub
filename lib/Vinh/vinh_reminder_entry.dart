@@ -28,7 +28,7 @@ class VinhReminderApp extends StatelessWidget {
       ),
     ];
 
-    final repository = InMemoryReminderRepository();
+    final repository = SupabaseReminderRepository();
 
     return MaterialApp(
       title: 'Family Hub - Reminders',

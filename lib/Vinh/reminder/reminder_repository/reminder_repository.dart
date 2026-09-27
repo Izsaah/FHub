@@ -6,6 +6,7 @@ import '../validators/reminder_validator.dart';
 
 // Re-export core exceptions for seamless encapsulation
 export '../core/reminder_exceptions.dart';
+export 'supabase_reminder_repository.dart';
 
 abstract class ReminderRepository {
   Future<List<ReminderModel>> getReminders({required String familyId});

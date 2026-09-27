@@ -388,4 +388,94 @@ void main() {
       expect(activeAfterRestore.first.isPending, isTrue);
     });
   });
+
+  group('Supabase Repository Fallback Tests', () {
+    test('SupabaseReminderRepository falls back to in-memory gracefully when offline', () async {
+      final fallback = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'sup_1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_dad',
+          assignedToName: 'Dad',
+          title: 'Buy groceries',
+          date: '26/09/2026',
+          time: '18:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+      final repo = SupabaseReminderRepository(client: null, fallbackRepository: fallback);
+
+      final list = await repo.getReminders(familyId: 'f1');
+      expect(list.length, 1);
+      expect(list.first.title, 'Buy groceries');
+
+      // Complete via fallback
+      final completed = await repo.completeReminder(
+        reminderId: 'sup_1',
+        currentUserId: 'user_dad',
+      );
+      expect(completed.isCompleted, isTrue);
+    });
+  });
+
+  group('Scope Filter UI Tests', () {
+    testWidgets('Reminder List renders Cả nhà and Việc của tôi chips', (tester) async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: '1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_mom',
+          assignedToName: 'Mom',
+          title: 'Take medicine',
+          date: '26/09/2026',
+          time: '08:00',
+          status: ReminderStatus.pending,
+        ),
+        const ReminderModel(
+          id: '2',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Clean desk',
+          date: '26/09/2026',
+          time: '19:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+      const members = [
+        FamilyMember(id: 'user_minh', name: 'Minh', role: 'Child', familyId: 'f1'),
+        FamilyMember(id: 'user_mom', name: 'Mom', role: 'Mother', familyId: 'f1'),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReminderListScreen(
+            familyId: 'f1',
+            currentUserId: 'user_minh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('👨‍👩‍👧 Cả nhà'), findsOneWidget);
+      expect(find.text('👤 Việc của tôi'), findsOneWidget);
+
+      // Both reminders visible under "Cả nhà"
+      expect(find.text('Take medicine'), findsOneWidget);
+      expect(find.text('Clean desk'), findsOneWidget);
+
+      // Tap "Việc của tôi"
+      await tester.tap(find.text('👤 Việc của tôi'));
+      await tester.pumpAndSettle();
+
+      // Only Minh's reminder is visible
+      expect(find.text('Clean desk'), findsOneWidget);
+      expect(find.text('Take medicine'), findsNothing);
+    });
+  });
 }
