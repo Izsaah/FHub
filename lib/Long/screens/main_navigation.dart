@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'home/home_screen.dart';
 import 'family/family_screen.dart';
+import 'family/create_family_screen.dart';
+import 'family/join_family_screen.dart';
 import 'profile/profile_screen.dart';
+
+import '../services/supabase_service.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -13,6 +17,19 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  late Future<bool> _hasFamilyFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasFamilyFuture = SupabaseService().hasFamily();
+  }
+
+  void _refreshFamilyStatus() {
+    setState(() {
+      _hasFamilyFuture = SupabaseService().hasFamily();
+    });
+  }
 
   final List<Widget> _screens = [
     const HomeScreen(),
@@ -53,3 +70,4 @@ class _MainNavigationState extends State<MainNavigation> {
     );
   }
 }
+

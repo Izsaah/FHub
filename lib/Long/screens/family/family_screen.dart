@@ -19,16 +19,13 @@ class FamilyScreen extends StatefulWidget {
 
 class _FamilyScreenState extends State<FamilyScreen> {
   final _supabaseService = SupabaseService();
-  final bool _mockHasFamily = true;
 
   late Future<Map<String, dynamic>> _familyDataFuture;
 
   @override
   void initState() {
     super.initState();
-    if (_mockHasFamily) {
-      _loadData();
-    }
+    _loadData();
   }
 
   void _loadData() {
@@ -52,86 +49,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_mockHasFamily) {
-      return Scaffold(
-        appBar: const CustomAppBar(title: 'Tổ Ấm Yêu Thương'),
-        body: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(
-                Icons.family_restroom,
-                size: 80,
-                color: Color(0xFF005F50),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Welcome to Family Hub',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF151D1B),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                "You aren't in a family yet. Create one or join an existing family to get started.",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Color(0xFF3E4946)),
-              ),
-              const SizedBox(height: 48),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: const Color(0xFF005F50),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const CreateFamilyScreen(),
-                    ),
-                  );
-                },
-                child: const Text(
-                  'Create a Family',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  foregroundColor: const Color(0xFF005F50),
-                  side: const BorderSide(color: Color(0xFF005F50)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const JoinFamilyScreen()),
-                  );
-                },
-                child: const Text(
-                  'Join a Family',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: const CustomAppBar(title: 'Tổ Ấm Yêu Thương'),
       body: FutureBuilder<Map<String, dynamic>>(
@@ -146,8 +63,85 @@ class _FamilyScreenState extends State<FamilyScreen> {
           }
 
           final data = snapshot.data!;
-          final FamilyModel family = data['family'];
+          final FamilyModel? family = data['family'];
           final List<FamilyMemberModel> members = data['members'];
+
+          if (family == null) {
+            return Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(
+                    Icons.family_restroom,
+                    size: 80,
+                    color: Color(0xFF005F50),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Welcome to Family Hub',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF151D1B),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "You aren't in a family yet. Create one or join an existing family to get started.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, color: Color(0xFF3E4946)),
+                  ),
+                  const SizedBox(height: 48),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: const Color(0xFF005F50),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const CreateFamilyScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      'Create a Family',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      foregroundColor: const Color(0xFF005F50),
+                      side: const BorderSide(color: Color(0xFF005F50)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const JoinFamilyScreen()),
+                      );
+                    },
+                    child: const Text(
+                      'Join a Family',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
 
           final currentMember = members.firstWhere(
             (m) => m.user.id == _supabaseService.currentUserId,
