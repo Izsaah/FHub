@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/supabase_service.dart';
 import '../../models/user_model.dart';
 import '../../models/family_model.dart';
 import '../../widgets/custom_app_bar.dart';
+import '../../../Thinh/screens/auth_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -235,10 +237,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       backgroundColor: Colors.transparent,
                     ),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Logged out successfully.')),
-                      );
+                    onPressed: () async {
+                      try {
+                        await Supabase.instance.client.auth.signOut();
+                        if (context.mounted) {
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(
+                              builder: (context) => const AuthScreen(),
+                            ),
+                            (route) => false,
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error logging out: $e')),
+                          );
+                        }
+                      }
                     },
                     icon: const Icon(Icons.logout),
                     label: const Text(
