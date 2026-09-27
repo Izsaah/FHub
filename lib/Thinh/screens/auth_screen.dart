@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../theme/app_colors.dart';
+import '../theme/app_language.dart';
 import 'login_form_view.dart';
-import 'join_family_view.dart';
-import 'register_view.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({Key? key}) : super(key: key);
+  const AuthScreen({super.key});
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -14,38 +14,38 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white, // In HTML it's a gradient, let's use a solid close to it
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.brand50,
-              Color(0xFFf7faf8),
-              Colors.white,
-            ],
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, isEnglish, child) => Scaffold(
+        backgroundColor: Colors
+            .white, // In HTML it's a gradient, let's use a solid close to it
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [AppColors.brand50, Color(0xFFf7faf8), Colors.white],
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildTopBar(),
-                  const SizedBox(height: 12),
-                  _buildHeroSection(),
-                  const SizedBox(height: 20),
-                  // Content based on tab
-                  const LoginFormView(),
-                  
-                  const SizedBox(height: 20),
-                  _buildFooter(),
-                  const SizedBox(height: 20),
-                ],
+          child: SafeArea(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildTopBar(),
+                    const SizedBox(height: 12),
+                    _buildHeroSection(),
+                    const SizedBox(height: 20),
+                    // Content based on tab
+                    LoginFormView(key: ValueKey(isEnglish)),
+
+                    const SizedBox(height: 20),
+                    _buildFooter(),
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             ),
           ),
@@ -70,20 +70,24 @@ class _AuthScreenState extends State<AuthScreen> {
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.brand600.withOpacity(0.3),
+                      color: AppColors.brand600.withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: const Icon(Icons.favorite, color: Colors.white, size: 20),
+                child: const Icon(
+                  Icons.favorite,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 8),
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Gia Đình Việt',
+                    AppLanguage.text('Gia Đình Việt', 'Vietnamese Family'),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
@@ -92,7 +96,10 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   ),
                   Text(
-                    'Bình yên từng khoảnh khắc',
+                    AppLanguage.text(
+                      'Bình yên từng khoảnh khắc',
+                      'Peace in every moment',
+                    ),
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.black54,
@@ -106,14 +113,14 @@ class _AuthScreenState extends State<AuthScreen> {
           Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.8),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: AppColors.brand100),
             ),
             child: Row(
               children: [
-                _buildLangBtn('VI', true),
-                _buildLangBtn('EN', false),
+                _buildLangBtn('VI', !AppLanguage.isEnglish.value),
+                _buildLangBtn('EN', AppLanguage.isEnglish.value),
               ],
             ),
           ),
@@ -123,20 +130,23 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Widget _buildLangBtn(String lang, bool isActive) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: isActive
-          ? BoxDecoration(
-              color: AppColors.brand600,
-              borderRadius: BorderRadius.circular(16),
-            )
-          : null,
-      child: Text(
-        lang,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: isActive ? Colors.white : Colors.grey[600],
+    return GestureDetector(
+      onTap: () => AppLanguage.isEnglish.value = lang == 'EN',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: isActive
+            ? BoxDecoration(
+                color: AppColors.brand600,
+                borderRadius: BorderRadius.circular(16),
+              )
+            : null,
+        child: Text(
+          lang,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: isActive ? Colors.white : Colors.grey[600],
+          ),
         ),
       ),
     );
@@ -150,7 +160,8 @@ class _AuthScreenState extends State<AuthScreen> {
         border: Border.all(color: AppColors.brand100),
         image: const DecorationImage(
           image: NetworkImage(
-              'https://lh3.googleusercontent.com/aida-public/AB6AXuBkvMLWdv3MazKdLh0fZtr8WdM5jGy9kYRmvBvAx2qWRwnjzX4B8d39Zk2qJQIU7t9Z2Exi3MKp1Q7F5M2Zs-pPiLnmB-LP1xJQ6gelEQ591McE1WeCrmdWUP3flWwYceRb7ARmGL9tTTT4b2GqLQSM7jKXE0MVWWWdy3O4BFCj-rpFeJap2VYAwnmL9Mb82GItxp7xXJDjJkcVp8t7I4EtbxOBSBUWJWIn28fqXmxLaLRBrZSYhTdC'),
+            'https://lh3.googleusercontent.com/aida-public/AB6AXuBkvMLWdv3MazKdLh0fZtr8WdM5jGy9kYRmvBvAx2qWRwnjzX4B8d39Zk2qJQIU7t9Z2Exi3MKp1Q7F5M2Zs-pPiLnmB-LP1xJQ6gelEQ591McE1WeCrmdWUP3flWwYceRb7ARmGL9tTTT4b2GqLQSM7jKXE0MVWWWdy3O4BFCj-rpFeJap2VYAwnmL9Mb82GItxp7xXJDjJkcVp8t7I4EtbxOBSBUWJWIn28fqXmxLaLRBrZSYhTdC',
+          ),
           fit: BoxFit.cover,
         ),
         boxShadow: const [
@@ -170,8 +181,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
                 colors: [
-                  AppColors.brand900.withOpacity(0.9),
-                  AppColors.brand900.withOpacity(0.4),
+                  AppColors.brand900.withValues(alpha: 0.9),
+                  AppColors.brand900.withValues(alpha: 0.4),
                   Colors.transparent,
                 ],
               ),
@@ -185,18 +196,24 @@ class _AuthScreenState extends State<AuthScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.accentAmber,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.home_filled, color: Colors.white, size: 12),
                       SizedBox(width: 4),
                       Text(
-                        'Phiên bản Gia Đình',
+                        AppLanguage.text(
+                          'Phiên bản Gia Đình',
+                          'Family Edition',
+                        ),
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 11,
@@ -207,8 +224,8 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Tổ Ấm Yêu Thương',
+                Text(
+                  AppLanguage.text('Tổ Ấm Yêu Thương', 'A Loving Home'),
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -216,9 +233,12 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                 ),
                 Text(
-                  'Gắn kết yêu thương • Sẻ chia từng khoảnh khắc',
+                  AppLanguage.text(
+                    'Gắn kết yêu thương • Sẻ chia từng khoảnh khắc',
+                    'Connect with love • Share every moment',
+                  ),
                   style: TextStyle(
-                    color: AppColors.brand100.withOpacity(0.9),
+                    color: AppColors.brand100.withValues(alpha: 0.9),
                     fontSize: 12,
                   ),
                 ),
@@ -240,13 +260,16 @@ class _AuthScreenState extends State<AuthScreen> {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.brand100),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.security, color: AppColors.brand600, size: 14),
               SizedBox(width: 6),
               Text(
-                'Vị trí & dữ liệu sức khỏe gia đình được bảo mật 100%',
+                AppLanguage.text(
+                  'Vị trí & dữ liệu sức khỏe gia đình được bảo mật 100%',
+                  'Family location and health data are 100% private',
+                ),
                 style: TextStyle(
                   fontSize: 11,
                   color: AppColors.brand800,
@@ -257,22 +280,40 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('Chính sách bảo mật', style: TextStyle(fontSize: 10, color: Colors.grey)),
+            Text(
+              AppLanguage.text('Chính sách bảo mật', 'Privacy Policy'),
+              style: TextStyle(fontSize: 10, color: Colors.grey),
+            ),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text('•', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              child: Text(
+                '•',
+                style: TextStyle(fontSize: 10, color: Colors.grey),
+              ),
             ),
-            Text('Điều khoản dịch vụ', style: TextStyle(fontSize: 10, color: Colors.grey)),
+            Text(
+              AppLanguage.text('Điều khoản dịch vụ', 'Terms of Service'),
+              style: TextStyle(fontSize: 10, color: Colors.grey),
+            ),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text('•', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              child: Text(
+                '•',
+                style: TextStyle(fontSize: 10, color: Colors.grey),
+              ),
             ),
-            Text('© Tổ Ấm Yêu Thương 2024', style: TextStyle(fontSize: 10, color: Colors.grey)),
+            Text(
+              AppLanguage.text(
+                '© Tổ Ấm Yêu Thương 2024',
+                '© A Loving Home 2024',
+              ),
+              style: TextStyle(fontSize: 10, color: Colors.grey),
+            ),
           ],
-        )
+        ),
       ],
     );
   }

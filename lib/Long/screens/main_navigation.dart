@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'home/home_screen.dart';
 import 'family/family_screen.dart';
-import 'family/create_family_screen.dart';
-import 'family/join_family_screen.dart';
 import 'profile/profile_screen.dart';
 
 import '../services/supabase_service.dart';
@@ -70,4 +68,3 @@ class _MainNavigationState extends State<MainNavigation> {
     );
   }
 }
-

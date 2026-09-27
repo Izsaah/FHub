@@ -1,53 +1,67 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
-import '../services/auth_service.dart';
-import '../screens/register_view.dart';
-import '../screens/forgot_password_view.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../Long/screens/main_navigation.dart';
+import '../services/auth_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_language.dart';
+import 'forgot_password_view.dart';
+import 'register_view.dart';
 
 class LoginFormView extends StatefulWidget {
-  const LoginFormView({Key? key}) : super(key: key);
+  const LoginFormView({super.key});
 
   @override
   State<LoginFormView> createState() => _LoginFormViewState();
 }
 
 class _LoginFormViewState extends State<LoginFormView> {
-  bool _obscureText = true;
-  bool _rememberMe = true;
-  bool _isLoading = false;
-  final _emailController = TextEditingController(text: 'email@example.com');
+  static final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
+  bool _obscurePassword = true;
+  bool _isLoading = false;
+  String? _emailError;
+  String? _passwordError;
+  String? _formError;
+
+  String _t(String vietnamese, String english) =>
+      AppLanguage.text(vietnamese, english);
 
   Future<void> _handleLogin() async {
-    // Validate inputs
     final email = _emailController.text.trim();
     final password = _passwordController.text;
-
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập Email và Mật khẩu.')),
-      );
-      return;
-    }
+    setState(() {
+      _emailError = email.isEmpty
+          ? _t('Email là bắt buộc.', 'Email is required.')
+          : !_emailPattern.hasMatch(email)
+          ? _t('Vui lòng nhập email hợp lệ.', 'Enter a valid email.')
+          : null;
+      _passwordError = password.isEmpty
+          ? _t('Mật khẩu là bắt buộc.', 'Password is required.')
+          : null;
+      _formError = null;
+    });
+    if (_emailError != null || _passwordError != null) return;
 
     setState(() => _isLoading = true);
-    
     try {
       await _authService.loginWithEmail(email: email, password: password);
       if (!mounted) return;
-      
-      // Success workflow -> Navigate to Home
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const MainNavigation()),
       );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đăng nhập thất bại: ${e.toString()}')),
-      );
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _formError = _t(
+            'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.',
+            'Login failed. Please check your credentials.',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -56,30 +70,39 @@ class _LoginFormViewState extends State<LoginFormView> {
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isLoading = true);
     try {
-      final success = await _authService.signInWithGoogle();
-      if (!mounted) return;
-      if (success) {
-        // OAuth mở trình duyệt, sau khi xác thực xong sẽ redirect lại app
-        // Cần cấu hình Google Provider trong Supabase Dashboard
+      final started = await _authService.signInWithGoogle();
+      if (mounted && !started) {
+        AuthService.googleSignInInProgress = false;
+        setState(
+          () => _formError = _t(
+            'Không thể khởi động Google Sign-In.',
+            'Could not start Google Sign-In.',
+          ),
+        );
       }
-    } catch (e) {
+    } catch (error) {
+      AuthService.googleSignInInProgress = false;
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Google Sign-In chưa được cấu hình. Vui lòng bật Google Provider trong Supabase Dashboard.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      final message =
+          error is AuthException &&
+              error.code == 'validation_failed' &&
+              error.message.contains('provider is not enabled')
+          ? _t(
+              'Google Sign-In chưa được bật trong Supabase Dashboard.',
+              'Google Sign-In is not enabled in Supabase Dashboard.',
+            )
+          : _t('Google Sign-In thất bại.', 'Google Sign-In failed.');
+      setState(() => _formError = message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _handleForgotPassword() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ForgotPasswordView()),
-    );
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -103,38 +126,58 @@ class _LoginFormViewState extends State<LoginFormView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildFormHeader(),
+              Text(
+                _t('Chào mừng trở về Nhà! 👋', 'Welcome home! 👋'),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textMain,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _t(
+                  'Đăng nhập để xem cập nhật của con cháu & ông bà',
+                  'Sign in to see family updates',
+                ),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
               const SizedBox(height: 16),
               _buildEmailField(),
               const SizedBox(height: 16),
               _buildPasswordField(),
               const SizedBox(height: 12),
               _buildRememberForgotRow(),
+              if (_formError != null) ...[
+                const SizedBox(height: 12),
+                _buildInlineError(_formError!),
+              ],
               const SizedBox(height: 16),
-              _buildLoginBtn(),
+              _buildLoginButton(),
             ],
           ),
         ),
         const SizedBox(height: 20),
-        _buildSocialLogin(),
+        _buildGoogleButton(),
         const SizedBox(height: 20),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              'Chưa có tài khoản? ',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
+            Text(
+              _t('Chưa có tài khoản? ', 'No account yet? '),
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
             ),
             GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const RegisterView()),
-                );
-              },
-              child: const Text(
-                'Đăng ký ngay',
-                style: TextStyle(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const RegisterView()),
+              ),
+              child: Text(
+                _t('Đăng ký ngay', 'Register now'),
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: AppColors.brand700,
@@ -148,43 +191,51 @@ class _LoginFormViewState extends State<LoginFormView> {
     );
   }
 
-  Widget _buildFormHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Chào mừng trở về Nhà! 👋',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textMain,
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'Đăng nhập để xem cập nhật của con cháu & ông bà',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ],
+  Widget _buildEmailField() {
+    return _buildField(
+      label: _t('Email', 'Email'),
+      hint: _t('Nhập email của bạn...', 'Enter your email...'),
+      controller: _emailController,
+      errorText: _emailError,
+      icon: Icons.email_outlined,
+      keyboardType: TextInputType.emailAddress,
     );
   }
 
-  Widget _buildEmailField() {
+  Widget _buildPasswordField() {
+    return _buildField(
+      label: _t('Mật khẩu', 'Password'),
+      hint: _t('Nhập mật khẩu...', 'Enter your password...'),
+      controller: _passwordController,
+      errorText: _passwordError,
+      icon: Icons.lock_outline,
+      obscureText: _obscurePassword,
+      suffixIcon: IconButton(
+        icon: Icon(
+          _obscurePassword ? Icons.visibility_off : Icons.visibility,
+          color: Colors.grey[400],
+        ),
+        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+      ),
+    );
+  }
+
+  Widget _buildField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required String? errorText,
+    required IconData icon,
+    TextInputType? keyboardType,
+    bool obscureText = false,
+    Widget? suffixIcon,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Email',
-          style: TextStyle(
+        Text(
+          label,
+          style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
             color: Colors.black87,
@@ -192,75 +243,16 @@ class _LoginFormViewState extends State<LoginFormView> {
         ),
         const SizedBox(height: 6),
         TextField(
-          controller: _emailController,
+          controller: controller,
+          keyboardType: keyboardType,
+          obscureText: obscureText,
           decoration: InputDecoration(
-            hintText: 'Nhập email của bạn...',
+            hintText: hint,
             hintStyle: TextStyle(color: Colors.grey[400]),
-            prefixIcon: const Icon(Icons.email_outlined, color: AppColors.brand700),
-            contentPadding: const EdgeInsets.symmetric(vertical: 14),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AppColors.brand600),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPasswordField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Mật khẩu',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _passwordController,
-          obscureText: _obscureText,
-          decoration: InputDecoration(
-            hintText: 'Nhập mật khẩu...',
-            hintStyle: TextStyle(color: Colors.grey[400]),
-            prefixIcon: const Icon(Icons.lock_outline, color: AppColors.brand700),
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscureText ? Icons.visibility_off : Icons.visibility,
-                color: Colors.grey[400],
-              ),
-              onPressed: () {
-                setState(() {
-                  _obscureText = !_obscureText;
-                });
-              },
-            ),
-            contentPadding: const EdgeInsets.symmetric(vertical: 14),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
+            prefixIcon: Icon(icon, color: AppColors.brand700),
+            suffixIcon: suffixIcon,
+            errorText: errorText,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: AppColors.brand600),
@@ -277,209 +269,71 @@ class _LoginFormViewState extends State<LoginFormView> {
       children: [
         Row(
           children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: Checkbox(
-                value: _rememberMe,
-                onChanged: (val) {
-                  setState(() => _rememberMe = val ?? true);
-                },
-                activeColor: AppColors.brand600,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-              ),
+            Checkbox(
+              value: true,
+              onChanged: (_) {},
+              activeColor: AppColors.brand600,
             ),
-            const SizedBox(width: 8),
-            const Text(
-              'Ghi nhớ đăng nhập',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.black87,
-              ),
+            Text(
+              _t('Ghi nhớ đăng nhập', 'Remember me'),
+              style: const TextStyle(fontSize: 12, color: Colors.black87),
             ),
           ],
         ),
         GestureDetector(
-          onTap: _handleForgotPassword,
-          child: const Text(
-            'Quên mật khẩu?',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: AppColors.brand700,
-            ),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ForgotPasswordView()),
+          ),
+          child: Text(
+            _t('Quên mật khẩu?', 'Forgot password?'),
+            style: const TextStyle(fontSize: 12, color: AppColors.brand700),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildLoginBtn() {
-    return InkWell(
-      onTap: _handleLogin,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        height: 52,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: const LinearGradient(
-            colors: [AppColors.brand700, AppColors.brand600, AppColors.brand700],
+  Widget _buildLoginButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: FilledButton(
+        onPressed: _isLoading ? null : _handleLogin,
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.brand600,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.brand600.withOpacity(0.4),
-              blurRadius: 24,
-              offset: const Offset(0, 10),
-            ),
-          ],
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: _isLoading 
-          ? [
-              const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-              ),
-            ]
-          : [
-              const Icon(Icons.home, color: Colors.white, size: 24),
-              const SizedBox(width: 8),
-              const Text(
-                'Đăng nhập vào Tổ Ấm',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-        ),
+        child: _isLoading
+            ? const CircularProgressIndicator(color: Colors.white)
+            : Text(_t('Đăng nhập vào Tổ Ấm', 'Sign in to Family Hub')),
       ),
     );
   }
 
-  Widget _buildBiometricOption() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.brand50.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.brand100),
-                ),
-                child: const Icon(Icons.fingerprint, size: 18, color: AppColors.brand600),
-              ),
-              const SizedBox(width: 10),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Mở khóa FaceID / Vân tay',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.brand900,
-                    ),
-                  ),
-                  Text(
-                    'Dành cho Bố Tuấn, Mẹ Lan',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.brand600,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Text(
-              'Xác thực',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          )
-        ],
-      ),
+  Widget _buildGoogleButton() {
+    return OutlinedButton.icon(
+      onPressed: _isLoading ? null : _handleGoogleSignIn,
+      icon: const Icon(Icons.g_mobiledata),
+      label: Text(_t('Đăng nhập bằng Google', 'Continue with Google')),
     );
   }
 
-  Widget _buildSocialLogin() {
-    return Column(
+  Widget _buildInlineError(String message) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(child: Divider(color: Colors.grey[300])),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0),
-              child: Text(
-                'Hoặc đăng nhập nhanh bằng',
-                style: TextStyle(fontSize: 12, color: Colors.grey[400], fontWeight: FontWeight.w500),
-              ),
-            ),
-            Expanded(child: Divider(color: Colors.grey[300])),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            GestureDetector(
-              onTap: _handleGoogleSignIn,
-              child: _buildSocialBtn('Google', Colors.white, Colors.black87, Icons.g_mobiledata, isOutlined: true),
-            ),
-          ],
+        const Icon(Icons.error_outline, size: 16, color: Colors.redAccent),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            message,
+            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+          ),
         ),
       ],
-    );
-  }
-
-  Widget _buildSocialBtn(String text, Color bgColor, Color textColor, IconData icon, {bool isOutlined = false}) {
-    return Container(
-      width: 100,
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: isOutlined ? Border.all(color: Colors.grey[300]!) : null,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: textColor, size: 18),
-          const SizedBox(width: 4),
-          Text(
-            text,
-            style: TextStyle(
-              color: textColor,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
