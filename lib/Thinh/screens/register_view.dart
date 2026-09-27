@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/auth_service.dart';
 
 class RegisterView extends StatefulWidget {
   const RegisterView({Key? key}) : super(key: key);
@@ -16,8 +17,11 @@ class _RegisterViewState extends State<RegisterView> {
   
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isLoading = false;
+  
+  final AuthService _authService = AuthService();
 
-  void _handleRegister() {
+  Future<void> _handleRegister() async {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -45,10 +49,27 @@ class _RegisterViewState extends State<RegisterView> {
       return;
     }
 
-    // Success workflow mock
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Registration Success! -> Family Setup')),
-    );
+    setState(() => _isLoading = true);
+
+    try {
+      await _authService.registerWithEmail(
+        email: email, 
+        password: password, 
+        name: name
+      );
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tạo tài khoản thành công! Vui lòng đăng nhập.'), backgroundColor: Colors.green),
+      );
+      // Quay lại màn hình đăng nhập
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      _showError('Lỗi đăng ký: ${e.toString()}');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _showError(String msg) {
@@ -95,16 +116,22 @@ class _RegisterViewState extends State<RegisterView> {
             }),
             const SizedBox(height: 32),
             ElevatedButton(
-              onPressed: _handleRegister,
+              onPressed: _isLoading ? null : _handleRegister,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.brand600,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              child: const Text(
-                'Create Account',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
+              child: _isLoading
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                : const Text(
+                    'Create Account',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
             ),
           ],
         ),
