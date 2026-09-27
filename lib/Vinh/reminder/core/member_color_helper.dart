@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+/// Reusable helper providing distinct visual themes and accessibility-tested colors
+/// for family members conforming to DESIGN.md
 class MemberColorHelper {
   /// Returns main brand color for family members based on name/role:
-  /// - Dad / Bố: Blue (#2A7DE1)
-  /// - Mom / Mẹ: Emerald Teal (#0D7A68)
-  /// - Minh / Con: Honey Orange (#F49D37)
-  /// - Grandparents / Others: Purple (#8E44AD)
+  /// - Dad / Bố: Ocean Blue (#2A7DE1)
+  /// - Mom / Mẹ: Deep Emerald Teal (#0D7A68)
+  /// - Minh / Con: Warm Honey Orange (#F49D37)
+  /// - Grandparents / Others: Soft Amethyst (#8E44AD)
   static Color getPrimaryColor(String nameOrRole) {
     final lower = nameOrRole.toLowerCase();
     if (lower.contains('dad') || lower.contains('bố') || lower.contains('ba')) {

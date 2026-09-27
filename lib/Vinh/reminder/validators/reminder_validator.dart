@@ -4,10 +4,23 @@ import '../models/family_member.dart';
 class ReminderValidator {
   static const String futureTimeErrorMessage = 'Reminder time must be in the future.';
 
+  /// Maximum allowed title length for security and UI consistency
+  static const int maxTitleLength = 120;
+
+  /// Sanitizes input string to prevent injection / formatting bugs
+  static String sanitizeTitle(String? input) {
+    if (input == null) return '';
+    return input
+        .replaceAll(RegExp(r'<[^>]*>'), '') // Strip HTML tags
+        .replaceAll(RegExp(r'\s+'), ' ') // Normalize multiple spaces
+        .trim();
+  }
+
   /// Validates reminder title:
   /// - required
   /// - trim
   /// - not empty
+  /// - max length <= 120
   static String? validateTitle(String? value) {
     if (value == null) {
       return 'Title is required';
@@ -15,6 +28,9 @@ class ReminderValidator {
     final trimmed = value.trim();
     if (trimmed.isEmpty) {
       return 'Title is required';
+    }
+    if (trimmed.length > maxTitleLength) {
+      return 'Title cannot exceed $maxTitleLength characters';
     }
     return null;
   }

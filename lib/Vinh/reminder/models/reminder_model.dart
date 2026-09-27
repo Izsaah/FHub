@@ -144,4 +144,18 @@ class ReminderModel {
       'createdAt': createdAt?.toIso8601String(),
     };
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReminderModel &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          familyId == other.familyId &&
+          status == other.status &&
+          title == other.title;
+
+  @override
+  int get hashCode =>
+      id.hashCode ^ familyId.hashCode ^ status.hashCode ^ title.hashCode;
 }

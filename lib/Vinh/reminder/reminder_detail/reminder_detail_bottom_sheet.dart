@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/member_color_helper.dart';
+import '../core/member_color_helper.dart';
 import '../models/reminder_model.dart';
 import '../reminder_repository/reminder_repository.dart';
 

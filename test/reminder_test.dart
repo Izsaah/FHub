@@ -316,5 +316,76 @@ void main() {
       expect(find.byType(FamilyProgressCard), findsOneWidget);
       expect(find.text('Tất cả'), findsOneWidget);
     });
+
+    testWidgets('CalendarPage renders MonthlyCalendarGrid and tasks',
+        (tester) async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: '1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_mom',
+          assignedToName: 'Mom',
+          title: 'Take medicine',
+          date: '26/09/2026',
+          time: '08:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+      const members = [
+        FamilyMember(
+          id: 'user_minh',
+          name: 'Minh',
+          role: 'Owner',
+          familyId: 'f1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarPage(
+            familyId: 'f1',
+            currentUserId: 'user_minh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Lịch Gia Đình (Calendar)'), findsOneWidget);
+      expect(find.byType(MonthlyCalendarGrid), findsOneWidget);
+    });
+  });
+
+  group('Undo / Restore Tests', () {
+    test('Creator can restore a deleted reminder', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'rem_1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_mom',
+          assignedToName: 'Mom',
+          title: 'Take medicine',
+          date: '26/09/2026',
+          time: '08:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      // Delete
+      await repo.deleteReminder(reminderId: 'rem_1', currentUserId: 'user_minh');
+      final activeAfterDelete = await repo.getReminders(familyId: 'f1');
+      expect(activeAfterDelete.isEmpty, isTrue);
+
+      // Restore
+      final restored = await repo.restoreReminder(reminderId: 'rem_1', currentUserId: 'user_minh');
+      expect(restored, isTrue);
+
+      final activeAfterRestore = await repo.getReminders(familyId: 'f1');
+      expect(activeAfterRestore.length, 1);
+      expect(activeAfterRestore.first.isPending, isTrue);
+    });
   });
 }

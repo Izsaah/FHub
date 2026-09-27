@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../calendar_page/calendar_page.dart';
 import '../create_reminder/create_reminder_screen.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
@@ -125,7 +126,19 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Reminder deleted successfully.')),
+            SnackBar(
+              content: Text('Đã xóa "${reminder.title}".'),
+              action: SnackBarAction(
+                label: 'HOÀN TÁC (UNDO)',
+                textColor: const Color(0xFFaaffe9),
+                onPressed: () async {
+                  await widget.repository.restoreReminder(
+                    reminderId: reminder.id,
+                    currentUserId: _currentUserId,
+                  );
+                },
+              ),
+            ),
           );
           setState(() {});
         }
@@ -250,6 +263,23 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 ),
               );
             }).toList(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.calendar_month, color: primaryColor),
+            tooltip: 'Xem trang Lịch (Calendar Page)',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (ctx) => CalendarPage(
+                    familyId: widget.familyId,
+                    currentUserId: _currentUserId,
+                    currentUserName: _currentUserName,
+                    familyMembers: widget.familyMembers,
+                    repository: widget.repository,
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(width: 8),
         ],

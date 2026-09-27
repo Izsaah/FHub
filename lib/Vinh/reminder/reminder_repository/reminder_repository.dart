@@ -1,31 +1,11 @@
 import 'dart:async';
+import '../core/reminder_exceptions.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../validators/reminder_validator.dart';
 
-class ReminderPermissionException implements Exception {
-  final String message;
-  ReminderPermissionException(this.message);
-
-  @override
-  String toString() => message;
-}
-
-class ReminderValidationException implements Exception {
-  final String message;
-  ReminderValidationException(this.message);
-
-  @override
-  String toString() => message;
-}
-
-class ReminderNotFoundException implements Exception {
-  final String message;
-  ReminderNotFoundException([this.message = 'Reminder not found']);
-
-  @override
-  String toString() => message;
-}
+// Re-export core exceptions for seamless encapsulation
+export '../core/reminder_exceptions.dart';
 
 abstract class ReminderRepository {
   Future<List<ReminderModel>> getReminders({required String familyId});
@@ -46,6 +26,11 @@ abstract class ReminderRepository {
   });
 
   Future<bool> deleteReminder({
+    required String reminderId,
+    required String currentUserId,
+  });
+
+  Future<bool> restoreReminder({
     required String reminderId,
     required String currentUserId,
   });
@@ -257,6 +242,33 @@ class InMemoryReminderRepository implements ReminderRepository {
 
     final updated = existing.copyWith(
       status: ReminderStatus.deleted,
+    );
+
+    _reminders[index] = updated;
+    _notify(existing.familyId);
+    return true;
+  }
+
+  @override
+  Future<bool> restoreReminder({
+    required String reminderId,
+    required String currentUserId,
+  }) async {
+    final index =
+        _reminders.indexWhere((r) => r.id == reminderId && r.isDeleted);
+    if (index == -1) {
+      throw ReminderNotFoundException();
+    }
+
+    final existing = _reminders[index];
+    if (existing.creatorId != currentUserId) {
+      throw ReminderPermissionException(
+        'Only creator can restore this reminder',
+      );
+    }
+
+    final updated = existing.copyWith(
+      status: ReminderStatus.pending,
     );
 
     _reminders[index] = updated;
