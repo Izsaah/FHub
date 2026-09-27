@@ -64,7 +64,6 @@ class _UpdatePasswordViewState extends State<UpdatePasswordView> {
 
   @override
   Widget build(BuildContext context) {
-    // Nếu KHÔNG có session → Báo cho user biết phải dùng tab trình duyệt mới
     if (!_hasSession) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -108,7 +107,6 @@ class _UpdatePasswordViewState extends State<UpdatePasswordView> {
       );
     }
 
-    // Nếu đã đổi mật khẩu thành công
     if (_success) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -150,7 +148,6 @@ class _UpdatePasswordViewState extends State<UpdatePasswordView> {
       );
     }
 
-    // Form nhập mật khẩu mới (khi CÓ session)
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tạo mật khẩu mới', style: TextStyle(color: AppColors.brand900, fontSize: 16)),

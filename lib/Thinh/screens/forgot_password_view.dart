@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/auth_service.dart';
-import 'update_password_view.dart';
 
 class ForgotPasswordView extends StatefulWidget {
   const ForgotPasswordView({Key? key}) : super(key: key);
@@ -14,7 +13,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
   final _emailController = TextEditingController();
   final AuthService _authService = AuthService();
   bool _isLoading = false;
-  bool _emailSent = false; // Đánh dấu đã gửi mail thành công chưa
+  bool _emailSent = false;
 
   Future<void> _handleResetPassword() async {
     final email = _emailController.text.trim();
@@ -31,12 +30,6 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
       await _authService.resetPassword(email);
       if (!mounted) return;
       setState(() => _emailSent = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đã gửi link đặt lại mật khẩu! Kiểm tra email của bạn.'),
-          backgroundColor: Colors.green,
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -76,14 +69,13 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
             const SizedBox(height: 8),
             Text(
               _emailSent 
-                ? 'Chúng tôi đã gửi link khôi phục đến email của bạn.\n\nBước 1: Mở email và click vào link.\nBước 2: Quay lại đây và ấn nút bên dưới.'
+                ? 'Chúng tôi đã gửi một liên kết (Magic Link) đến email của bạn.\n\nVui lòng mở email và click vào liên kết đó để thiết lập mật khẩu mới.'
                 : 'Nhập email của bạn và chúng tôi sẽ gửi một liên kết để đặt lại mật khẩu.',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 32),
 
-            // Nếu chưa gửi email: Hiện ô nhập email + nút gửi
             if (!_emailSent) ...[
               TextField(
                 controller: _emailController,
@@ -117,36 +109,18 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
               ),
-            ],
-
-            // Nếu đã gửi email: Hiện nút "Tôi đã click link → Đổi mật khẩu"
-            if (_emailSent) ...[
+            ] else ...[
               ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const UpdatePasswordView()),
-                  );
-                },
-                icon: const Icon(Icons.arrow_forward, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
                 label: const Text(
-                  'Tôi đã click link → Đổi mật khẩu',
+                  'Quay lại Đăng nhập',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.brand600,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () {
-                  setState(() => _emailSent = false);
-                },
-                child: const Text(
-                  'Gửi lại email',
-                  style: TextStyle(color: AppColors.brand700, fontWeight: FontWeight.w500),
                 ),
               ),
             ],

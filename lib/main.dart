@@ -16,6 +16,8 @@ Future<void> main() async {
   runApp(const FamilyHubApp());
 }
 
+final navigatorKey = GlobalKey<NavigatorState>();
+
 class FamilyHubApp extends StatefulWidget {
   const FamilyHubApp({super.key});
 
@@ -25,18 +27,17 @@ class FamilyHubApp extends StatefulWidget {
 
 class _FamilyHubAppState extends State<FamilyHubApp> {
   late final StreamSubscription<AuthState> _authSub;
-  bool _isRecovery = false;
 
   @override
   void initState() {
     super.initState();
-    // Lắng nghe LIÊN TỤC — khi PKCE code exchange xong (có thể 1-3 giây sau),
-    // event passwordRecovery sẽ fire và app tự chuyển sang UpdatePasswordView
+    // Lắng nghe sự kiện click link Reset Password (Magic Link)
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.passwordRecovery) {
-        if (mounted) {
-          setState(() => _isRecovery = true);
-        }
+        // Dùng navigatorKey để ép chuyển trang, đảm bảo hoạt động 100%
+        navigatorKey.currentState?.pushReplacement(
+          MaterialPageRoute(builder: (context) => const UpdatePasswordView()),
+        );
       }
     });
   }
@@ -49,17 +50,13 @@ class _FamilyHubAppState extends State<FamilyHubApp> {
 
   @override
   Widget build(BuildContext context) {
-    // Determine the home screen
-    Widget homeScreen;
-    if (_isRecovery) {
-      homeScreen = const UpdatePasswordView();
-    } else if (Supabase.instance.client.auth.currentSession != null) {
-      homeScreen = const MainNavigation();
-    } else {
-      homeScreen = const AuthScreen();
-    }
+    // Determine the home screen based on session
+    Widget homeScreen = Supabase.instance.client.auth.currentSession != null
+        ? const MainNavigation()
+        : const AuthScreen();
 
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Family Hub',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
