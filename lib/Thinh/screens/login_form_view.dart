@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/auth_service.dart';
 import '../screens/register_view.dart';
+import '../screens/forgot_password_view.dart';
 import '../../Long/screens/main_navigation.dart';
 
 class LoginFormView extends StatefulWidget {
@@ -58,19 +59,27 @@ class _LoginFormViewState extends State<LoginFormView> {
       final success = await _authService.signInWithGoogle();
       if (!mounted) return;
       if (success) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const MainNavigation()),
-        );
+        // OAuth mở trình duyệt, sau khi xác thực xong sẽ redirect lại app
+        // Cần cấu hình Google Provider trong Supabase Dashboard
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đăng nhập Google thất bại: ${e.toString()}')),
+        const SnackBar(
+          content: Text('Google Sign-In chưa được cấu hình. Vui lòng bật Google Provider trong Supabase Dashboard.'),
+          backgroundColor: Colors.orange,
+        ),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _handleForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ForgotPasswordView()),
+    );
   }
 
   @override
@@ -291,12 +300,15 @@ class _LoginFormViewState extends State<LoginFormView> {
             ),
           ],
         ),
-        const Text(
-          'Quên mật khẩu?',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: AppColors.brand700,
+        GestureDetector(
+          onTap: _handleForgotPassword,
+          child: const Text(
+            'Quên mật khẩu?',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.brand700,
+            ),
           ),
         ),
       ],
