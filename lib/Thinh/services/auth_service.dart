@@ -48,6 +48,17 @@ class AuthService {
     }
   }
 
+  /// Cập nhật mật khẩu mới (Dùng sau khi click link reset)
+  Future<void> updatePassword(String newPassword) async {
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(password: newPassword),
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   /// Đăng nhập bằng Google thông qua Supabase OAuth
   Future<bool> signInWithGoogle() async {
     try {
