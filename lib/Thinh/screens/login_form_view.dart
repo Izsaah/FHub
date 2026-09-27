@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../services/auth_service.dart';
+import '../screens/register_view.dart';
+import '../../Long/screens/main_navigation.dart';
 
 class LoginFormView extends StatefulWidget {
   const LoginFormView({Key? key}) : super(key: key);
@@ -11,32 +14,63 @@ class LoginFormView extends StatefulWidget {
 class _LoginFormViewState extends State<LoginFormView> {
   bool _obscureText = true;
   bool _rememberMe = true;
+  bool _isLoading = false;
   final _emailController = TextEditingController(text: 'email@example.com');
   final _passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
 
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
     // Validate inputs
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid email or password.')),
+        const SnackBar(content: Text('Vui lòng nhập Email và Mật khẩu.')),
       );
       return;
     }
 
-    // Success workflow mock -> Navigate to Home
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Login Success! -> Redirecting to Home')),
-    );
+    setState(() => _isLoading = true);
+    
+    try {
+      await _authService.loginWithEmail(email: email, password: password);
+      if (!mounted) return;
+      
+      // Success workflow -> Navigate to Home
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainNavigation()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đăng nhập thất bại: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  void _handleGoogleSignIn() {
-    // Google Sign-In workflow mock
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Google Sign-In Triggered')),
-    );
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final success = await _authService.signInWithGoogle();
+      if (!mounted) return;
+      if (success) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainNavigation()),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đăng nhập Google thất bại: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -74,6 +108,33 @@ class _LoginFormViewState extends State<LoginFormView> {
         ),
         const SizedBox(height: 20),
         _buildSocialLogin(),
+        const SizedBox(height: 20),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Chưa có tài khoản? ',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const RegisterView()),
+                );
+              },
+              child: const Text(
+                'Đăng ký ngay',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.brand700,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -261,20 +322,28 @@ class _LoginFormViewState extends State<LoginFormView> {
             ),
           ],
         ),
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.home, color: Colors.white, size: 24),
-            SizedBox(width: 8),
-            Text(
-              'Đăng nhập vào Tổ Ấm',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+          children: _isLoading 
+          ? [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
               ),
-            ),
-          ],
+            ]
+          : [
+              const Icon(Icons.home, color: Colors.white, size: 24),
+              const SizedBox(width: 8),
+              const Text(
+                'Đăng nhập vào Tổ Ấm',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
         ),
       ),
     );
