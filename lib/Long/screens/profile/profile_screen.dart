@@ -51,7 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           final data = snapshot.data!;
           final UserModel user = data['user'];
-          final FamilyModel family = data['family'];
+          final FamilyModel? family = data['family'];
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
@@ -208,7 +208,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                           Text(
-                            family.name,
+                            family?.name ?? 'Chưa tham gia',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,

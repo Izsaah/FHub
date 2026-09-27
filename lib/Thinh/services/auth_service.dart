@@ -4,7 +4,6 @@ class AuthService {
   // Use a singleton pattern or just instance methods. Let's use standard instance methods.
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Đăng ký tài khoản mới bằng Email và Mật khẩu (Kèm tên người dùng)
   Future<AuthResponse> registerWithEmail({
     required String email,
     required String password,
@@ -16,6 +15,17 @@ class AuthService {
         password: password,
         data: {'full_name': name}, // Lưu tên người dùng vào metadata của Supabase
       );
+      
+      // Manually insert into public.users if sign up succeeded
+      if (response.user != null) {
+        await _supabase.from('users').insert({
+          'id': response.user!.id,
+          'name': name,
+          'email': email,
+          'avatar_type': 'default',
+        });
+      }
+      
       return response;
     } catch (e) {
       // Có thể bọc Exception để handle lỗi ở UI

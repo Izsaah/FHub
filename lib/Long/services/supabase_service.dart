@@ -11,27 +11,51 @@ class SupabaseService {
 
   final _supabase = Supabase.instance.client;
 
-  // Force mock IDs for testing, as stale Supabase Auth sessions might return
-  // a currentUser.id that doesn't exist in our mock public.users table.
-  String get currentUserId => '11111111-1111-1111-1111-111111111111';
-  String get currentFamilyId => 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+  String get currentUserId => _supabase.auth.currentUser?.id ?? '';
+
+  Future<String?> _getCurrentFamilyId() async {
+    if (currentUserId.isEmpty) return null;
+    final response = await _supabase
+        .from('family_members')
+        .select('family_id')
+        .eq('user_id', currentUserId)
+        .maybeSingle();
+    
+    return response?['family_id'] as String?;
+  }
+
+  Future<bool> hasFamily() async {
+    final familyId = await _getCurrentFamilyId();
+    return familyId != null;
+  }
 
   Future<UserModel> getCurrentUser() async {
-    final response = await _supabase.from('users').select().eq('id', currentUserId).single();
+    final response = await _supabase.from('users').select().eq('id', currentUserId).maybeSingle();
+    if (response == null) {
+      return UserModel(
+        id: currentUserId,
+        name: 'Unknown User',
+        email: _supabase.auth.currentUser?.email ?? 'No Email',
+      );
+    }
     return UserModel.fromJson(response);
   }
 
-  Future<FamilyModel> getCurrentFamily() async {
-    final response = await _supabase.from('families').select().eq('id', currentFamilyId).single();
+  Future<FamilyModel?> getCurrentFamily() async {
+    final familyId = await _getCurrentFamilyId();
+    if (familyId == null) return null;
+    final response = await _supabase.from('families').select().eq('id', familyId).maybeSingle();
+    if (response == null) return null;
     return FamilyModel.fromJson(response);
   }
 
   Future<List<FamilyMemberModel>> getFamilyMembers() async {
-    // In Supabase, we would join the users table
+    final familyId = await _getCurrentFamilyId();
+    if (familyId == null) return [];
     final response = await _supabase.from('family_members').select('''
       *,
       user:users(*)
-    ''').eq('family_id', currentFamilyId);
+    ''').eq('family_id', familyId);
     
     return (response as List).map((e) => FamilyMemberModel.fromJson(e)).toList();
   }
@@ -46,13 +70,15 @@ class SupabaseService {
   }
 
   Future<void> checkIn(String userId) async {
+    final familyId = await _getCurrentFamilyId();
+    if (familyId == null) throw Exception('No family to check into');
     final now = DateTime.now();
     await _supabase.from('family_members')
         .update({
           'last_check_in_at': now.toIso8601String(),
           'last_check_in_date': "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}",
         })
-        .eq('family_id', currentFamilyId)
+        .eq('family_id', familyId)
         .eq('user_id', userId);
   }
 
