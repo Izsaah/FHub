@@ -17,7 +17,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       backgroundColor: const Color(0xFFEDF5F2),
       elevation: 2,
-      shadowColor: Colors.black12.withOpacity(0.05),
+      shadowColor: Colors.black12.withValues(alpha: 0.05),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

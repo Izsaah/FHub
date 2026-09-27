@@ -44,7 +44,7 @@ class CheckInButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(
               color: isCheckedIn
-                  ? const Color(0xFFBDC9C4).withOpacity(0.6)
+                  ? const Color(0xFFBDC9C4).withValues(alpha: 0.6)
                   : Colors.transparent,
             ),
           ),

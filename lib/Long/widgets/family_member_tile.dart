@@ -20,7 +20,9 @@ class FamilyMemberTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFEDF5F2),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFBDC9C4).withOpacity(0.4)),
+        border: Border.all(
+          color: const Color(0xFFBDC9C4).withValues(alpha: 0.4),
+        ),
         boxShadow: const [
           BoxShadow(
             color: Color(0x120D7A68),

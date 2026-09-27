@@ -27,10 +27,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<Map<String, dynamic>> _fetchProfileData() async {
     final user = await _supabaseService.getCurrentUser();
     final family = await _supabaseService.getCurrentFamily();
-    return {
-      'user': user,
-      'family': family,
-    };
+    return {'user': user, 'family': family};
   }
 
   @override
@@ -65,7 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: const Color(0xFFBDC9C4).withOpacity(0.6),
+                      color: const Color(0xFFBDC9C4).withValues(alpha: 0.6),
                     ),
                     boxShadow: const [
                       BoxShadow(
@@ -94,13 +91,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               shape: BoxShape.circle,
                               color: Colors.blue[100],
                               border: Border.all(
-                                color: const Color(0xFF005F50).withOpacity(0.2),
+                                color: const Color(0xFF005F50)
+                                    .withValues(alpha: 0.2),
                                 width: 4,
                               ),
                             ),
                             alignment: Alignment.center,
                             child: Text(
-                              user.name.isNotEmpty ? user.name.substring(0, 1).toUpperCase() : '?',
+                              user.name.isNotEmpty
+                                  ? user.name.substring(0, 1).toUpperCase()
+                                  : '?',
                               style: TextStyle(
                                 fontSize: 32,
                                 color: Colors.blue[900],
@@ -238,6 +238,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       backgroundColor: Colors.transparent,
                     ),
                     onPressed: () async {
+                      final shouldLogout = await showDialog<bool>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Đăng xuất?'),
+                          content: const Text(
+                            'Bạn có chắc muốn đăng xuất khỏi thiết bị này không?',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('Hủy'),
+                            ),
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text('Đăng xuất'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (shouldLogout != true || !context.mounted) return;
+
                       try {
                         await Supabase.instance.client.auth.signOut();
                         if (context.mounted) {
@@ -259,14 +282,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: const Icon(Icons.logout),
                     label: const Text(
                       'Đăng xuất khỏi thiết bị này',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
           );
-        }
+        },
       ),
     );
   }

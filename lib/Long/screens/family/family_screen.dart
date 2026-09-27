@@ -35,10 +35,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Future<Map<String, dynamic>> _fetchFamilyData() async {
     final family = await _supabaseService.getCurrentFamily();
     final members = await _supabaseService.getFamilyMembers();
-    return {
-      'family': family,
-      'members': members,
-    };
+    return {'family': family, 'members': members};
   }
 
   void _copyToClipboard(String code) {
@@ -114,7 +111,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     },
                     child: const Text(
                       'Create a Family',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -130,12 +130,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const JoinFamilyScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const JoinFamilyScreen(),
+                        ),
                       );
                     },
                     child: const Text(
                       'Join a Family',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -147,7 +152,13 @@ class _FamilyScreenState extends State<FamilyScreen> {
             (m) => m.user.id == _supabaseService.currentUserId,
             orElse: () => FamilyMemberModel(
               familyId: family.id,
-              user: members.isNotEmpty ? members.first.user : UserModel(id: '11111111-1111-1111-1111-111111111111', name: '?', email: '?'),
+              user: members.isNotEmpty
+                  ? members.first.user
+                  : UserModel(
+                      id: '11111111-1111-1111-1111-111111111111',
+                      name: '?',
+                      email: '?',
+                    ),
               role: Role.member,
             ),
           );
@@ -163,7 +174,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: const Color(0xFFBDC9C4).withOpacity(0.6),
+                      color: const Color(0xFFBDC9C4).withValues(alpha: 0.6),
                     ),
                     boxShadow: const [
                       BoxShadow(
@@ -283,7 +294,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               ),
                               foregroundColor: const Color(0xFF005F50),
                               backgroundColor: const Color(0xFFE7F0EC)
-                                  .withOpacity(0.3),
+                                  .withValues(alpha: 0.3),
                             ),
                             onPressed: () => _copyToClipboard(family.joinCode),
                             icon: const Icon(Icons.person_add, size: 20),
@@ -303,7 +314,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
               ],
             ),
           );
-        }
+        },
       ),
     );
   }
