@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FHub - Chrome (localhost:3000)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "chrome",
+      "toolArgs": [
+        "--web-port",
+        "3000"
+      ]
+    },
+    {
+      "name": "FHub - Edge (localhost:3000)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "edge",
+      "toolArgs": [
+        "--web-port",
+        "3000"
+      ]
+    }
+  ]
+}
