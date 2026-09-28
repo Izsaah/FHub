@@ -31,6 +31,7 @@ class FamilySetupScreen extends StatelessWidget {
                         title: 'Thiết lập gia đình',
                         onBack: () => Navigator.of(context).maybePop(),
                       ),
+
                       const SizedBox(height: 24),
 
                       Container(
@@ -62,7 +63,9 @@ class FamilySetupScreen extends StatelessWidget {
                                 color: primary,
                               ),
                             ),
+
                             const SizedBox(height: 18),
+
                             const Text(
                               'Kết nối với gia đình',
                               textAlign: TextAlign.center,
@@ -72,7 +75,9 @@ class FamilySetupScreen extends StatelessWidget {
                                 color: darkText,
                               ),
                             ),
+
                             const SizedBox(height: 9),
+
                             const Text(
                               'Tạo một gia đình mới hoặc tham gia\n'
                               'vào gia đình mà người thân đã tạo.',
@@ -83,6 +88,7 @@ class FamilySetupScreen extends StatelessWidget {
                                 color: mutedText,
                               ),
                             ),
+
                             const SizedBox(height: 25),
 
                             _SetupOptionCard(
@@ -90,8 +96,7 @@ class FamilySetupScreen extends StatelessWidget {
                               iconBackground: const Color(0xFFE4F6EF),
                               iconColor: primary,
                               title: 'Tạo gia đình mới',
-                              description:
-                                  'Bạn sẽ là người quản trị và có thể mời các thành viên.',
+                              description: 'Bạn sẽ là người quản trị và có thể mời các thành viên.',
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
@@ -100,6 +105,7 @@ class FamilySetupScreen extends StatelessWidget {
                                 );
                               },
                             ),
+
                             const SizedBox(height: 14),
 
                             _SetupOptionCard(
@@ -107,8 +113,7 @@ class FamilySetupScreen extends StatelessWidget {
                               iconBackground: const Color(0xFFFFF0DF),
                               iconColor: const Color(0xFFE77D2B),
                               title: 'Tham gia gia đình',
-                              description:
-                                  'Nhập mã gia đình được chia sẻ bởi người thân.',
+                              description: 'Nhập mã gia đình được chia sẻ bởi người thân.',
                               onTap: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
@@ -122,6 +127,7 @@ class FamilySetupScreen extends StatelessWidget {
                       ),
 
                       const SizedBox(height: 18),
+
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -194,7 +200,9 @@ class _SetupOptionCard extends StatelessWidget {
                 ),
                 child: Icon(icon, color: iconColor, size: 27),
               ),
+
               const SizedBox(width: 13),
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -219,6 +227,7 @@ class _SetupOptionCard extends StatelessWidget {
                   ],
                 ),
               ),
+
               const Icon(
                 Icons.chevron_right_rounded,
                 color: Color(0xFF8EA09B),
@@ -236,19 +245,13 @@ class _TopBar extends StatelessWidget {
   final String title;
   final VoidCallback onBack;
 
-  const _TopBar({
-    required this.title,
-    required this.onBack,
-  });
+  const _TopBar({required this.title, required this.onBack});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _CircleButton(
-          icon: Icons.arrow_back_rounded,
-          onTap: onBack,
-        ),
+        _CircleButton(icon: Icons.arrow_back_rounded, onTap: onBack),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
@@ -269,10 +272,7 @@ class _CircleButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
 
-  const _CircleButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _CircleButton({required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -289,11 +289,7 @@ class _CircleButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(13),
             border: Border.all(color: const Color(0xFFDCE9E5)),
           ),
-          child: const Icon(
-            Icons.arrow_back_rounded,
-            color: Color(0xFF27443E),
-            size: 21,
-          ),
+          child: Icon(icon, color: const Color(0xFF27443E), size: 21),
         ),
       ),
     );

@@ -10,9 +10,6 @@ class CreateFamilyScreen extends StatefulWidget {
 class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
   final _formKey = GlobalKey<FormState>();
   final _familyNameController = TextEditingController();
-  final _descriptionController = TextEditingController();
-
-  bool _isPrivate = true;
 
   static const Color background = Color(0xFFF2FAF7);
   static const Color primary = Color(0xFF07866F);
@@ -22,7 +19,6 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
   @override
   void dispose() {
     _familyNameController.dispose();
-    _descriptionController.dispose();
     super.dispose();
   }
 
@@ -41,18 +37,12 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
           ),
           title: const Text(
             'Tạo gia đình thành công',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: darkText,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w800, color: darkText),
           ),
           content: Text(
             'Gia đình "$familyName" đã được tạo. '
             'Bạn có thể tiếp tục mời các thành viên.',
-            style: const TextStyle(
-              color: mutedText,
-              height: 1.5,
-            ),
+            style: const TextStyle(color: mutedText, height: 1.5),
           ),
           actions: [
             TextButton(
@@ -62,10 +52,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
               },
               child: const Text(
                 'Tiếp tục',
-                style: TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: TextStyle(color: primary, fontWeight: FontWeight.w800),
               ),
             ),
           ],
@@ -94,6 +81,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                       subtitle: 'Thiết lập không gian chung cho gia đình bạn',
                       onBack: () => Navigator.of(context).pop(),
                     ),
+
                     const SizedBox(height: 22),
 
                     Container(
@@ -102,20 +90,23 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _SectionTitle(
+                          const _SectionTitle(
                             icon: Icons.home_work_rounded,
                             title: 'Thông tin gia đình',
                           ),
+
                           const SizedBox(height: 18),
 
                           const _FieldLabel(
                             text: 'Tên gia đình',
                             requiredField: true,
                           ),
+
                           const SizedBox(height: 8),
+
                           TextFormField(
                             controller: _familyNameController,
-                            textInputAction: TextInputAction.next,
+                            textInputAction: TextInputAction.done,
                             style: const TextStyle(
                               fontSize: 14,
                               color: darkText,
@@ -129,90 +120,13 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                               if (value == null || value.trim().isEmpty) {
                                 return 'Vui lòng nhập tên gia đình';
                               }
+
                               if (value.trim().length < 3) {
                                 return 'Tên gia đình cần ít nhất 3 ký tự';
                               }
+
                               return null;
                             },
-                          ),
-                          const SizedBox(height: 17),
-
-                          const _FieldLabel(text: 'Mô tả'),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _descriptionController,
-                            maxLines: 3,
-                            textInputAction: TextInputAction.done,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: darkText,
-                            ),
-                            decoration: _inputDecoration(
-                              hintText:
-                                  'Ví dụ: Không gian kết nối và chăm sóc gia đình',
-                              prefixIcon: Icons.notes_rounded,
-                            ),
-                          ),
-                          const SizedBox(height: 19),
-
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF6FAF8),
-                              borderRadius: BorderRadius.circular(15),
-                              border: Border.all(
-                                color: const Color(0xFFDDEAE6),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 42,
-                                  height: 42,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE0F4EE),
-                                    borderRadius: BorderRadius.circular(13),
-                                  ),
-                                  child: const Icon(
-                                    Icons.lock_outline_rounded,
-                                    color: primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Quyền riêng tư',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w800,
-                                          color: darkText,
-                                        ),
-                                      ),
-                                      SizedBox(height: 3),
-                                      Text(
-                                        'Chỉ thành viên có mã mời mới có thể tham gia.',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          height: 1.35,
-                                          color: mutedText,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Switch.adaptive(
-                                  value: _isPrivate,
-                                  activeColor: primary,
-                                  onChanged: (value) {
-                                    setState(() => _isPrivate = value);
-                                  },
-                                ),
-                              ],
-                            ),
                           ),
                         ],
                       ),
@@ -225,9 +139,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFF8E9),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: const Color(0xFFF2DEAE),
-                        ),
+                        border: Border.all(color: const Color(0xFFF2DEAE)),
                       ),
                       child: const Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,18 +196,14 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                         onPressed: () => Navigator.of(context).pop(),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: darkText,
-                          side: const BorderSide(
-                            color: Color(0xFFD2E2DD),
-                          ),
+                          side: const BorderSide(color: Color(0xFFD2E2DD)),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(15),
                           ),
                         ),
                         child: const Text(
                           'Quay lại',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
@@ -315,21 +223,11 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
   }) {
     return InputDecoration(
       hintText: hintText,
-      hintStyle: const TextStyle(
-        fontSize: 13,
-        color: Color(0xFF9AA9A5),
-      ),
-      prefixIcon: Icon(
-        prefixIcon,
-        size: 20,
-        color: const Color(0xFF6E8B83),
-      ),
+      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF9AA9A5)),
+      prefixIcon: Icon(prefixIcon, size: 20, color: const Color(0xFF6E8B83)),
       filled: true,
       fillColor: const Color(0xFFF8FBFA),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 15,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: Color(0xFFDCE9E5)),
@@ -340,10 +238,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: primary,
-          width: 1.5,
-        ),
+        borderSide: const BorderSide(color: primary, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -351,10 +246,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Color(0xFFD56B6B),
-          width: 1.5,
-        ),
+        borderSide: const BorderSide(color: Color(0xFFD56B6B), width: 1.5),
       ),
     );
   }
@@ -407,10 +299,7 @@ class _Header extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF788984),
-                ),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF788984)),
               ),
             ],
           ),
@@ -455,10 +344,7 @@ class _SectionTitle extends StatelessWidget {
   final IconData icon;
   final String title;
 
-  const _SectionTitle({
-    required this.icon,
-    required this.title,
-  });
+  const _SectionTitle({required this.icon, required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -471,11 +357,7 @@ class _SectionTitle extends StatelessWidget {
             color: const Color(0xFFE2F4EF),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Icon(
-            Icons.home_work_rounded,
-            color: Color(0xFF07866F),
-            size: 21,
-          ),
+          child: Icon(icon, color: const Color(0xFF07866F), size: 21),
         ),
         const SizedBox(width: 10),
         Text(
@@ -495,10 +377,7 @@ class _FieldLabel extends StatelessWidget {
   final String text;
   final bool requiredField;
 
-  const _FieldLabel({
-    required this.text,
-    this.requiredField = false,
-  });
+  const _FieldLabel({required this.text, this.requiredField = false});
 
   @override
   Widget build(BuildContext context) {

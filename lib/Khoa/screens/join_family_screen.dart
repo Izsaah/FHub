@@ -45,18 +45,12 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
           ),
           title: const Text(
             'Tham gia thành công',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: darkText,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w800, color: darkText),
           ),
           content: const Text(
             'Bạn đã gửi yêu cầu tham gia gia đình. '
             'Trong phiên bản kết nối thật, yêu cầu sẽ được gửi đến quản trị viên.',
-            style: TextStyle(
-              color: mutedText,
-              height: 1.5,
-            ),
+            style: TextStyle(color: mutedText, height: 1.5),
           ),
           actions: [
             TextButton(
@@ -66,10 +60,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
               },
               child: const Text(
                 'Đã hiểu',
-                style: TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: TextStyle(color: primary, fontWeight: FontWeight.w800),
               ),
             ),
           ],
@@ -98,6 +89,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                       subtitle: 'Kết nối với gia đình của bạn',
                       onBack: () => Navigator.of(context).pop(),
                     ),
+
                     const SizedBox(height: 22),
 
                     Container(
@@ -105,9 +97,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(21),
-                        border: Border.all(
-                          color: const Color(0xFFDCE9E5),
-                        ),
+                        border: Border.all(color: const Color(0xFFDCE9E5)),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.035),
@@ -131,7 +121,9 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               color: primary,
                             ),
                           ),
+
                           const SizedBox(height: 17),
+
                           const Text(
                             'Nhập mã gia đình',
                             style: TextStyle(
@@ -140,7 +132,9 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               color: darkText,
                             ),
                           ),
+
                           const SizedBox(height: 8),
+
                           const Text(
                             'Nhập mã được chia sẻ bởi quản trị viên\n'
                             'của gia đình bạn.',
@@ -151,30 +145,16 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               color: mutedText,
                             ),
                           ),
+
                           const SizedBox(height: 25),
 
-                          Align(
+                          const Align(
                             alignment: Alignment.centerLeft,
-                            child: RichText(
-                              text: const TextSpan(
-                                text: 'Mã gia đình ',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF36504A),
-                                ),
-                                children: [
-                                  TextSpan(
-                                    text: '*',
-                                    style: TextStyle(
-                                      color: Color(0xFFD45C5C),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            child: _RequiredLabel(text: 'Mã gia đình'),
                           ),
+
                           const SizedBox(height: 8),
+
                           TextFormField(
                             controller: _codeController,
                             textCapitalization: TextCapitalization.characters,
@@ -235,15 +215,19 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                             ),
                             validator: (value) {
                               final code = value?.trim() ?? '';
+
                               if (code.isEmpty) {
                                 return 'Vui lòng nhập mã gia đình';
                               }
+
                               if (code.length < 6) {
                                 return 'Mã gia đình chưa hợp lệ';
                               }
+
                               return null;
                             },
                           ),
+
                           const SizedBox(height: 13),
 
                           Container(
@@ -276,6 +260,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               ],
                             ),
                           ),
+
                           const SizedBox(height: 22),
 
                           SizedBox(
@@ -300,8 +285,9 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: primary,
-                                disabledBackgroundColor:
-                                    const Color(0xFF76B8A9),
+                                disabledBackgroundColor: const Color(
+                                  0xFF76B8A9,
+                                ),
                                 foregroundColor: Colors.white,
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
@@ -325,9 +311,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFF8E9),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: const Color(0xFFF2DEAE),
-                        ),
+                        border: Border.all(color: const Color(0xFFF2DEAE)),
                       ),
                       child: const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -374,6 +358,32 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
   }
 }
 
+class _RequiredLabel extends StatelessWidget {
+  final String text;
+
+  const _RequiredLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return RichText(
+      text: TextSpan(
+        text: '$text ',
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF36504A),
+        ),
+        children: const [
+          TextSpan(
+            text: '*',
+            style: TextStyle(color: Color(0xFFD45C5C)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -400,9 +410,7 @@ class _Header extends StatelessWidget {
               height: 43,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(13),
-                border: Border.all(
-                  color: const Color(0xFFDCE9E5),
-                ),
+                border: Border.all(color: const Color(0xFFDCE9E5)),
               ),
               child: const Icon(
                 Icons.arrow_back_rounded,
@@ -412,7 +420,9 @@ class _Header extends StatelessWidget {
             ),
           ),
         ),
+
         const SizedBox(width: 12),
+
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,10 +438,7 @@ class _Header extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF788984),
-                ),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF788984)),
               ),
             ],
           ),
