@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../core/member_color_helper.dart';
-import '../../models/reminder_model.dart';
+import '../models/reminder_model.dart';
+import '../services/member_color_helper.dart';
 
 class ReminderCard extends StatelessWidget {
   final ReminderModel reminder;

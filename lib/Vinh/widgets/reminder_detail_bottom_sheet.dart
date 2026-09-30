@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../core/member_color_helper.dart';
 import '../models/reminder_model.dart';
-import '../reminder_repository/reminder_repository.dart';
+import '../services/member_color_helper.dart';
+import '../services/reminder_repository.dart';
 
 class ReminderDetailBottomSheet extends StatelessWidget {
   final ReminderModel reminder;

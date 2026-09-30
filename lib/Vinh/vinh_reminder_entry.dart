@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'reminder/reminder.dart';
+import 'models/family_member.dart';
+import 'screens/reminder_list_screen.dart';
+import 'services/supabase_reminder_repository.dart';
 
 class VinhReminderApp extends StatelessWidget {
   const VinhReminderApp({super.key});

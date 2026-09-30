@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../core/member_color_helper.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
-import '../reminder_repository/reminder_repository.dart';
-import '../validators/reminder_validator.dart';
+import '../services/member_color_helper.dart';
+import '../services/reminder_repository.dart';
+import '../services/reminder_validator.dart';
 
 class CreateReminderScreen extends StatefulWidget {
   final String familyId;

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../models/reminder_model.dart';
+import '../models/reminder_model.dart';
 
 class FamilyProgressCard extends StatelessWidget {
   final List<ReminderModel> reminders;

@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../core/supabase_config.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
-import '../validators/reminder_validator.dart';
 import 'reminder_repository.dart';
+import 'reminder_validator.dart';
+import 'supabase_config.dart';
 
 class SupabaseReminderRepository implements ReminderRepository {
   final SupabaseClient? _client;
