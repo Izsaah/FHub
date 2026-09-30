@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'home/home_screen.dart';
 import 'family/family_screen.dart';
 import 'profile/profile_screen.dart';
+import '../../Vinh/screens/reminder_list_screen.dart';
 
 import '../services/supabase_service.dart';
 
@@ -31,9 +32,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final List<Widget> _screens = [
     const HomeScreen(),
-    const Scaffold(
-      body: Center(child: Text("Reminders Screen (Out of Scope)")),
-    ),
+    const ReminderListScreen(),
     const FamilyScreen(),
     const ProfileScreen(),
   ];
