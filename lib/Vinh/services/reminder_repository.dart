@@ -1,11 +1,11 @@
 import 'dart:async';
-import '../core/reminder_exceptions.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
-import '../validators/reminder_validator.dart';
+import 'reminder_exceptions.dart';
+import 'reminder_validator.dart';
 
 // Re-export core exceptions for seamless encapsulation
-export '../core/reminder_exceptions.dart';
+export 'reminder_exceptions.dart';
 export 'supabase_reminder_repository.dart';
 
 abstract class ReminderRepository {

@@ -1,6 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:fhub/Vinh/reminder/reminder.dart';
+import 'package:fhub/Vinh/models/family_member.dart';
+import 'package:fhub/Vinh/models/reminder_model.dart';
+import 'package:fhub/Vinh/screens/calendar_page.dart';
+import 'package:fhub/Vinh/screens/create_reminder_screen.dart';
+import 'package:fhub/Vinh/screens/reminder_list_screen.dart';
+import 'package:fhub/Vinh/services/reminder_repository.dart';
+import 'package:fhub/Vinh/services/reminder_validator.dart';
+import 'package:fhub/Vinh/widgets/family_progress_card.dart';
+import 'package:fhub/Vinh/widgets/monthly_calendar_grid.dart';
+import 'package:fhub/Vinh/widgets/weekly_calendar_strip.dart';
 
 void main() {
   group('Reminder Validator Tests (Lab 11 Cases)', () {
