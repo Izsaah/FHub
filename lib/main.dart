@@ -1,71 +1,100 @@
 import 'package:flutter/material.dart';
 import 'Vinh/reminder/reminder.dart';
 
-void main() {
-  runApp(const MyApp());
+import 'dart:async';
+
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'Long/screens/main_navigation.dart';
+import 'Thinh/screens/auth_screen.dart';
+import 'Thinh/services/auth_service.dart';
+import 'Thinh/screens/register_view.dart';
+import 'Thinh/screens/splash_screen.dart';
+import 'Thinh/screens/update_password_view.dart';
+import 'Thinh/services/web_session_sync_stub.dart'
+    if (dart.library.html) 'Thinh/services/web_session_sync_web.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
+  await Supabase.initialize(
+    url: dotenv.env['SUPABASE_URL']!,
+    publishableKey: dotenv.env['SUPABASE_PUBLISHABLE_KEY']!,
+  );
+  runApp(const FamilyHubApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+final navigatorKey = GlobalKey<NavigatorState>();
 
-  // This widget is the root of your application.
+class FamilyHubApp extends StatefulWidget {
+  const FamilyHubApp({super.key});
+
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+  State<FamilyHubApp> createState() => _FamilyHubAppState();
+}
+
+class _FamilyHubAppState extends State<FamilyHubApp> {
+  late final StreamSubscription<AuthState> _authSub;
+  final WebSessionSync _webSessionSync = WebSessionSync();
+  bool _recoveryBroadcasted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Lắng nghe sự kiện click link Reset Password (Magic Link)
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.passwordRecovery) {
+        AuthService.passwordRecoveryInProgress = true;
+        if (AuthService.passwordRecoveryNavigationHandled) return;
+        AuthService.passwordRecoveryNavigationHandled = true;
+        // Dùng navigatorKey để ép chuyển trang, đảm bảo hoạt động 100%
+        navigatorKey.currentState?.pushReplacement(
+          MaterialPageRoute(builder: (context) => const UpdatePasswordView()),
+        );
+      } else if (data.event == AuthChangeEvent.signedIn &&
+          AuthService.googleSignInInProgress &&
+          navigatorKey.currentState != null) {
+        AuthService.googleSignInInProgress = false;
+        _routeAfterGoogleSignIn(data.session?.user);
+      }
+    });
+    _webSessionSync.start(_routeExistingTabToLogin);
+  }
+
+  void _routeExistingTabToLogin() {
+    if (!mounted || navigatorKey.currentState == null) return;
+    navigatorKey.currentState!.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
+      (route) => false,
     );
   }
-}
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  Future<void> _routeAfterGoogleSignIn(User? user) async {
+    final googleUser = user ?? Supabase.instance.client.auth.currentUser;
+    if (googleUser == null) return;
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+    final hasProfile = await AuthService().hasUserProfile(googleUser);
+    if (!mounted || navigatorKey.currentState == null) return;
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+    navigatorKey.currentState!.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => hasProfile
+            ? const MainNavigation()
+            : RegisterView(
+                initialEmail: googleUser.email ?? '',
+                isGoogleRegistration: true,
+              ),
+      ),
+      (route) => false,
+    );
+  }
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  void dispose() {
+    _authSub.cancel();
+    _webSessionSync.dispose();
+    super.dispose();
   }
 
   @override
@@ -159,13 +188,49 @@ class _MyHomePageState extends State<MyHomePage> {
               },
             ),
           ],
+    final isRecoveryRedirect = AuthService.isPasswordRecoveryRedirect;
+    if (isRecoveryRedirect) {
+      AuthService.passwordRecoveryNavigationHandled = true;
+      if (!_recoveryBroadcasted) {
+        _recoveryBroadcasted = true;
+        _webSessionSync.markRecovery();
+      }
+    }
+
+    return MaterialApp(
+      navigatorKey: navigatorKey,
+      title: 'Family Hub',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF3FBF8),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF005F50),
+          primary: const Color(0xFF005F50),
+          surface: const Color(0xFFF3FBF8),
+          error: const Color(0xFFBA1A1A),
+          brightness: Brightness.light,
+        ),
+        textTheme: const TextTheme(
+          titleLarge: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF151D1B),
+          ),
+          bodyMedium: TextStyle(fontSize: 16, color: Color(0xFF151D1B)),
+          bodySmall: TextStyle(fontSize: 14, color: Color(0xFF3E4946)),
+        ),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 1,
+          shadowColor: Colors.black12,
+          backgroundColor: Color(0xFFEDF5F2),
+          foregroundColor: Color(0xFF005F50),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
+      home: isRecoveryRedirect
+          ? const UpdatePasswordView()
+          : const SplashScreen(),
     );
   }
 }
