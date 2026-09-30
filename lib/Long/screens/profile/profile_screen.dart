@@ -6,6 +6,7 @@ import '../../models/user_model.dart';
 import '../../models/family_model.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../../Thinh/screens/auth_screen.dart';
+import '../../../Danh/danh_payment_entry.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -223,7 +224,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 24),
+                // Banner nâng cấp / quản lý gói Premium
+                DanhPaymentEntry.buildPremiumBanner(context),
+
+                const SizedBox(height: 16),
 
                 SizedBox(
                   width: double.infinity,

@@ -9,6 +9,7 @@ import '../../widgets/custom_app_bar.dart';
 import '../../widgets/family_member_tile.dart';
 import 'create_family_screen.dart';
 import 'join_family_screen.dart';
+import '../../../Danh/danh_payment_entry.dart';
 
 class FamilyScreen extends StatefulWidget {
   const FamilyScreen({super.key});
@@ -35,13 +36,56 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Future<Map<String, dynamic>> _fetchFamilyData() async {
     final family = await _supabaseService.getCurrentFamily();
     final members = await _supabaseService.getFamilyMembers();
+    if (family != null) {
+      DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
+    }
     return {'family': family, 'members': members};
   }
 
-  void _copyToClipboard(String code) {
+  void _handleInviteMember(String code, int currentMemberCount) {
+    if (!DanhPaymentEntry.canAddMember(currentMemberCount)) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('Giới Hạn Thành Viên'),
+            ],
+          ),
+          content: Text(
+            DanhPaymentEntry.getMemberLimitMessage(currentMemberCount),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Đóng'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF005F50),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                DanhPaymentEntry.openPremiumPlans(context);
+              },
+              child: const Text('Nâng cấp Premium (10 người)'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     Clipboard.setData(ClipboardData(text: code));
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Mã $code đã được sao chép!')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Mã $code đã được sao chép! Hãy gửi cho thành viên mới.'),
+        backgroundColor: const Color(0xFF005F50),
+      ),
+    );
   }
 
   @override
@@ -168,6 +212,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
+                // Widget hiển thị gói Premium & hạn mức thành viên (dành cho mọi thành viên)
+                DanhPaymentEntry.buildFamilyPremiumStatus(members.length),
+
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -217,7 +264,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             ],
                           ),
                           InkWell(
-                            onTap: () => _copyToClipboard(family.joinCode),
+                            onTap: () => _handleInviteMember(family.joinCode, members.length),
                             borderRadius: BorderRadius.circular(16),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
@@ -296,7 +343,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               backgroundColor: const Color(0xFFE7F0EC)
                                   .withValues(alpha: 0.3),
                             ),
-                            onPressed: () => _copyToClipboard(family.joinCode),
+                            onPressed: () => _handleInviteMember(family.joinCode, members.length),
                             icon: const Icon(Icons.person_add, size: 20),
                             label: const Text(
                               'Thêm thành viên mới',
