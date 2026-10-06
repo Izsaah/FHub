@@ -326,6 +326,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       reminder: reminder,
       currentUserId: _currentUserId,
       repository: _repository,
+      familyMembers: _familyMembers,
       onReminderUpdated: () => setState(() {}),
     );
   }

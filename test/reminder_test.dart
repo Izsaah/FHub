@@ -10,6 +10,7 @@ import 'package:fhub/Vinh/services/reminder_validator.dart';
 import 'package:fhub/Vinh/widgets/family_progress_card.dart';
 import 'package:fhub/Vinh/widgets/monthly_calendar_grid.dart';
 import 'package:fhub/Vinh/widgets/reminder_card.dart';
+import 'package:fhub/Vinh/widgets/reminder_detail_bottom_sheet.dart';
 import 'package:fhub/Vinh/widgets/voice_reminder_player.dart';
 import 'package:fhub/Vinh/widgets/voice_recorder_widget.dart';
 import 'package:fhub/Vinh/widgets/weekly_calendar_strip.dart';
@@ -630,6 +631,113 @@ void main() {
       expect(find.text('Ghi âm giọng nói (Micro)'), findsOneWidget);
       expect(find.textContaining('Chạm để bắt đầu ghi âm bằng Micro'),
           findsOneWidget);
+    });
+
+    test('Update Reminder: Only creator can update reminder', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'rem_edit_1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_mom',
+          assignedToName: 'Mom',
+          title: 'Đi mua thuốc',
+          date: '28/09/2026',
+          time: '10:00',
+        ),
+      ]);
+
+      const members = [
+        FamilyMember(id: 'user_minh', name: 'Minh', role: 'Owner', familyId: 'f1'),
+        FamilyMember(id: 'user_mom', name: 'Mom', role: 'Member', familyId: 'f1'),
+      ];
+
+      // Other user (Mom) tries to edit Minh's reminder -> should fail
+      expect(
+        () => repo.updateReminder(
+          reminder: const ReminderModel(
+            id: 'rem_edit_1',
+            familyId: 'f1',
+            creatorId: 'user_minh',
+            assignedTo: 'user_mom',
+            assignedToName: 'Mom',
+            title: 'Sửa tiêu đề trái phép',
+            date: '28/09/2026',
+            time: '12:00',
+          ),
+          currentUserId: 'user_mom',
+          familyMembers: members,
+          now: DateTime(2026, 9, 27),
+        ),
+        throwsA(isA<ReminderPermissionException>()),
+      );
+
+      // Creator (Minh) edits reminder -> should succeed
+      final updated = await repo.updateReminder(
+        reminder: const ReminderModel(
+          id: 'rem_edit_1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_mom',
+          assignedToName: 'Mom',
+          title: 'Đi mua thuốc và khẩu trang',
+          date: '28/09/2026',
+          time: '14:00',
+        ),
+        currentUserId: 'user_minh',
+        familyMembers: members,
+        now: DateTime(2026, 9, 27),
+      );
+
+      expect(updated.title, 'Đi mua thuốc và khẩu trang');
+      expect(updated.time, '14:00');
+    });
+
+    testWidgets(
+        'ReminderDetailBottomSheet shows edit button for creator on pending reminder',
+        (tester) async {
+      final repo = InMemoryReminderRepository();
+      const reminder = ReminderModel(
+        id: 'rem_edit_ui',
+        familyId: 'f1',
+        creatorId: 'user_minh',
+        assignedTo: 'user_mom',
+        assignedToName: 'Mom',
+        title: 'Nấu cơm chiều',
+        date: '28/09/2026',
+        time: '17:00',
+      );
+
+      // 1. Rendered by Creator -> Edit icon button visible
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReminderDetailBottomSheet(
+              reminder: reminder,
+              currentUserId: 'user_minh',
+              repository: repo,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+
+      // 2. Rendered by non-creator -> Edit icon button NOT visible
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReminderDetailBottomSheet(
+              reminder: reminder,
+              currentUserId: 'user_mom',
+              repository: repo,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.edit_outlined), findsNothing);
     });
   });
 }

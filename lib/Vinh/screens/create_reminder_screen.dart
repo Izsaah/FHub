@@ -12,6 +12,7 @@ class CreateReminderScreen extends StatefulWidget {
   final String currentUserName;
   final List<FamilyMember> familyMembers;
   final ReminderRepository repository;
+  final ReminderModel? existingReminder;
 
   const CreateReminderScreen({
     super.key,
@@ -20,7 +21,10 @@ class CreateReminderScreen extends StatefulWidget {
     this.currentUserName = 'Me',
     required this.familyMembers,
     required this.repository,
+    this.existingReminder,
   });
+
+  bool get isEditing => existingReminder != null;
 
   @override
   State<CreateReminderScreen> createState() => _CreateReminderScreenState();
@@ -69,21 +73,52 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   @override
   void initState() {
     super.initState();
-    // Default to tomorrow or later today if early
-    final now = DateTime.now();
-    // Default date is today
-    _selectedDate = DateTime(now.year, now.month, now.day);
-    // Default time is 1 hour in the future
-    final nextHour = now.hour < 23 ? now.hour + 1 : 23;
-    final nextMinute = now.minute;
-    _selectedTime = TimeOfDay(hour: nextHour, minute: nextMinute);
+    final existing = widget.existingReminder;
 
-    // If family members exist, default to the first one that is not current user, or first
-    if (widget.familyMembers.isNotEmpty) {
+    if (existing != null) {
+      _titleController.text = existing.title;
+      _voiceNotePath = existing.voiceNotePath;
+      _voiceDurationSeconds = existing.voiceDurationSeconds;
+      _voiceNoteDescription = existing.voiceNoteDescription;
+
+      // Parse existing date and time
+      final parsedDt = existing.dueDateTime;
+      if (parsedDt != null) {
+        _selectedDate = DateTime(parsedDt.year, parsedDt.month, parsedDt.day);
+        _selectedTime = TimeOfDay(hour: parsedDt.hour, minute: parsedDt.minute);
+      } else {
+        final now = DateTime.now();
+        _selectedDate = DateTime(now.year, now.month, now.day);
+        _selectedTime = TimeOfDay(hour: (now.hour + 1) % 24, minute: now.minute);
+      }
+
+      // Find matching assigned member
       _selectedMember = widget.familyMembers.firstWhere(
-        (m) => m.id != widget.currentUserId,
-        orElse: () => widget.familyMembers.first,
+        (m) => m.id == existing.assignedTo,
+        orElse: () => FamilyMember(
+          id: existing.assignedTo,
+          name: existing.assignedToName,
+          role: 'Member',
+          familyId: existing.familyId,
+        ),
       );
+    } else {
+      // Default to tomorrow or later today if early
+      final now = DateTime.now();
+      // Default date is today
+      _selectedDate = DateTime(now.year, now.month, now.day);
+      // Default time is 1 hour in the future
+      final nextHour = now.hour < 23 ? now.hour + 1 : 23;
+      final nextMinute = now.minute;
+      _selectedTime = TimeOfDay(hour: nextHour, minute: nextMinute);
+
+      // If family members exist, default to the first one that is not current user, or first
+      if (widget.familyMembers.isNotEmpty) {
+        _selectedMember = widget.familyMembers.firstWhere(
+          (m) => m.id != widget.currentUserId,
+          orElse: () => widget.familyMembers.first,
+        );
+      }
     }
   }
 
@@ -300,36 +335,65 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       final dateStr = _formatDate(_selectedDate!);
       final timeStr = _formatTime(_selectedTime!);
 
-      final reminder = ReminderModel(
-        id: '',
-        familyId: widget.familyId,
-        creatorId: widget.currentUserId,
-        creatorName: widget.currentUserName,
-        assignedTo: _selectedMember!.id,
-        assignedToName: _selectedMember!.name,
-        title: _titleController.text.trim(),
-        date: dateStr,
-        time: timeStr,
-        status: ReminderStatus.pending,
-        voiceNotePath: _voiceNotePath,
-        voiceDurationSeconds: _voiceDurationSeconds,
-        voiceNoteDescription: _voiceNoteDescription,
-      );
-
-      final created = await widget.repository.createReminder(
-        reminder: reminder,
-        currentUserId: widget.currentUserId,
-        familyMembers: widget.familyMembers,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Reminder "${created.title}" created!'),
-            backgroundColor: const Color(0xFF0D7A68),
-          ),
+      if (widget.isEditing) {
+        final updatedModel = widget.existingReminder!.copyWith(
+          assignedTo: _selectedMember!.id,
+          assignedToName: _selectedMember!.name,
+          title: _titleController.text.trim(),
+          date: dateStr,
+          time: timeStr,
+          voiceNotePath: _voiceNotePath,
+          voiceDurationSeconds: _voiceDurationSeconds,
+          voiceNoteDescription: _voiceNoteDescription,
         );
-        Navigator.of(context).pop(created);
+
+        final result = await widget.repository.updateReminder(
+          reminder: updatedModel,
+          currentUserId: widget.currentUserId,
+          familyMembers: widget.familyMembers,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Reminder "${result.title}" updated!'),
+              backgroundColor: const Color(0xFF0D7A68),
+            ),
+          );
+          Navigator.of(context).pop(result);
+        }
+      } else {
+        final reminder = ReminderModel(
+          id: '',
+          familyId: widget.familyId,
+          creatorId: widget.currentUserId,
+          creatorName: widget.currentUserName,
+          assignedTo: _selectedMember!.id,
+          assignedToName: _selectedMember!.name,
+          title: _titleController.text.trim(),
+          date: dateStr,
+          time: timeStr,
+          status: ReminderStatus.pending,
+          voiceNotePath: _voiceNotePath,
+          voiceDurationSeconds: _voiceDurationSeconds,
+          voiceNoteDescription: _voiceNoteDescription,
+        );
+
+        final created = await widget.repository.createReminder(
+          reminder: reminder,
+          currentUserId: widget.currentUserId,
+          familyMembers: widget.familyMembers,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Reminder "${created.title}" created!'),
+              backgroundColor: const Color(0xFF0D7A68),
+            ),
+          );
+          Navigator.of(context).pop(created);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -353,9 +417,9 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF3FBF8),
       appBar: AppBar(
-        title: const Text(
-          'Create Reminder',
-          style: TextStyle(
+        title: Text(
+          widget.isEditing ? 'Edit Reminder' : 'Create Reminder',
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: textPrimary,
           ),
@@ -417,6 +481,9 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
               VoiceRecorderWidget(
                 onVoiceRecorded: _onVoiceRecorded,
                 onVoiceRemoved: _onVoiceRemoved,
+                initialAudioPath: _voiceNotePath,
+                initialDuration: _voiceDurationSeconds,
+                initialDescription: _voiceNoteDescription,
               ),
               const SizedBox(height: 20),
 
@@ -621,9 +688,9 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                             strokeWidth: 2.5,
                           ),
                         )
-                      : const Text(
-                          'Create',
-                          style: TextStyle(
+                      : Text(
+                          widget.isEditing ? 'Save Changes' : 'Create',
+                          style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                           ),

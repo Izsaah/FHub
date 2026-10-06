@@ -21,6 +21,13 @@ abstract class ReminderRepository {
     DateTime? now,
   });
 
+  Future<ReminderModel> updateReminder({
+    required ReminderModel reminder,
+    required String currentUserId,
+    List<FamilyMember>? familyMembers,
+    DateTime? now,
+  });
+
   Future<ReminderModel> completeReminder({
     required String reminderId,
     required String currentUserId,
@@ -206,6 +213,71 @@ class InMemoryReminderRepository implements ReminderRepository {
     _reminders.add(newReminder);
     _notify(reminder.familyId);
     return newReminder;
+  }
+
+  @override
+  Future<ReminderModel> updateReminder({
+    required ReminderModel reminder,
+    required String currentUserId,
+    List<FamilyMember>? familyMembers,
+    DateTime? now,
+  }) async {
+    final index = _reminders.indexWhere((r) => r.id == reminder.id && !r.isDeleted);
+    if (index == -1) {
+      throw ReminderNotFoundException();
+    }
+
+    final existing = _reminders[index];
+
+    // Rule: Chỉ người tạo (Creator) mới có quyền chỉnh sửa reminder.
+    if (existing.creatorId != currentUserId) {
+      throw ReminderPermissionException(
+        'Only the creator can edit this reminder',
+      );
+    }
+
+    // 1. Validate sanitized Title
+    final sanitizedTitle = ReminderValidator.sanitizeTitle(reminder.title);
+    final titleError = ReminderValidator.validateTitle(sanitizedTitle);
+    if (titleError != null) {
+      throw ReminderValidationException(titleError);
+    }
+
+    // 2. Validate Assigned Member if list provided
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      final memberError = ReminderValidator.validateAssignedMember(
+        reminder.assignedTo,
+        familyMembers,
+      );
+      if (memberError != null) {
+        throw ReminderValidationException(memberError);
+      }
+    }
+
+    // 3. Validate Date + Time must be in the future
+    final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
+      reminder.date,
+      reminder.time,
+      now: now,
+    );
+    if (futureError != null) {
+      throw ReminderValidationException(futureError);
+    }
+
+    final updated = existing.copyWith(
+      title: sanitizedTitle,
+      assignedTo: reminder.assignedTo,
+      assignedToName: reminder.assignedToName,
+      date: reminder.date,
+      time: reminder.time,
+      voiceNotePath: reminder.voiceNotePath,
+      voiceDurationSeconds: reminder.voiceDurationSeconds,
+      voiceNoteDescription: reminder.voiceNoteDescription,
+    );
+
+    _reminders[index] = updated;
+    _notify(existing.familyId);
+    return updated;
   }
 
   @override
