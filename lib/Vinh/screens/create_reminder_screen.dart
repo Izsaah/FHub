@@ -4,6 +4,7 @@ import '../models/reminder_model.dart';
 import '../services/member_color_helper.dart';
 import '../services/reminder_repository.dart';
 import '../services/reminder_validator.dart';
+import '../widgets/voice_recorder_widget.dart';
 
 class CreateReminderScreen extends StatefulWidget {
   final String familyId;
@@ -33,8 +34,37 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
 
+  String? _voiceNotePath;
+  int? _voiceDurationSeconds;
+  String? _voiceNoteDescription;
+
   String? _dateTimeError;
   bool _isLoading = false;
+
+  void _onVoiceRecorded(String path, int durationSeconds, String description) {
+    setState(() {
+      _voiceNotePath = path;
+      _voiceDurationSeconds = durationSeconds;
+      _voiceNoteDescription = description;
+      if (_titleController.text.trim().isEmpty) {
+        if (description.isNotEmpty) {
+          _titleController.text = description.length > 25
+              ? '${description.substring(0, 25)}...'
+              : description;
+        } else {
+          _titleController.text = 'Lời nhắc giọng nói 🎙️';
+        }
+      }
+    });
+  }
+
+  void _onVoiceRemoved() {
+    setState(() {
+      _voiceNotePath = null;
+      _voiceDurationSeconds = null;
+      _voiceNoteDescription = null;
+    });
+  }
 
   @override
   void initState() {
@@ -143,20 +173,113 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     return error == null;
   }
 
-  void _setQuickDate(int daysFromNow) {
-    final now = DateTime.now();
-    final target = now.add(Duration(days: daysFromNow));
-    setState(() {
-      _selectedDate = DateTime(target.year, target.month, target.day);
-      _validateDateTime();
-    });
-  }
+  Future<void> _pickMember() async {
+    const primaryColor = Color(0xFF0D7A68);
+    const textPrimary = Color(0xFF151D1B);
 
-  void _setQuickTime(int hour, int minute) {
-    setState(() {
-      _selectedTime = TimeOfDay(hour: hour, minute: minute);
-      _validateDateTime();
-    });
+    final selected = await showModalBottomSheet<FamilyMember>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Select Member (For)',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: Color(0xFFE2EAE7)),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: widget.familyMembers.length,
+                    itemBuilder: (ctx, index) {
+                      final member = widget.familyMembers[index];
+                      final isSelected = member.id == _selectedMember?.id;
+                      final primary =
+                          MemberColorHelper.getPrimaryColor(member.name);
+                      final bg =
+                          MemberColorHelper.getBackgroundColor(member.name);
+
+                      return ListTile(
+                        leading: CircleAvatar(
+                          radius: 18,
+                          backgroundColor: bg,
+                          child: Text(
+                            member.name.isNotEmpty
+                                ? member.name[0].toUpperCase()
+                                : '?',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: primary,
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          member.name,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.w500,
+                            color: isSelected ? primaryColor : textPrimary,
+                          ),
+                        ),
+                        subtitle: Text(
+                          member.role,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF6E7A75),
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(Icons.check_circle,
+                                color: primaryColor)
+                            : null,
+                        tileColor: isSelected
+                            ? const Color(0xFFE7F5F2)
+                            : Colors.transparent,
+                        onTap: () => Navigator.of(ctx).pop(member),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selected != null) {
+      setState(() {
+        _selectedMember = selected;
+      });
+    }
   }
 
   Future<void> _submit() async {
@@ -188,6 +311,9 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         date: dateStr,
         time: timeStr,
         status: ReminderStatus.pending,
+        voiceNotePath: _voiceNotePath,
+        voiceDurationSeconds: _voiceDurationSeconds,
+        voiceNoteDescription: _voiceNoteDescription,
       );
 
       final created = await widget.repository.createReminder(
@@ -259,49 +385,6 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Quick Templates 1-Chạm
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildTemplateChip(
-                      icon: '💊',
-                      label: 'Uống thuốc',
-                      onTap: () {
-                        _titleController.text = 'Uống thuốc';
-                        _setQuickTime(8, 0);
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _buildTemplateChip(
-                      icon: '🛒',
-                      label: 'Đi chợ',
-                      onTap: () {
-                        _titleController.text = 'Đi chợ mua đồ';
-                        _setQuickTime(10, 0);
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _buildTemplateChip(
-                      icon: '🧹',
-                      label: 'Việc nhà',
-                      onTap: () {
-                        _titleController.text = 'Dọn dẹp việc nhà';
-                        _setQuickTime(17, 0);
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _buildTemplateChip(
-                      icon: '📝',
-                      label: 'Khác',
-                      onTap: () {
-                        _titleController.text = 'Nhắc nhở việc gia đình';
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
               TextFormField(
                 controller: _titleController,
                 style: const TextStyle(fontSize: 17),
@@ -328,6 +411,13 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
                 validator: ReminderValidator.validateTitle,
               ),
+              const SizedBox(height: 16),
+
+              // 1.1 GHI ÂM GIỌNG NÓI (VOICE REMINDER VIA MICROPHONE & SPEAKER)
+              VoiceRecorderWidget(
+                onVoiceRecorded: _onVoiceRecorded,
+                onVoiceRemoved: _onVoiceRemoved,
+              ),
               const SizedBox(height: 20),
 
               // 2. FOR (Assigned Member)
@@ -340,67 +430,61 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              DropdownButtonFormField<FamilyMember>(
-                initialValue: _selectedMember,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  border: OutlineInputBorder(
+              InkWell(
+                onTap: _pickMember,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  height: 56,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFFBDC9C4)),
+                    border: Border.all(color: const Color(0xFFBDC9C4)),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFFBDC9C4)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide:
-                        const BorderSide(color: primaryColor, width: 2),
-                  ),
-                ),
-                items: widget.familyMembers.map((member) {
-                  final primary = MemberColorHelper.getPrimaryColor(member.name);
-                  final bg = MemberColorHelper.getBackgroundColor(member.name);
-                  return DropdownMenuItem<FamilyMember>(
-                    value: member,
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 14,
-                          backgroundColor: bg,
-                          child: Text(
-                            member.name.isNotEmpty
-                                ? member.name[0].toUpperCase()
-                                : '?',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: primary,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _selectedMember != null
+                          ? Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: MemberColorHelper.getBackgroundColor(
+                                      _selectedMember!.name),
+                                  child: Text(
+                                    _selectedMember!.name.isNotEmpty
+                                        ? _selectedMember!.name[0].toUpperCase()
+                                        : '?',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: MemberColorHelper.getPrimaryColor(
+                                          _selectedMember!.name),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  '${_selectedMember!.name} (${_selectedMember!.role})',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    color: textPrimary,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : const Text(
+                              'Select Member',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: textMuted,
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          '${member.name} (${member.role})',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  setState(() => _selectedMember = val);
-                },
-                validator: (val) => ReminderValidator.validateAssignedMember(
-                  val?.id,
-                  widget.familyMembers,
+                      const Icon(Icons.person_outline, color: primaryColor),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -415,39 +499,6 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Quick Date Chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildQuickChip(
-                      label: 'Hôm nay',
-                      isSelected: _selectedDate != null &&
-                          _selectedDate!.day == DateTime.now().day &&
-                          _selectedDate!.month == DateTime.now().month &&
-                          _selectedDate!.year == DateTime.now().year,
-                      onTap: () => _setQuickDate(0),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildQuickChip(
-                      label: 'Ngày mai',
-                      isSelected: _selectedDate != null &&
-                          _selectedDate!.day ==
-                              DateTime.now().add(const Duration(days: 1)).day &&
-                          _selectedDate!.month ==
-                              DateTime.now().add(const Duration(days: 1)).month,
-                      onTap: () => _setQuickDate(1),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildQuickChip(
-                      label: 'Chọn ngày 📅',
-                      isSelected: false,
-                      onTap: _pickDate,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
               InkWell(
                 onTap: _pickDate,
                 borderRadius: BorderRadius.circular(14),
@@ -489,48 +540,6 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Quick Time Chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildQuickChip(
-                      label: '08:00 (Sáng)',
-                      isSelected: _selectedTime?.hour == 8 &&
-                          _selectedTime?.minute == 0,
-                      onTap: () => _setQuickTime(8, 0),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildQuickChip(
-                      label: '12:00 (Trưa)',
-                      isSelected: _selectedTime?.hour == 12 &&
-                          _selectedTime?.minute == 0,
-                      onTap: () => _setQuickTime(12, 0),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildQuickChip(
-                      label: '18:00 (Chiều)',
-                      isSelected: _selectedTime?.hour == 18 &&
-                          _selectedTime?.minute == 0,
-                      onTap: () => _setQuickTime(18, 0),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildQuickChip(
-                      label: '20:00 (Tối)',
-                      isSelected: _selectedTime?.hour == 20 &&
-                          _selectedTime?.minute == 0,
-                      onTap: () => _setQuickTime(20, 0),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildQuickChip(
-                      label: 'Chọn giờ ⏰',
-                      isSelected: false,
-                      onTap: _pickTime,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
               InkWell(
                 onTap: _pickTime,
                 borderRadius: BorderRadius.circular(14),
@@ -623,72 +632,6 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickChip({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    const primaryColor = Color(0xFF0D7A68);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFE7F5F2) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? primaryColor : const Color(0xFFBDC9C4),
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected ? primaryColor : const Color(0xFF151D1B),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTemplateChip({
-    required String icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF3FBF8),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFBDC9C4)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(icon, style: const TextStyle(fontSize: 14)),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF0D7A68),
-              ),
-            ),
-          ],
         ),
       ),
     );

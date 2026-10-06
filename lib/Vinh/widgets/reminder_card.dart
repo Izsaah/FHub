@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/reminder_model.dart';
 import '../services/member_color_helper.dart';
+import 'voice_reminder_player.dart';
 
 class ReminderCard extends StatelessWidget {
   final ReminderModel reminder;
@@ -19,6 +20,9 @@ class ReminderCard extends StatelessWidget {
   });
 
   IconData _getIconForTitle(String title) {
+    if (reminder.hasVoiceNote) {
+      return Icons.mic_rounded;
+    }
     final lower = title.toLowerCase();
     if (lower.contains('medicine') || lower.contains('thuốc') || lower.contains('uống')) {
       return Icons.medication_outlined;
@@ -84,151 +88,194 @@ class ReminderCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Icon avatar
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: isCompleted
-                        ? const Color(0xFFE7F0EC)
-                        : const Color(0xFFF3FBF8),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    isCompleted
-                        ? Icons.check_circle
-                        : _getIconForTitle(reminder.title),
-                    color: isCompleted ? primaryColor : const Color(0xFF005F50),
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 14),
-
-                // Title + For + Time
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        reminder.title,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: isCompleted ? textMuted : textPrimary,
-                          decoration:
-                              isCompleted ? TextDecoration.lineThrough : null,
-                        ),
+                Row(
+                  children: [
+                    // Icon avatar
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: isCompleted
+                            ? const Color(0xFFE7F0EC)
+                            : const Color(0xFFF3FBF8),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
+                      child: Icon(
+                        isCompleted
+                            ? Icons.check_circle
+                            : _getIconForTitle(reminder.title),
+                        color: isCompleted ? primaryColor : const Color(0xFF005F50),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+
+                    // Title + For + Time
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: MemberColorHelper.getBackgroundColor(
-                                  reminder.assignedToName),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CircleAvatar(
-                                  radius: 8,
-                                  backgroundColor:
-                                      MemberColorHelper.getPrimaryColor(
-                                          reminder.assignedToName),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  reminder.title,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: isCompleted ? textMuted : textPrimary,
+                                    decoration:
+                                        isCompleted ? TextDecoration.lineThrough : null,
+                                  ),
+                                ),
+                              ),
+                              if (reminder.hasVoiceNote)
+                                Container(
+                                  margin: const EdgeInsets.only(left: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0F2EC),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.mic, size: 12, color: primaryColor),
+                                      SizedBox(width: 2),
+                                      Text(
+                                        'Thoại',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: primaryColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: MemberColorHelper.getBackgroundColor(
+                                      reminder.assignedToName),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 8,
+                                      backgroundColor:
+                                          MemberColorHelper.getPrimaryColor(
+                                              reminder.assignedToName),
+                                      child: Text(
+                                        reminder.assignedToName.isNotEmpty
+                                            ? reminder.assignedToName[0]
+                                            : '?',
+                                        style: const TextStyle(
+                                          fontSize: 9,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'For ${reminder.assignedToName}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: MemberColorHelper.getPrimaryColor(
+                                            reminder.assignedToName),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                '•',
+                                style: TextStyle(color: textMuted),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                reminder.time,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: primaryColor,
+                                ),
+                              ),
+                              if (_getRelativeTime(reminder) != null) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFF3E5),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
                                   child: Text(
-                                    reminder.assignedToName.isNotEmpty
-                                        ? reminder.assignedToName[0]
-                                        : '?',
+                                    _getRelativeTime(reminder)!,
                                     style: const TextStyle(
-                                      fontSize: 9,
-                                      color: Colors.white,
+                                      fontSize: 11,
                                       fontWeight: FontWeight.bold,
+                                      color: Color(0xFFF49D37),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'For ${reminder.assignedToName}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: MemberColorHelper.getPrimaryColor(
-                                        reminder.assignedToName),
-                                  ),
-                                ),
                               ],
-                            ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            '•',
-                            style: TextStyle(color: textMuted),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            reminder.time,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: primaryColor,
-                            ),
-                          ),
-                          if (_getRelativeTime(reminder) != null) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFF3E5),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                _getRelativeTime(reminder)!,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFFF49D37),
-                                ),
-                              ),
-                            ),
-                          ],
                         ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                // Action buttons
-                if (canComplete && onComplete != null)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.check_circle_outline,
-                      color: primaryColor,
-                      size: 28,
-                    ),
-                    tooltip: 'Complete Reminder',
-                    onPressed: onComplete,
-                  )
-                else if (canDelete && onDelete != null)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Color(0xFFBA1A1A),
-                      size: 22,
-                    ),
-                    tooltip: 'Delete Reminder',
-                    onPressed: onDelete,
-                  )
-                else
-                  const Icon(
-                    Icons.chevron_right,
-                    color: Color(0xFFBDC9C4),
+                    // Action buttons
+                    if (canComplete && onComplete != null)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.check_circle_outline,
+                          color: primaryColor,
+                          size: 28,
+                        ),
+                        tooltip: 'Complete Reminder',
+                        onPressed: onComplete,
+                      )
+                    else if (canDelete && onDelete != null)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Color(0xFFBA1A1A),
+                          size: 22,
+                        ),
+                        tooltip: 'Delete Reminder',
+                        onPressed: onDelete,
+                      )
+                    else
+                      const Icon(
+                        Icons.chevron_right,
+                        color: Color(0xFFBDC9C4),
+                      ),
+                  ],
+                ),
+                if (reminder.hasVoiceNote) ...[
+                  const SizedBox(height: 6),
+                  VoiceReminderPlayer(
+                    reminder: reminder,
+                    isCompact: true,
                   ),
+                ],
               ],
             ),
           ),

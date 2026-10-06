@@ -95,6 +95,22 @@ class InMemoryReminderRepository implements ReminderRepository {
         completedAt: now.subtract(const Duration(minutes: 30)),
         createdAt: now.subtract(const Duration(hours: 5)),
       ),
+      ReminderModel(
+        id: 'rem_voice_1',
+        familyId: 'family_1',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Lời nhắn thoại từ Mẹ',
+        date: todayStr,
+        time: '19:30',
+        status: ReminderStatus.pending,
+        voiceNotePath: 'assets/audio/sample_voice_reminder.wav',
+        voiceDurationSeconds: 3,
+        voiceNoteDescription: 'Mẹ dặn nhớ uống 2 viên vitamin và ăn tối trước 8h nhé con!',
+        createdAt: now.subtract(const Duration(minutes: 40)),
+      ),
     ]);
   }
 

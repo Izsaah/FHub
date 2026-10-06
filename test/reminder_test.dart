@@ -9,6 +9,9 @@ import 'package:fhub/Vinh/services/reminder_repository.dart';
 import 'package:fhub/Vinh/services/reminder_validator.dart';
 import 'package:fhub/Vinh/widgets/family_progress_card.dart';
 import 'package:fhub/Vinh/widgets/monthly_calendar_grid.dart';
+import 'package:fhub/Vinh/widgets/reminder_card.dart';
+import 'package:fhub/Vinh/widgets/voice_reminder_player.dart';
+import 'package:fhub/Vinh/widgets/voice_recorder_widget.dart';
 import 'package:fhub/Vinh/widgets/weekly_calendar_strip.dart';
 
 void main() {
@@ -485,6 +488,148 @@ void main() {
       // Only Minh's reminder is visible
       expect(find.text('Clean desk'), findsOneWidget);
       expect(find.text('Take medicine'), findsNothing);
+    });
+  });
+
+  group('Voice Reminder Tests (Peripherals: Microphone & Speaker)', () {
+    test('ReminderModel correctly serializes and handles voice note properties', () {
+      const voiceReminder = ReminderModel(
+        id: 'voice_123',
+        familyId: 'family_1',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Lời nhắn từ Mẹ',
+        date: '28/09/2026',
+        time: '19:00',
+        status: ReminderStatus.pending,
+        voiceNotePath: 'path/to/voice_audio.m4a',
+        voiceDurationSeconds: 14,
+        voiceNoteDescription: 'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!',
+      );
+
+      expect(voiceReminder.hasVoiceNote, isTrue);
+      expect(voiceReminder.voiceDurationSeconds, 14);
+      expect(voiceReminder.voiceNoteDescription,
+          'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!');
+
+      final json = voiceReminder.toJson();
+      expect(json['voiceNotePath'], 'path/to/voice_audio.m4a');
+      expect(json['voiceDurationSeconds'], 14);
+      expect(json['voiceNoteDescription'],
+          'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!');
+
+      final fromJson = ReminderModel.fromJson(json);
+      expect(fromJson.hasVoiceNote, isTrue);
+      expect(fromJson.voiceNotePath, 'path/to/voice_audio.m4a');
+      expect(fromJson.voiceDurationSeconds, 14);
+      expect(fromJson.voiceNoteDescription,
+          'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!');
+
+      final supabaseMap = voiceReminder.toSupabaseMap();
+      expect(supabaseMap['voice_note_path'], 'path/to/voice_audio.m4a');
+      expect(supabaseMap['voice_duration_seconds'], 14);
+      expect(supabaseMap['voice_note_description'],
+          'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!');
+    });
+
+    testWidgets(
+        'VoiceReminderPlayer renders audio bar, speaker indicator and note description',
+        (tester) async {
+      const reminder = ReminderModel(
+        id: 'test_voice_rem',
+        familyId: 'f1',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Lời nhắn thoại',
+        date: '28/09/2026',
+        time: '18:00',
+        voiceNotePath: 'demo_voice.m4a',
+        voiceDurationSeconds: 12,
+        voiceNoteDescription: 'Mua giùm mẹ nải chuối',
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: VoiceReminderPlayer(reminder: reminder),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.textContaining('Loa'), findsOneWidget);
+      expect(find.text('Ghi chú: Mua giùm mẹ nải chuối'), findsOneWidget);
+      expect(find.text('00:12'), findsOneWidget);
+    });
+
+    testWidgets(
+        'ReminderCard displays voice badge and embedded VoiceReminderPlayer for voice reminders',
+        (tester) async {
+      const voiceReminder = ReminderModel(
+        id: 'voice_card_test',
+        familyId: 'f1',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Uống nước cam',
+        date: '28/09/2026',
+        time: '14:00',
+        voiceNotePath: 'note.m4a',
+        voiceDurationSeconds: 8,
+        voiceNoteDescription: 'Nước cam mẹ để trong tủ lạnh tầng 2 nhé',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReminderCard(
+              reminder: voiceReminder,
+              currentUserId: 'user_minh',
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Thoại'), findsOneWidget);
+      expect(find.byType(VoiceReminderPlayer), findsOneWidget);
+      expect(find.text('Ghi chú: Nước cam mẹ để trong tủ lạnh tầng 2 nhé'),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'CreateReminderScreen renders VoiceRecorderWidget with microphone recording option',
+        (tester) async {
+      final repo = InMemoryReminderRepository();
+      const members = [
+        FamilyMember(
+          id: 'user_mom',
+          name: 'Mom',
+          role: 'Member',
+          familyId: 'f1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateReminderScreen(
+            familyId: 'f1',
+            currentUserId: 'user_minh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+
+      expect(find.byType(VoiceRecorderWidget), findsOneWidget);
+      expect(find.text('Ghi âm giọng nói (Micro)'), findsOneWidget);
+      expect(find.textContaining('Chạm để bắt đầu ghi âm bằng Micro'),
+          findsOneWidget);
     });
   });
 }
