@@ -86,8 +86,8 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
       setState(() {
         _recordSeconds++;
       });
-      if (_recordSeconds >= 120) {
-        // Max 2 minutes
+      if (_recordSeconds >= 30) {
+        // Max 30 seconds (Zalo-style voice note)
         _stopRecording();
       }
     });
@@ -296,7 +296,7 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
         ),
         const SizedBox(height: 10),
         const Text(
-          'Chạm để bắt đầu ghi âm lời nhắc bằng Micro',
+          'Chạm để bắt đầu ghi âm bằng Micro (tối đa 30s)',
           style: TextStyle(
             fontSize: 13,
             color: Color(0xFF6E7A75),
@@ -342,7 +342,7 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
             ),
             const SizedBox(width: 6),
             Text(
-              'Đang ghi âm... ${_formatTime(_recordSeconds)}',
+              'Đang ghi âm... ${_formatTime(_recordSeconds)} / 00:30',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,

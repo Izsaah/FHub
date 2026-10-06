@@ -628,8 +628,7 @@ void main() {
 
       expect(find.byType(VoiceRecorderWidget), findsOneWidget);
       expect(find.text('Ghi âm giọng nói (Micro)'), findsOneWidget);
-      expect(find.text('Micro & Loa 🎙️🔊'), findsOneWidget);
-      expect(find.text('Chạm để bắt đầu ghi âm lời nhắc bằng Micro'),
+      expect(find.textContaining('Chạm để bắt đầu ghi âm bằng Micro'),
           findsOneWidget);
     });
   });

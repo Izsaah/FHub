@@ -147,6 +147,24 @@ class VoiceAudioService {
         );
         _currentlyPlayingId = null;
       });
+      _player!.onPositionChanged.listen((pos) {
+        if (_currentlyPlayingId != null) {
+          _notifyPlayback(
+            id: _currentlyPlayingId!,
+            isPlaying: true,
+            position: pos,
+          );
+        }
+      });
+      _player!.onDurationChanged.listen((dur) {
+        if (_currentlyPlayingId != null) {
+          _notifyPlayback(
+            id: _currentlyPlayingId!,
+            isPlaying: true,
+            duration: dur,
+          );
+        }
+      });
     }
     return _player!;
   }
@@ -192,6 +210,14 @@ class VoiceAudioService {
 
       if (audioPath.startsWith('http')) {
         await player.play(UrlSource(audioPath));
+      } else if (audioPath.startsWith('assets/') ||
+          audioPath == 'demo_voice_mom.m4a' ||
+          audioPath.contains('sample_voice_reminder')) {
+        // Asset sample audio playback through device Speaker
+        final assetSubPath = audioPath.startsWith('assets/')
+            ? audioPath.replaceFirst('assets/', '')
+            : 'audio/sample_voice_reminder.wav';
+        await player.play(AssetSource(assetSubPath));
       } else if (existsLocally) {
         await player.play(DeviceFileSource(audioPath));
       } else {
