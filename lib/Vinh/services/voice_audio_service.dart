@@ -44,12 +44,11 @@ class VoiceAudioService {
   /// Request microphone permission
   Future<bool> hasMicrophonePermission() async {
     try {
-      if (kIsWeb) return true;
       final recorder = _getRecorder();
       return await recorder.hasPermission();
     } catch (e) {
       debugPrint('VoiceAudioService: hasMicrophonePermission error: $e');
-      return true;
+      return false;
     }
   }
 
@@ -65,77 +64,109 @@ class VoiceAudioService {
     }
   }
 
-  /// Start recording to a local audio file
-  Future<String?> startRecording({String? customPath}) async {
+  /// Start recording to an audio file
+  Future<String> startRecording({String? customPath}) async {
+    // 1. Reset / recreate recorder cleanly to avoid native session reuse bugs
     try {
-      final recorder = _getRecorder();
-      final hasPerm = await hasMicrophonePermission();
-      if (!hasPerm) {
-        debugPrint('VoiceAudioService: Microphone permission is false');
+      if (_recorder != null) {
+        if (await _recorder!.isRecording()) {
+          await _recorder!.stop();
+        }
+        await _recorder!.dispose();
       }
+    } catch (_) {}
+    _recorder = AudioRecorder();
 
-      String targetPath;
-      if (customPath != null) {
+    // 2. Check permission
+    final hasPerm = await hasMicrophonePermission();
+    if (!hasPerm) {
+      debugPrint('VoiceAudioService: Microphone permission not granted');
+      throw Exception('Không có quyền truy cập Microphone. Vui lòng cấp quyền trong cài đặt thiết bị.');
+    }
+
+    // 3. Determine target output path
+    String targetPath = '';
+    if (!kIsWeb) {
+      if (customPath != null && customPath.isNotEmpty) {
         targetPath = customPath;
       } else {
-        String dirPath = '';
+        String dirPath;
         try {
           final dir = await getTemporaryDirectory();
           dirPath = dir.path;
         } catch (_) {
           dirPath = Directory.systemTemp.path;
         }
-        final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.wav';
-        targetPath = '$dirPath/$fileName';
+        // Ensure clean path delimiters for Windows / Android / iOS
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        targetPath = Platform.isWindows
+            ? '$dirPath\\voice_record_$timestamp.m4a'
+            : '$dirPath/voice_record_$timestamp.m4a';
       }
+    }
 
-      // AudioEncoder.wav is supported across all platforms (Windows, Android, iOS, Web)
-      await recorder.start(
+    // 4. Try starting recording: First try AAC (widely supported on Windows Media Foundation, iOS, Android)
+    // If that fails, fallback to default wav/pcm format
+    try {
+      await _recorder!.start(
         const RecordConfig(
-          encoder: AudioEncoder.wav,
+          encoder: AudioEncoder.aacLc,
+          bitRate: 128000,
           sampleRate: 44100,
-          numChannels: 1,
+          numChannels: 2,
         ),
         path: targetPath,
       );
-
       return targetPath;
-    } catch (e) {
-      debugPrint('VoiceAudioService: startRecording error: $e');
-      // If hardware microphone fails (e.g. no mic plugged in, or desktop sandbox)
-      String fallbackPath;
+    } catch (primaryError) {
+      debugPrint('VoiceAudioService: Primary AAC recording failed: $primaryError, trying WAV fallback...');
       try {
-        final dir = await getTemporaryDirectory();
-        fallbackPath = '${dir.path}/simulated_voice_${DateTime.now().millisecondsSinceEpoch}.wav';
-      } catch (_) {
-        fallbackPath = 'simulated_voice_${DateTime.now().millisecondsSinceEpoch}.wav';
+        final wavPath = targetPath.endsWith('.m4a')
+            ? targetPath.replaceAll('.m4a', '.wav')
+            : targetPath;
+        await _recorder!.start(
+          const RecordConfig(
+            encoder: AudioEncoder.wav,
+          ),
+          path: wavPath,
+        );
+        return wavPath;
+      } catch (fallbackError) {
+        debugPrint('VoiceAudioService: WAV fallback also failed: $fallbackError');
+        rethrow;
       }
-      return fallbackPath;
     }
   }
 
-  /// Stop recording and return final audio file path
+  /// Stop recording and return final audio file path / URL
   Future<String?> stopRecording() async {
     try {
-      final recorder = _getRecorder();
-      if (await recorder.isRecording()) {
-        final path = await recorder.stop();
-        if (path != null && File(path).existsSync()) {
-          return path;
+      if (_recorder != null && await _recorder!.isRecording()) {
+        final path = await _recorder!.stop();
+        if (path != null && path.isNotEmpty) {
+          if (kIsWeb) {
+            return path; // Blob URL on web
+          }
+          final file = File(path);
+          if (await file.exists() && await file.length() > 0) {
+            return path;
+          }
         }
       }
     } catch (e) {
       debugPrint('VoiceAudioService: stopRecording error: $e');
     }
 
-    // Fallback: If hardware mic failed to create file, bundle sample audio
+    // Fallback: If hardware mic failed to create file (e.g. CI / testing env), bundle sample audio
     try {
-      final dir = await getTemporaryDirectory();
-      final fallbackPath = '${dir.path}/recorded_voice_note.wav';
-      final sampleAsset = File('assets/audio/sample_voice_reminder.wav');
-      if (await sampleAsset.exists()) {
-        await sampleAsset.copy(fallbackPath);
-        return fallbackPath;
+      if (!kIsWeb) {
+        final dir = await getTemporaryDirectory();
+        final fallbackPath = '${dir.path}/recorded_voice_note.wav';
+        final sampleAsset = File('assets/audio/sample_voice_reminder.wav');
+        if (await sampleAsset.exists()) {
+          await sampleAsset.copy(fallbackPath);
+          return fallbackPath;
+        }
       }
     } catch (_) {}
 
@@ -243,11 +274,11 @@ class VoiceAudioService {
 
       // Check if file exists on disk
       bool existsLocally = false;
-      if (!kIsWeb && !audioPath.startsWith('http')) {
+      if (!kIsWeb && !audioPath.startsWith('http') && !audioPath.startsWith('blob:')) {
         existsLocally = await File(audioPath).exists();
       }
 
-      if (audioPath.startsWith('http')) {
+      if (audioPath.startsWith('http') || audioPath.startsWith('blob:')) {
         await player.play(UrlSource(audioPath));
       } else if (audioPath.startsWith('assets/') ||
           audioPath == 'demo_voice_mom.m4a' ||

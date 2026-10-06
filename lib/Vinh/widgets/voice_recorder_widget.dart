@@ -85,60 +85,76 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
   }
 
   Future<void> _startRecording() async {
-    setState(() {
-      _recordState = VoiceRecordState.recording;
-      _recordSeconds = 0;
-      _soundLevel = 0.25;
-      _isSoundDetected = false;
-    });
+    try {
+      final path = await _audioService.startRecording();
+      _recordedPath = path;
 
-    _pulseController.repeat(reverse: true);
-
-    // 1. Seconds counter timer (max 30s)
-    _recordTimer?.cancel();
-    _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
       setState(() {
-        _recordSeconds++;
+        _recordState = VoiceRecordState.recording;
+        _recordSeconds = 0;
+        _soundLevel = 0.25;
+        _isSoundDetected = false;
       });
-      if (_recordSeconds >= 30) {
-        _stopRecording();
-      }
-    });
 
-    // 2. Real-time microphone amplitude listener
-    _amplitudeSub?.cancel();
-    _amplitudeSub = _audioService
-        .onAmplitudeChanged(interval: const Duration(milliseconds: 70))
-        .listen((amp) {
-      if (!mounted) return;
-      final db = amp.current;
-      final norm = ((db + 50.0) / 45.0).clamp(0.1, 1.0);
-      setState(() {
-        _currentDb = db;
-        _soundLevel = norm;
-        _isSoundDetected = db > -38.0;
-      });
-    });
+      _pulseController.repeat(reverse: true);
 
-    // 3. Alive visual wave oscillation timer (keeps visualizer lively)
-    _waveTickTimer?.cancel();
-    _waveTickTimer = Timer.periodic(const Duration(milliseconds: 60), (timer) {
-      if (!mounted || _recordState != VoiceRecordState.recording) {
-        timer.cancel();
-        return;
-      }
-      setState(() {
-        _waveTick++;
-        if (!_isSoundDetected && _soundLevel < 0.25) {
-          final sine = (math.sin(_waveTick * 0.35) + 1.0) * 0.5;
-          _soundLevel = 0.15 + (sine * 0.2);
+      // 1. Seconds counter timer (max 30s)
+      _recordTimer?.cancel();
+      _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) return;
+        setState(() {
+          _recordSeconds++;
+        });
+        if (_recordSeconds >= 30) {
+          _stopRecording();
         }
       });
-    });
 
-    final path = await _audioService.startRecording();
-    _recordedPath = path;
+      // 2. Real-time microphone amplitude listener
+      _amplitudeSub?.cancel();
+      _amplitudeSub = _audioService
+          .onAmplitudeChanged(interval: const Duration(milliseconds: 70))
+          .listen((amp) {
+        if (!mounted) return;
+        final db = amp.current;
+        final norm = ((db + 50.0) / 45.0).clamp(0.1, 1.0);
+        setState(() {
+          _currentDb = db;
+          _soundLevel = norm;
+          _isSoundDetected = db > -38.0;
+        });
+      });
+
+      // 3. Alive visual wave oscillation timer (keeps visualizer lively)
+      _waveTickTimer?.cancel();
+      _waveTickTimer = Timer.periodic(const Duration(milliseconds: 60), (timer) {
+        if (!mounted || _recordState != VoiceRecordState.recording) {
+          timer.cancel();
+          return;
+        }
+        setState(() {
+          _waveTick++;
+          if (!_isSoundDetected && _soundLevel < 0.25) {
+            final sine = (math.sin(_waveTick * 0.35) + 1.0) * 0.5;
+            _soundLevel = 0.15 + (sine * 0.2);
+          }
+        });
+      });
+    } catch (e) {
+      debugPrint('VoiceRecorderWidget: _startRecording failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Không thể bắt đầu ghi âm: ${e.toString().replaceAll('Exception: ', '')}',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            backgroundColor: const Color(0xFFBA1A1A),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _stopRecording() async {
