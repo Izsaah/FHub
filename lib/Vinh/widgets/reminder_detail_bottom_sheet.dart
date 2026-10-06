@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/reminder_model.dart';
 import '../services/member_color_helper.dart';
 import '../services/reminder_repository.dart';
+import 'voice_reminder_player.dart';
 
 class ReminderDetailBottomSheet extends StatelessWidget {
   final ReminderModel reminder;
@@ -249,6 +250,22 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               label: 'Status',
               valueWidget: _buildStatusBadge(reminder.status),
             ),
+            if (reminder.hasVoiceNote) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Bản ghi âm lời nhắc (Voice Note):',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF151D1B),
+                ),
+              ),
+              const SizedBox(height: 4),
+              VoiceReminderPlayer(
+                reminder: reminder,
+                isCompact: false,
+              ),
+            ],
             const SizedBox(height: 24),
 
             // Complete button (Only if assignedTo == currentUserId and Pending)

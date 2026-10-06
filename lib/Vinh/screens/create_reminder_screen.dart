@@ -4,6 +4,7 @@ import '../models/reminder_model.dart';
 import '../services/member_color_helper.dart';
 import '../services/reminder_repository.dart';
 import '../services/reminder_validator.dart';
+import '../widgets/voice_recorder_widget.dart';
 
 class CreateReminderScreen extends StatefulWidget {
   final String familyId;
@@ -33,8 +34,37 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
 
+  String? _voiceNotePath;
+  int? _voiceDurationSeconds;
+  String? _voiceNoteDescription;
+
   String? _dateTimeError;
   bool _isLoading = false;
+
+  void _onVoiceRecorded(String path, int durationSeconds, String description) {
+    setState(() {
+      _voiceNotePath = path;
+      _voiceDurationSeconds = durationSeconds;
+      _voiceNoteDescription = description;
+      if (_titleController.text.trim().isEmpty) {
+        if (description.isNotEmpty) {
+          _titleController.text = description.length > 25
+              ? '${description.substring(0, 25)}...'
+              : description;
+        } else {
+          _titleController.text = 'Lời nhắc giọng nói 🎙️';
+        }
+      }
+    });
+  }
+
+  void _onVoiceRemoved() {
+    setState(() {
+      _voiceNotePath = null;
+      _voiceDurationSeconds = null;
+      _voiceNoteDescription = null;
+    });
+  }
 
   @override
   void initState() {
@@ -188,6 +218,9 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         date: dateStr,
         time: timeStr,
         status: ReminderStatus.pending,
+        voiceNotePath: _voiceNotePath,
+        voiceDurationSeconds: _voiceDurationSeconds,
+        voiceNoteDescription: _voiceNoteDescription,
       );
 
       final created = await widget.repository.createReminder(
@@ -327,6 +360,13 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                   ),
                 ),
                 validator: ReminderValidator.validateTitle,
+              ),
+              const SizedBox(height: 16),
+
+              // 1.1 GHI ÂM GIỌNG NÓI (VOICE REMINDER VIA MICROPHONE & SPEAKER)
+              VoiceRecorderWidget(
+                onVoiceRecorded: _onVoiceRecorded,
+                onVoiceRemoved: _onVoiceRemoved,
               ),
               const SizedBox(height: 20),
 

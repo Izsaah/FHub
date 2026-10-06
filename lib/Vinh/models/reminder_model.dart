@@ -15,6 +15,9 @@ class ReminderModel {
   final String date; // dd/MM/yyyy
   final String time; // HH:mm
   final String status; // PENDING, COMPLETED, DELETED
+  final String? voiceNotePath;
+  final int? voiceDurationSeconds;
+  final String? voiceNoteDescription;
   final DateTime? completedAt;
   final DateTime? createdAt;
 
@@ -29,9 +32,14 @@ class ReminderModel {
     required this.date,
     required this.time,
     this.status = ReminderStatus.pending,
+    this.voiceNotePath,
+    this.voiceDurationSeconds,
+    this.voiceNoteDescription,
     this.completedAt,
     this.createdAt,
   });
+
+  bool get hasVoiceNote => voiceNotePath != null && voiceNotePath!.isNotEmpty;
 
   bool get isPending => status == ReminderStatus.pending;
   bool get isCompleted => status == ReminderStatus.completed;
@@ -88,6 +96,9 @@ class ReminderModel {
     String? date,
     String? time,
     String? status,
+    String? voiceNotePath,
+    int? voiceDurationSeconds,
+    String? voiceNoteDescription,
     DateTime? completedAt,
     DateTime? createdAt,
   }) {
@@ -102,6 +113,9 @@ class ReminderModel {
       date: date ?? this.date,
       time: time ?? this.time,
       status: status ?? this.status,
+      voiceNotePath: voiceNotePath ?? this.voiceNotePath,
+      voiceDurationSeconds: voiceDurationSeconds ?? this.voiceDurationSeconds,
+      voiceNoteDescription: voiceNoteDescription ?? this.voiceNoteDescription,
       completedAt: completedAt ?? this.completedAt,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -119,6 +133,16 @@ class ReminderModel {
       date: json['date'] as String? ?? '',
       time: json['time'] as String? ?? '',
       status: json['status'] as String? ?? ReminderStatus.pending,
+      voiceNotePath: json['voice_note_path'] as String? ?? json['voiceNotePath'] as String?,
+      voiceDurationSeconds: json['voice_duration_seconds'] is int
+          ? json['voice_duration_seconds'] as int
+          : (json['voiceDurationSeconds'] is int
+              ? json['voiceDurationSeconds'] as int
+              : (json['voice_duration_seconds'] != null
+                  ? int.tryParse(json['voice_duration_seconds'].toString())
+                  : null)),
+      voiceNoteDescription: json['voice_note_description'] as String? ??
+          json['voiceNoteDescription'] as String?,
       completedAt: json['completed_at'] != null
           ? DateTime.tryParse(json['completed_at'].toString())
           : (json['completedAt'] != null
@@ -144,6 +168,9 @@ class ReminderModel {
       'date': date,
       'time': time,
       'status': status,
+      if (voiceNotePath != null) 'voiceNotePath': voiceNotePath,
+      if (voiceDurationSeconds != null) 'voiceDurationSeconds': voiceDurationSeconds,
+      if (voiceNoteDescription != null) 'voiceNoteDescription': voiceNoteDescription,
       'completedAt': completedAt?.toIso8601String(),
       'createdAt': createdAt?.toIso8601String(),
     };
@@ -160,6 +187,11 @@ class ReminderModel {
       'date': date,
       'time': time,
       'status': status,
+      if (voiceNotePath != null) 'voice_note_path': voiceNotePath,
+      if (voiceDurationSeconds != null)
+        'voice_duration_seconds': voiceDurationSeconds,
+      if (voiceNoteDescription != null)
+        'voice_note_description': voiceNoteDescription,
       if (completedAt != null) 'completed_at': completedAt?.toIso8601String(),
       if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
     };
@@ -173,9 +205,14 @@ class ReminderModel {
           id == other.id &&
           familyId == other.familyId &&
           status == other.status &&
-          title == other.title;
+          title == other.title &&
+          voiceNotePath == other.voiceNotePath;
 
   @override
   int get hashCode =>
-      id.hashCode ^ familyId.hashCode ^ status.hashCode ^ title.hashCode;
+      id.hashCode ^
+      familyId.hashCode ^
+      status.hashCode ^
+      title.hashCode ^
+      voiceNotePath.hashCode;
 }
