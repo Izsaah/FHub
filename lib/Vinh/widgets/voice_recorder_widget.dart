@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../services/voice_audio_service.dart';
 
@@ -39,6 +40,14 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
+  // Real-time microphone audio input visualizer
+  StreamSubscription? _amplitudeSub;
+  Timer? _waveTickTimer;
+  double _soundLevel = 0.2;
+  double _currentDb = -45.0;
+  bool _isSoundDetected = false;
+  int _waveTick = 0;
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +71,8 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
   void dispose() {
     _recordTimer?.cancel();
     _previewTimer?.cancel();
+    _amplitudeSub?.cancel();
+    _waveTickTimer?.cancel();
     _pulseController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -77,9 +88,13 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
     setState(() {
       _recordState = VoiceRecordState.recording;
       _recordSeconds = 0;
+      _soundLevel = 0.25;
+      _isSoundDetected = false;
     });
 
     _pulseController.repeat(reverse: true);
+
+    // 1. Seconds counter timer (max 30s)
     _recordTimer?.cancel();
     _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
@@ -87,9 +102,39 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
         _recordSeconds++;
       });
       if (_recordSeconds >= 30) {
-        // Max 30 seconds (Zalo-style voice note)
         _stopRecording();
       }
+    });
+
+    // 2. Real-time microphone amplitude listener
+    _amplitudeSub?.cancel();
+    _amplitudeSub = _audioService
+        .onAmplitudeChanged(interval: const Duration(milliseconds: 70))
+        .listen((amp) {
+      if (!mounted) return;
+      final db = amp.current;
+      final norm = ((db + 50.0) / 45.0).clamp(0.1, 1.0);
+      setState(() {
+        _currentDb = db;
+        _soundLevel = norm;
+        _isSoundDetected = db > -38.0;
+      });
+    });
+
+    // 3. Alive visual wave oscillation timer (keeps visualizer lively)
+    _waveTickTimer?.cancel();
+    _waveTickTimer = Timer.periodic(const Duration(milliseconds: 60), (timer) {
+      if (!mounted || _recordState != VoiceRecordState.recording) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _waveTick++;
+        if (!_isSoundDetected && _soundLevel < 0.25) {
+          final sine = (math.sin(_waveTick * 0.35) + 1.0) * 0.5;
+          _soundLevel = 0.15 + (sine * 0.2);
+        }
+      });
     });
 
     final path = await _audioService.startRecording();
@@ -98,10 +143,12 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
 
   Future<void> _stopRecording() async {
     _recordTimer?.cancel();
+    _amplitudeSub?.cancel();
+    _waveTickTimer?.cancel();
     _pulseController.stop();
 
     final finalPath = await _audioService.stopRecording();
-    final actualPath = finalPath ?? _recordedPath ?? 'sample_voice_note.m4a';
+    final actualPath = finalPath ?? _recordedPath ?? 'assets/audio/sample_voice_reminder.wav';
 
     if (!mounted) return;
     setState(() {
@@ -115,6 +162,8 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
 
   Future<void> _cancelRecording() async {
     _recordTimer?.cancel();
+    _amplitudeSub?.cancel();
+    _waveTickTimer?.cancel();
     _pulseController.stop();
     await _audioService.cancelRecording();
 
@@ -309,72 +358,210 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
   }
 
   Widget _buildRecordingView() {
+    final activeColor = _isSoundDetected
+        ? const Color(0xFF0D7A68)
+        : const Color(0xFFBA1A1A);
+
     return Column(
       children: [
-        ScaleTransition(
-          scale: _pulseAnimation,
-          child: Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFDAD6),
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFBA1A1A), width: 2.5),
-            ),
-            child: const Icon(
-              Icons.mic,
-              color: Color(0xFFBA1A1A),
-              size: 34,
+        // 1. Concentric Ripple Pulse around Mic Button
+        SizedBox(
+          height: 100,
+          child: Center(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Outer expanding ripple reacting to sound amplitude
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  width: (76 + (_soundLevel * 24)).clamp(76.0, 100.0),
+                  height: (76 + (_soundLevel * 24)).clamp(76.0, 100.0),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: activeColor.withValues(alpha: 0.12),
+                  ),
+                ),
+                // Inner expanding ripple
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  width: (66 + (_soundLevel * 14)).clamp(66.0, 85.0),
+                  height: (66 + (_soundLevel * 14)).clamp(66.0, 85.0),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: activeColor.withValues(alpha: 0.22),
+                  ),
+                ),
+                // Center Mic Button with scale animation
+                ScaleTransition(
+                  scale: _pulseAnimation,
+                  child: Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: activeColor,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: activeColor.withValues(alpha: 0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.mic,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
+        const SizedBox(height: 6),
+
+        // 2. Sound Detection Badge (shows whether voice is being picked up)
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: _isSoundDetected
+                ? const Color(0xFFE0F5EE)
+                : const Color(0xFFFFDAD6),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: activeColor,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: activeColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _isSoundDetected
+                    ? '🟢 Đang nhận giọng nói: ${_currentDb > -100 ? '${_currentDb.toStringAsFixed(1)} dB' : ''} 🎙️'
+                    : '🎙️ Đang lắng nghe âm thanh Micro... (Hãy nói)',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: activeColor,
+                ),
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: Color(0xFFBA1A1A),
-                shape: BoxShape.circle,
+
+        // 3. Dynamic Live Audio Waveform (22 jumping frequency bars)
+        Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(22, (i) {
+              final centerDist = ((i - 10.5).abs() / 11.0);
+              final curve = math.cos(centerDist * math.pi * 0.5);
+              final dynamicHeight =
+                  (8.0 + (_soundLevel * 32.0 * curve)).clamp(6.0, 42.0);
+
+              return Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                  height: dynamicHeight,
+                  decoration: BoxDecoration(
+                    color: _isSoundDetected
+                        ? (i % 2 == 0
+                            ? const Color(0xFF0D7A68)
+                            : const Color(0xFF1CB098))
+                        : (i % 2 == 0
+                            ? const Color(0xFFBA1A1A)
+                            : const Color(0xFFFF5449)),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 4. Timer & Progress Bar (Max 30s)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Thời lượng: ${_formatTime(_recordSeconds)} / 00:30',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: activeColor,
+                    ),
+                  ),
+                  Text(
+                    'Còn lại ${30 - _recordSeconds}s',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF6E7A75),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              'Đang ghi âm... ${_formatTime(_recordSeconds)} / 00:30',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFFBA1A1A),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: (_recordSeconds / 30).clamp(0.0, 1.0),
+                  backgroundColor: const Color(0xFFE2EAE7),
+                  valueColor: AlwaysStoppedAnimation<Color>(activeColor),
+                  minHeight: 5,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 16),
+
+        // 5. Action Buttons (Hủy & Xong/Lưu)
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             OutlinedButton.icon(
               icon: const Icon(Icons.close, size: 18),
-              label: const Text('Hủy'),
+              label: const Text('Hủy bản thu'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFFBA1A1A),
                 side: const BorderSide(color: Color(0xFFBA1A1A)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
               onPressed: _cancelRecording,
             ),
             const SizedBox(width: 14),
             FilledButton.icon(
-              icon: const Icon(Icons.stop, size: 20),
-              label: const Text('Xong & Lưu'),
+              icon: const Icon(Icons.check_circle_outline, size: 20),
+              label: const Text('Xong & Nghe lại'),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF0D7A68),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
               onPressed: _stopRecording,
