@@ -60,6 +60,7 @@ class _CalendarPageState extends State<CalendarPage> {
       reminder: reminder,
       currentUserId: widget.currentUserId,
       repository: widget.repository,
+      familyMembers: widget.familyMembers,
       onReminderUpdated: () => setState(() {}),
     );
   }
