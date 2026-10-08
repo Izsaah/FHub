@@ -150,6 +150,95 @@ class SupabaseReminderRepository implements ReminderRepository {
   }
 
   @override
+  Future<ReminderModel> updateReminder({
+    required ReminderModel reminder,
+    required String currentUserId,
+    List<FamilyMember>? familyMembers,
+    DateTime? now,
+  }) async {
+    final client = _client;
+    if (client == null) {
+      return _fallbackRepository.updateReminder(
+        reminder: reminder,
+        currentUserId: currentUserId,
+        familyMembers: familyMembers,
+        now: now,
+      );
+    }
+
+    try {
+      final existingRes = await client
+          .from('reminders')
+          .select()
+          .eq('id', reminder.id)
+          .single();
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+
+      if (existing.creatorId != currentUserId) {
+        throw ReminderPermissionException(
+          'Only the creator can edit this reminder',
+        );
+      }
+
+      final sanitizedTitle = ReminderValidator.sanitizeTitle(reminder.title);
+      final titleError = ReminderValidator.validateTitle(sanitizedTitle);
+      if (titleError != null) {
+        throw ReminderValidationException(titleError);
+      }
+
+      if (familyMembers != null && familyMembers.isNotEmpty) {
+        final memberError = ReminderValidator.validateAssignedMember(
+          reminder.assignedTo,
+          familyMembers,
+        );
+        if (memberError != null) {
+          throw ReminderValidationException(memberError);
+        }
+      }
+
+      final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
+        reminder.date,
+        reminder.time,
+        now: now,
+      );
+      if (futureError != null) {
+        throw ReminderValidationException(futureError);
+      }
+
+      final updateMap = {
+        'title': sanitizedTitle,
+        'assigned_to': reminder.assignedTo,
+        'date': reminder.date,
+        'time': reminder.time,
+        'voice_note_path': reminder.voiceNotePath,
+        'voice_duration_seconds': reminder.voiceDurationSeconds,
+        'voice_note_description': reminder.voiceNoteDescription,
+      };
+
+      final updateRes = await client
+          .from('reminders')
+          .update(updateMap)
+          .eq('id', reminder.id)
+          .select()
+          .single();
+
+      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+    } catch (e) {
+      if (e is ReminderPermissionException ||
+          e is ReminderValidationException) {
+        rethrow;
+      }
+      return _fallbackRepository.updateReminder(
+        reminder: reminder,
+        currentUserId: currentUserId,
+        familyMembers: familyMembers,
+        now: now,
+      );
+    }
+  }
+
+  @override
   Future<ReminderModel> completeReminder({
     required String reminderId,
     required String currentUserId,

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../services/member_color_helper.dart';
 import '../services/reminder_repository.dart';
+import '../screens/create_reminder_screen.dart';
 import 'voice_reminder_player.dart';
 
 class ReminderDetailBottomSheet extends StatelessWidget {
   final ReminderModel reminder;
   final String currentUserId;
   final ReminderRepository repository;
+  final List<FamilyMember> familyMembers;
   final VoidCallback? onReminderUpdated;
 
   const ReminderDetailBottomSheet({
@@ -16,6 +19,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     required this.reminder,
     required this.currentUserId,
     required this.repository,
+    this.familyMembers = const [],
     this.onReminderUpdated,
   });
 
@@ -24,6 +28,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     required ReminderModel reminder,
     required String currentUserId,
     required ReminderRepository repository,
+    List<FamilyMember> familyMembers = const [],
     VoidCallback? onReminderUpdated,
   }) {
     return showModalBottomSheet(
@@ -34,6 +39,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         reminder: reminder,
         currentUserId: currentUserId,
         repository: repository,
+        familyMembers: familyMembers,
         onReminderUpdated: onReminderUpdated,
       ),
     );
@@ -43,6 +49,8 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       reminder.isPending && reminder.assignedTo == currentUserId;
 
   bool get canDelete => reminder.creatorId == currentUserId;
+
+  bool get canEdit => reminder.creatorId == currentUserId;
 
   Future<void> _handleComplete(BuildContext context) async {
     try {
@@ -129,6 +137,26 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     }
   }
 
+  Future<void> _handleEdit(BuildContext context) async {
+    Navigator.of(context).pop();
+    final updated = await Navigator.of(context).push<ReminderModel>(
+      MaterialPageRoute(
+        builder: (ctx) => CreateReminderScreen(
+          familyId: reminder.familyId,
+          currentUserId: currentUserId,
+          currentUserName: reminder.creatorName ?? 'Me',
+          familyMembers: familyMembers,
+          repository: repository,
+          existingReminder: reminder,
+        ),
+      ),
+    );
+
+    if (updated != null) {
+      onReminderUpdated?.call();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF0D7A68);
@@ -159,7 +187,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            // Header with Title and Delete action (if creator)
+            // Header with Title, Edit action (if creator), and Delete action (if creator)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -177,6 +205,13 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (canEdit && !isCompleted)
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined,
+                        color: Color(0xFF0D7A68)),
+                    tooltip: 'Edit Reminder',
+                    onPressed: () => _handleEdit(context),
+                  ),
                 if (canDelete)
                   IconButton(
                     icon: const Icon(Icons.delete_outline,
