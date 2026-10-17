@@ -46,9 +46,11 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                Navigator.of(context).pop();
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
               },
               child: const Text(
                 'Tiếp tục',

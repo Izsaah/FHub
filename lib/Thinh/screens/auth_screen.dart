@@ -17,14 +17,17 @@ class _AuthScreenState extends State<AuthScreen> {
     return ValueListenableBuilder<bool>(
       valueListenable: AppLanguage.isEnglish,
       builder: (context, isEnglish, child) => Scaffold(
-        backgroundColor: Colors
-            .white, // In HTML it's a gradient, let's use a solid close to it
+        backgroundColor: Colors.white,
         body: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [AppColors.brand50, Color(0xFFf7faf8), Colors.white],
+              colors: [
+                AppColors.brand50,
+                Color(0xFFF7FAF8),
+                Colors.white,
+              ],
             ),
           ),
           child: SafeArea(
@@ -37,11 +40,12 @@ class _AuthScreenState extends State<AuthScreen> {
                     _buildTopBar(),
                     const SizedBox(height: 12),
                     _buildHeroSection(),
-                    const SizedBox(height: 20),
-                    // Content based on tab
-                    LoginFormView(key: ValueKey(isEnglish)),
+                    const SizedBox(height: 24),
 
-                    const SizedBox(height: 20),
+                    // Login card đầy đủ: Email/Password + Google + Register + Forgot Password
+                    const LoginFormView(),
+
+                    const SizedBox(height: 24),
                     _buildFooter(),
                     const SizedBox(height: 20),
                   ],
@@ -63,8 +67,8 @@ class _AuthScreenState extends State<AuthScreen> {
           Row(
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   color: AppColors.brand600,
                   borderRadius: BorderRadius.circular(12),
@@ -72,27 +76,26 @@ class _AuthScreenState extends State<AuthScreen> {
                     BoxShadow(
                       color: AppColors.brand600.withValues(alpha: 0.3),
                       blurRadius: 8,
-                      offset: const Offset(0, 4),
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
                 child: const Icon(
-                  Icons.favorite,
+                  Icons.favorite_rounded,
                   color: Colors.white,
                   size: 20,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    AppLanguage.text('Gia Đình Việt', 'Vietnamese Family'),
-                    style: TextStyle(
-                      fontSize: 12,
+                    AppLanguage.text('Gia Đình Việt', 'Family Hub'),
+                    style: const TextStyle(
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.brand600,
-                      letterSpacing: 1.1,
+                      color: AppColors.brand900,
                     ),
                   ),
                   Text(
@@ -100,52 +103,47 @@ class _AuthScreenState extends State<AuthScreen> {
                       'Bình yên từng khoảnh khắc',
                       'Peace in every moment',
                     ),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                      fontWeight: FontWeight.w500,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
               ),
             ],
           ),
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.brand100),
-            ),
-            child: Row(
-              children: [
-                _buildLangBtn('VI', !AppLanguage.isEnglish.value),
-                _buildLangBtn('EN', AppLanguage.isEnglish.value),
-              ],
-            ),
+          Row(
+            children: [
+              _buildLangButton('VI', false),
+              const SizedBox(width: 6),
+              _buildLangButton('EN', true),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLangBtn(String lang, bool isActive) {
+  Widget _buildLangButton(String label, bool isEnglishValue) {
+    final bool isActive = AppLanguage.isEnglish.value == isEnglishValue;
     return GestureDetector(
-      onTap: () => AppLanguage.isEnglish.value = lang == 'EN',
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: isActive
-            ? BoxDecoration(
-                color: AppColors.brand600,
-                borderRadius: BorderRadius.circular(16),
-              )
-            : null,
+      onTap: () => AppLanguage.isEnglish.value = isEnglishValue,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive ? AppColors.brand600 : AppColors.brand50,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isActive ? AppColors.brand600 : AppColors.brand200,
+          ),
+        ),
         child: Text(
-          lang,
+          label,
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
-            color: isActive ? Colors.white : Colors.grey[600],
+            color: isActive ? Colors.white : AppColors.brand700,
           ),
         ),
       ),
@@ -154,7 +152,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Widget _buildHeroSection() {
     return Container(
-      height: 180,
+      height: 190,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.brand100),
@@ -181,7 +179,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
                 colors: [
-                  AppColors.brand900.withValues(alpha: 0.9),
+                  AppColors.brand900.withValues(alpha: 0.92),
                   AppColors.brand900.withValues(alpha: 0.4),
                   Colors.transparent,
                 ],
@@ -189,16 +187,16 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
           ),
           Positioned(
-            bottom: 14,
-            left: 16,
-            right: 16,
+            bottom: 16,
+            left: 18,
+            right: 18,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
+                    horizontal: 10,
+                    vertical: 3,
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.accentAmber,
@@ -207,14 +205,14 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.home_filled, color: Colors.white, size: 12),
-                      SizedBox(width: 4),
+                      const Icon(Icons.home_filled, color: Colors.white, size: 12),
+                      const SizedBox(width: 4),
                       Text(
                         AppLanguage.text(
                           'Phiên bản Gia Đình',
                           'Family Edition',
                         ),
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
@@ -223,12 +221,12 @@ class _AuthScreenState extends State<AuthScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   AppLanguage.text('Tổ Ấm Yêu Thương', 'A Loving Home'),
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -238,8 +236,8 @@ class _AuthScreenState extends State<AuthScreen> {
                     'Connect with love • Share every moment',
                   ),
                   style: TextStyle(
-                    color: AppColors.brand100.withValues(alpha: 0.9),
-                    fontSize: 12,
+                    color: AppColors.brand100.withValues(alpha: 0.95),
+                    fontSize: 13,
                   ),
                 ),
               ],
@@ -254,7 +252,7 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color: AppColors.brand50,
             borderRadius: BorderRadius.circular(20),
@@ -263,17 +261,20 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.security, color: AppColors.brand600, size: 14),
-              SizedBox(width: 6),
-              Text(
-                AppLanguage.text(
-                  'Vị trí & dữ liệu sức khỏe gia đình được bảo mật 100%',
-                  'Family location and health data are 100% private',
-                ),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: AppColors.brand800,
-                  fontWeight: FontWeight.w500,
+              const Icon(Icons.shield_outlined,
+                  color: AppColors.brand600, size: 16),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  AppLanguage.text(
+                    'Dữ liệu định vị & sức khỏe gia đình được mã hóa an toàn',
+                    'Family health & location data are encrypted and safe',
+                  ),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.brand800,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
@@ -285,32 +286,26 @@ class _AuthScreenState extends State<AuthScreen> {
           children: [
             Text(
               AppLanguage.text('Chính sách bảo mật', 'Privacy Policy'),
-              style: TextStyle(fontSize: 10, color: Colors.grey),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
-            Padding(
+            const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text(
-                '•',
-                style: TextStyle(fontSize: 10, color: Colors.grey),
-              ),
+              child: Text('•', style: TextStyle(fontSize: 11, color: Colors.grey)),
             ),
             Text(
               AppLanguage.text('Điều khoản dịch vụ', 'Terms of Service'),
-              style: TextStyle(fontSize: 10, color: Colors.grey),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
-            Padding(
+            const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text(
-                '•',
-                style: TextStyle(fontSize: 10, color: Colors.grey),
-              ),
+              child: Text('•', style: TextStyle(fontSize: 11, color: Colors.grey)),
             ),
             Text(
               AppLanguage.text(
-                '© Tổ Ấm Yêu Thương 2024',
-                '© A Loving Home 2024',
+                '© Tổ Ấm Yêu Thương 2026',
+                '© Family Hub 2026',
               ),
-              style: TextStyle(fontSize: 10, color: Colors.grey),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
           ],
         ),
