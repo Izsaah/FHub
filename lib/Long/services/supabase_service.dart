@@ -3,9 +3,14 @@ import '../models/user_model.dart';
 import '../models/family_model.dart';
 import '../models/family_member_model.dart';
 import '../models/reminder_model.dart';
+import '../models/hierarchy_role.dart';
+import '../models/member_status.dart';
+import '../models/check_in_feed_model.dart';
+import '../models/check_in_reminder_model.dart';
+import 'family_service_interface.dart';
 import 'mock_data_service.dart';
 
-class SupabaseService {
+class SupabaseService implements IFamilyService {
   static final SupabaseService _instance = SupabaseService._internal();
   factory SupabaseService() => _instance;
   SupabaseService._internal();
@@ -13,6 +18,7 @@ class SupabaseService {
   final _supabase = Supabase.instance.client;
   final _mock = MockDataService();
 
+  @override
   String get currentUserId => _supabase.auth.currentUser?.id ?? _mock.currentUser.id;
 
   Future<String?> _getCurrentFamilyId() async {
@@ -35,6 +41,7 @@ class SupabaseService {
     return familyId != null;
   }
 
+  @override
   Future<UserModel> getCurrentUser() async {
     if (_supabase.auth.currentUser == null) return _mock.currentUser;
     try {
@@ -46,6 +53,13 @@ class SupabaseService {
     }
   }
 
+  @override
+  Future<List<FamilyModel>> getMyFamilies() async {
+    // Current DB schema does not have multi-family support yet; delegate to mock service
+    return _mock.getMyFamilies();
+  }
+
+  @override
   Future<FamilyModel?> getCurrentFamily() async {
     final familyId = await _getCurrentFamilyId();
     if (familyId == null) return null;
@@ -59,20 +73,79 @@ class SupabaseService {
     }
   }
 
-  Future<List<FamilyMemberModel>> getFamilyMembers() async {
-    final familyId = await _getCurrentFamilyId();
-    if (familyId == null) return [];
-    if (_supabase.auth.currentUser == null) return _mock.members;
+  @override
+  Future<void> switchFamily(String familyId) async {
+    await _mock.switchFamily(familyId);
+  }
+
+  @override
+  Future<FamilyModel> createFamily({
+    required String name,
+    HierarchyRole hierarchyRole = HierarchyRole.parent,
+  }) async {
+    return _mock.createFamily(name: name, hierarchyRole: hierarchyRole);
+  }
+
+  @override
+  Future<FamilyModel> joinFamily({
+    required String joinCode,
+    HierarchyRole hierarchyRole = HierarchyRole.child,
+  }) async {
+    return _mock.joinFamily(joinCode: joinCode, hierarchyRole: hierarchyRole);
+  }
+
+  @override
+  Future<List<FamilyMemberModel>> getFamilyMembers({String? familyId}) async {
+    final targetId = familyId ?? await _getCurrentFamilyId();
+    if (targetId == null) return [];
+    if (_supabase.auth.currentUser == null) return _mock.getFamilyMembers(familyId: targetId);
     try {
       final response = await _supabase.from('family_members').select('''
         *,
         user:users(*)
-      ''').eq('family_id', familyId);
+      ''').eq('family_id', targetId);
       
       return (response as List).map((e) => FamilyMemberModel.fromJson(e)).toList();
     } catch (_) {
-      return _mock.members;
+      return _mock.getFamilyMembers(familyId: targetId);
     }
+  }
+
+  @override
+  Stream<List<FamilyMemberModel>> streamFamilyMembers({String? familyId}) {
+    return _mock.streamFamilyMembers(familyId: familyId);
+  }
+
+  @override
+  Future<void> updateOwnerLastActive() async {
+    await _mock.updateOwnerLastActive();
+  }
+
+  @override
+  Future<void> updateMemberStatus(
+    String targetUserId,
+    MemberStatus newStatus, {
+    String? familyId,
+  }) async {
+    await _mock.updateMemberStatus(targetUserId, newStatus, familyId: familyId);
+  }
+
+  @override
+  Future<void> transferOwnership(
+    String newOwnerUserId, {
+    String? familyId,
+  }) async {
+    await _mock.transferOwnership(newOwnerUserId, familyId: familyId);
+  }
+
+  @override
+  bool isTakeoverEligible({String? familyId}) {
+    return _mock.isTakeoverEligible(familyId: familyId);
+  }
+
+  @override
+  Future<void> claimOwnership({String? familyId}) async {
+    await _mock.claimOwnership(familyId: familyId);
   }
 
   Future<List<ReminderModel>> getMyPendingReminders() async {
@@ -89,25 +162,49 @@ class SupabaseService {
     }
   }
 
-  Future<void> checkIn(String userId) async {
-    final familyId = await _getCurrentFamilyId();
-    if (familyId == null) throw Exception('No family to check into');
-    if (_supabase.auth.currentUser == null) {
-      _mock.checkIn(userId);
-      return;
+  @override
+  Future<void> checkIn(
+    String userId, {
+    String? imageUrl,
+    String? caption,
+    String? familyId,
+  }) async {
+    final targetFamId = familyId ?? await _getCurrentFamilyId();
+    if (targetFamId == null) throw Exception('No family to check into');
+
+    // Always run through mock logic for duplicate prevention, feeds, and reminder cancellation
+    await _mock.checkIn(userId, imageUrl: imageUrl, caption: caption, familyId: targetFamId);
+
+    // If connected to Supabase and authenticated, also mirror to current table safely
+    if (_supabase.auth.currentUser != null) {
+      try {
+        final now = DateTime.now();
+        await _supabase.from('family_members')
+            .update({
+              'last_check_in_at': now.toIso8601String(),
+              'last_check_in_date': "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}",
+            })
+            .eq('family_id', targetFamId)
+            .eq('user_id', userId);
+      } catch (_) {
+        // Fallback silently without throwing to keep UI responsive
+      }
     }
-    try {
-      final now = DateTime.now();
-      await _supabase.from('family_members')
-          .update({
-            'last_check_in_at': now.toIso8601String(),
-            'last_check_in_date': "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}",
-          })
-          .eq('family_id', familyId)
-          .eq('user_id', userId);
-    } catch (_) {
-      _mock.checkIn(userId);
-    }
+  }
+
+  @override
+  Future<List<CheckInFeedModel>> getCheckInFeeds({String? familyId}) async {
+    return _mock.getCheckInFeeds(familyId: familyId);
+  }
+
+  @override
+  List<CheckInReminderItem> getSimulatedReminders({String? familyId}) {
+    return _mock.getSimulatedReminders(familyId: familyId);
+  }
+
+  @override
+  void cancelRemindersForUser(String userId, {String? familyId}) {
+    _mock.cancelRemindersForUser(userId, familyId: familyId);
   }
 
   Future<void> completeReminder(String reminderId) async {

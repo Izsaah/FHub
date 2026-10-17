@@ -1,55 +1,205 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/custom_app_bar.dart';
+import '../../models/hierarchy_role.dart';
+import '../../services/family_state_manager.dart';
 import '../../../Danh/danh_payment_entry.dart';
 
-class CreateFamilyScreen extends StatelessWidget {
+class CreateFamilyScreen extends StatefulWidget {
   const CreateFamilyScreen({super.key});
+
+  @override
+  State<CreateFamilyScreen> createState() => _CreateFamilyScreenState();
+}
+
+class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
+  final _nameController = TextEditingController();
+  HierarchyRole _selectedRole = HierarchyRole.parent;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleCreate() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng nhập tên gia đình!')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final service = FamilyStateManager().service;
+      final createdFamily = await service.createFamily(
+        name: name,
+        hierarchyRole: _selectedRole,
+      );
+
+      DanhPaymentEntry.onFamilyCreatedOrJoined(createdFamily.id);
+      await FamilyStateManager().reload();
+
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Tạo gia đình "${createdFamily.name}" thành công! Mã mời: ${createdFamily.joinCode}',
+          ),
+          backgroundColor: const Color(0xFF005F50),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red[700],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Create Family'),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      backgroundColor: Colors.white,
+      appBar: const CustomAppBar(title: 'Tạo Tổ Ấm Mới'),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Family Name',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              'Tên Tổ Ấm / Gia Đình',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF151D1B),
+              ),
             ),
             const SizedBox(height: 8),
-            const TextField(
+            TextField(
+              controller: _nameController,
               decoration: InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Enter family name',
+                hintText: 'VD: Gia đình Nguyễn, Tổ ấm nhỏ...',
+                filled: true,
+                fillColor: const Color(0xFFF7FAF9),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFBDC9C4)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: const Color(0xFFBDC9C4).withValues(alpha: 0.6),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 24),
+            const Text(
+              'Vai vế của bạn trong gia đình này:',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF151D1B),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: HierarchyRole.values.map((role) {
+                final isSelected = _selectedRole == role;
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    child: InkWell(
+                      onTap: () => setState(() => _selectedRole = role),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF005F50)
+                              : const Color(0xFFEDF5F2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? const Color(0xFF005F50)
+                                : const Color(0xFFBDC9C4),
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          role.displayName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF2B3633),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 20, color: Color(0xFF2E7D32)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Hệ thống sẽ tự động tạo mã mời 6 ký tự để bạn gửi cho người thân cùng tham gia.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF1B5E20)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: const Color(0xFF005F50),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              onPressed: () {
-                final newFamilyId = 'f_${DateTime.now().millisecondsSinceEpoch}';
-                DanhPaymentEntry.onFamilyCreatedOrJoined(newFamilyId);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      DanhPaymentEntry.service.isPremium
-                          ? 'Tạo gia đình thành công! Gói Premium của bạn đã được kích hoạt cho tổ ấm mới (10 người).'
-                          : 'Tạo gia đình thành công!',
+              onPressed: _isLoading ? null : _handleCreate,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'Tạo Gia Đình Ngay',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    backgroundColor: const Color(0xFF005F50),
-                  ),
-                );
-              },
-              child: const Text('Create', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
           ],
         ),

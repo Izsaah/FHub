@@ -14,51 +14,61 @@ class CheckInButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      height: 64,
+      height: 68,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: isCheckedIn
             ? []
             : const [
                 BoxShadow(
-                  color: Color(0x120D7A68),
-                  offset: Offset(0, 10),
-                  blurRadius: 24,
-                  spreadRadius: -4,
+                  color: Color(0x280D7A68),
+                  offset: Offset(0, 8),
+                  blurRadius: 20,
+                  spreadRadius: 0,
                 ),
                 BoxShadow(
-                  color: Color(0x0DF49D37),
-                  offset: Offset(0, 4),
-                  blurRadius: 10,
-                  spreadRadius: -2,
+                  color: Color(0x18005F50),
+                  offset: Offset(0, 2),
+                  blurRadius: 6,
+                  spreadRadius: 0,
                 ),
               ],
       ),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: isCheckedIn
-              ? const Color(0xFFE2EAE7)
+              ? const Color(0xFFE8EEEC)
               : const Color(0xFF005F50),
-          foregroundColor: isCheckedIn ? const Color(0xFF6E7A75) : Colors.white,
+          foregroundColor: isCheckedIn ? const Color(0xFF4A6B63) : Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             side: BorderSide(
               color: isCheckedIn
-                  ? const Color(0xFFBDC9C4).withValues(alpha: 0.6)
-                  : Colors.transparent,
+                  ? const Color(0xFFB5CAC4)
+                  : const Color(0xFF0D7A68),
+              width: 1.5,
             ),
           ),
-          elevation: 0,
+          elevation: isCheckedIn ? 0 : 2,
         ),
-        onPressed: isCheckedIn ? null : onPressed,
+        onPressed: onPressed,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(isCheckedIn ? Icons.check_circle : Icons.task_alt, size: 24),
-            const SizedBox(width: 8),
+            Icon(
+              isCheckedIn ? Icons.check_circle_rounded : Icons.check_circle_outline,
+              size: 28,
+              color: isCheckedIn ? const Color(0xFF005F50) : Colors.white,
+            ),
+            const SizedBox(width: 10),
             Text(
-              isCheckedIn ? "You're already checked in" : "I'M OK",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              isCheckedIn ? "You're already checked in" : "✓ I'M OK",
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+                letterSpacing: isCheckedIn ? 0 : 0.8,
+                color: isCheckedIn ? const Color(0xFF234D43) : Colors.white,
+              ),
             ),
           ],
         ),

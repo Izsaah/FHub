@@ -4,8 +4,7 @@ import 'home/home_screen.dart';
 import 'family/family_screen.dart';
 import 'profile/profile_screen.dart';
 import '../../Vinh/screens/reminder_list_screen.dart';
-
-import '../services/supabase_service.dart';
+import '../services/family_state_manager.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -16,18 +15,11 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
-  late Future<bool> _hasFamilyFuture;
 
   @override
   void initState() {
     super.initState();
-    _hasFamilyFuture = SupabaseService().hasFamily();
-  }
-
-  void _refreshFamilyStatus() {
-    setState(() {
-      _hasFamilyFuture = SupabaseService().hasFamily();
-    });
+    FamilyStateManager().initialize();
   }
 
   final List<Widget> _screens = [
