@@ -5,6 +5,7 @@ import '../models/reminder_model.dart';
 import '../services/reminder_repository.dart';
 import '../services/supabase_config.dart';
 import '../widgets/family_progress_card.dart';
+import '../widgets/monthly_calendar_grid.dart';
 import '../widgets/reminder_card.dart';
 import '../widgets/reminder_detail_bottom_sheet.dart';
 import '../widgets/reminder_section_header.dart';
@@ -42,6 +43,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   late ReminderRepository _repository;
   bool _isLoading = true;
 
+  bool _isCalendarView = false;
+  DateTime _currentMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
   bool _showAll = true;
   bool _filterOnlyMine = false;
@@ -476,21 +479,51 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             }).toList(),
           ),
           IconButton(
-            icon: const Icon(Icons.calendar_month, color: primaryColor),
-            tooltip: 'Xem trang Lịch (Calendar Page)',
+            icon: Icon(
+              _isCalendarView
+                  ? Icons.format_list_bulleted_rounded
+                  : Icons.calendar_month_rounded,
+              color: primaryColor,
+            ),
+            tooltip: _isCalendarView
+                ? 'Chuyển sang chế độ Danh sách (List View)'
+                : 'Chuyển sang chế độ Lịch (Calendar View)',
             onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (ctx) => CalendarPage(
-                    familyId: _familyId,
-                    currentUserId: _currentUserId,
-                    currentUserName: _currentUserName,
-                    familyMembers: _familyMembers,
-                    repository: _repository,
-                  ),
-                ),
-              );
+              setState(() {
+                _isCalendarView = !_isCalendarView;
+              });
             },
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Tùy chọn khác',
+            icon: const Icon(Icons.more_vert, color: primaryColor),
+            onSelected: (val) {
+              if (val == 'full_calendar') {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (ctx) => CalendarPage(
+                      familyId: _familyId,
+                      currentUserId: _currentUserId,
+                      currentUserName: _currentUserName,
+                      familyMembers: _familyMembers,
+                      repository: _repository,
+                    ),
+                  ),
+                );
+              }
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'full_calendar',
+                child: Row(
+                  children: [
+                    Icon(Icons.open_in_new_rounded, size: 18, color: primaryColor),
+                    SizedBox(width: 8),
+                    Text('Mở trang Lịch toàn màn hình'),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 8),
         ],
@@ -539,10 +572,23 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               ? searchedReminders
               : searchedReminders.where((r) => r.date == selectedDateStr).toList();
 
-          final pendingList =
-              displayedReminders.where((r) => r.isPending).toList();
+          final activeReminders =
+              displayedReminders.where((r) => !r.isDeleted).toList();
+
+          final overdueList = activeReminders
+              .where((r) => r.isOverdue && !r.isCompleted)
+              .toList();
+
+          final openList = activeReminders
+              .where((r) => r.isOpen && !r.isOverdue && !r.isCompleted)
+              .toList();
+
+          final pendingList = activeReminders
+              .where((r) => r.isPending && !r.isOverdue && !r.isOpen && !r.isCompleted)
+              .toList();
+
           final completedList =
-              displayedReminders.where((r) => r.isCompleted).toList();
+              activeReminders.where((r) => r.isCompleted).toList();
 
           return Column(
             children: [
@@ -639,23 +685,75 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 ),
               ),
 
-              // 1. Weekly Calendar Strip
-              WeeklyCalendarStrip(
-                selectedDate: _selectedDate,
-                showAll: _showAll,
-                reminders: scopedReminders,
-                onDateSelected: (date) {
-                  setState(() {
-                    _selectedDate = date;
-                    _showAll = false;
-                  });
-                },
-                onSelectAll: () {
-                  setState(() {
-                    _showAll = true;
-                  });
-                },
-              ),
+              // 1. Dual-View Header (Monthly Calendar Grid vs Weekly Calendar Strip)
+              if (_isCalendarView) ...[
+                MonthlyCalendarGrid(
+                  currentMonth: _currentMonth,
+                  selectedDate: _selectedDate,
+                  reminders: scopedReminders,
+                  onDateSelected: (date) {
+                    setState(() {
+                      _selectedDate = date;
+                      _showAll = false;
+                    });
+                  },
+                  onMonthChanged: (newMonth) {
+                    setState(() {
+                      _currentMonth = newMonth;
+                    });
+                  },
+                ),
+                if (!_showAll)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.filter_alt_outlined, size: 16, color: primaryColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Đang lọc theo ngày: $selectedDateStr',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: primaryColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() => _showAll = true),
+                          child: const Text(
+                            'Xem tất cả',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: primaryColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ] else
+                WeeklyCalendarStrip(
+                  selectedDate: _selectedDate,
+                  showAll: _showAll,
+                  reminders: scopedReminders,
+                  onDateSelected: (date) {
+                    setState(() {
+                      _selectedDate = date;
+                      _showAll = false;
+                    });
+                  },
+                  onSelectAll: () {
+                    setState(() {
+                      _showAll = true;
+                    });
+                  },
+                ),
 
               // 2. Family Daily Progress Card
               FamilyProgressCard(
@@ -663,7 +761,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 dateTitle: _showAll ? 'Tất cả' : selectedDateStr,
               ),
 
-              // 3. Reminder List
+              // 3. Reminder List (Prioritized by OVERDUE -> OPEN -> PENDING -> COMPLETED)
               Expanded(
                 child: allReminders.isEmpty
                     ? _buildEmptyState()
@@ -672,11 +770,65 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                         : ListView(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
                             children: [
-                              // PENDING SECTION
+                              // 1. OVERDUE SECTION (Highest Priority)
+                              if (overdueList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: 'QUÁ HẠN (OVERDUE)',
+                                  count: overdueList.length,
+                                  color: const Color(0xFFBA1A1A),
+                                  icon: Icons.warning_amber_rounded,
+                                ),
+                                ...overdueList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: _currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onComplete:
+                                        reminder.assignedTo == _currentUserId
+                                            ? () => _completeReminder(reminder)
+                                            : null,
+                                    onDelete:
+                                        reminder.creatorId == _currentUserId
+                                            ? () => _confirmAndDelete(reminder)
+                                            : null,
+                                  ),
+                                ),
+                              ],
+
+                              // 2. OPEN SECTION
+                              if (openList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: 'ĐANG MỞ (OPEN)',
+                                  count: openList.length,
+                                  color: const Color(0xFF006A6A),
+                                  icon: Icons.lock_open_rounded,
+                                ),
+                                ...openList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: _currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onComplete:
+                                        reminder.assignedTo == _currentUserId
+                                            ? () => _completeReminder(reminder)
+                                            : null,
+                                    onDelete:
+                                        reminder.creatorId == _currentUserId
+                                            ? () => _confirmAndDelete(reminder)
+                                            : null,
+                                  ),
+                                ),
+                              ],
+
+                              // 3. PENDING SECTION
                               if (pendingList.isNotEmpty) ...[
                                 ReminderSectionHeader(
-                                  title: 'PENDING',
+                                  title: 'CHỜ XỬ LÝ (PENDING)',
                                   count: pendingList.length,
+                                  color: const Color(0xFF49454F),
+                                  icon: Icons.hourglass_top_rounded,
                                 ),
                                 ...pendingList.map(
                                   (reminder) => ReminderCard(
@@ -696,11 +848,13 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                                 ),
                               ],
 
-                              // COMPLETED SECTION
+                              // 4. COMPLETED SECTION
                               if (completedList.isNotEmpty) ...[
                                 ReminderSectionHeader(
-                                  title: 'COMPLETED',
+                                  title: 'ĐÃ HOÀN THÀNH (COMPLETED)',
                                   count: completedList.length,
+                                  color: const Color(0xFF005F50),
+                                  icon: Icons.check_circle_outline_rounded,
                                 ),
                                 ...completedList.map(
                                   (reminder) => ReminderCard(

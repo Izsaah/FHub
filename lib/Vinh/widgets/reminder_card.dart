@@ -215,8 +215,25 @@ class ReminderCard extends StatelessWidget {
                                   fontWeight: FontWeight.w600,
                                   color: primaryColor,
                                 ),
-                              ),
-                              if (_getRelativeTime(reminder) != null) ...[
+                              if (reminder.isOverdue) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFEBEE),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    '⚠️ Quá hạn',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFFBA1A1A),
+                                    ),
+                                  ),
+                                ),
+                              ] else if (_getRelativeTime(reminder) != null) ...[
                                 const SizedBox(width: 6),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
@@ -231,6 +248,27 @@ class ReminderCard extends StatelessWidget {
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
                                       color: Color(0xFFF49D37),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (reminder.isRecurring) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE8F5E9),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    reminder.repeatRule == 'DAILY'
+                                        ? '🔁 Hàng ngày'
+                                        : '🔁 Hàng tuần',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2E7D32),
                                     ),
                                   ),
                                 ),

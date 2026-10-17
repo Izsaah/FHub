@@ -46,7 +46,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   }
 
   bool get canComplete =>
-      reminder.isPending && reminder.assignedTo == currentUserId;
+      !reminder.isCompleted &&
+      !reminder.isDeleted &&
+      reminder.assignedTo == currentUserId;
 
   bool get canDelete => reminder.creatorId == currentUserId;
 
@@ -279,11 +281,21 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               label: 'Date',
               value: reminder.displayDate,
             ),
+            if (reminder.isRecurring) ...[
+              const SizedBox(height: 10),
+              _buildDetailRow(
+                icon: Icons.repeat_rounded,
+                label: 'Lặp lại',
+                value: reminder.repeatRule == 'DAILY'
+                    ? 'Hàng ngày (Daily)'
+                    : 'Hàng tuần (Weekly)',
+              ),
+            ],
             const SizedBox(height: 10),
             _buildDetailRow(
               icon: Icons.info_outline,
               label: 'Status',
-              valueWidget: _buildStatusBadge(reminder.status),
+              valueWidget: _buildStatusBadge(reminder),
             ),
             if (reminder.hasVoiceNote) ...[
               const SizedBox(height: 16),
@@ -303,7 +315,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
             ],
             const SizedBox(height: 24),
 
-            // Complete button (Only if assignedTo == currentUserId and Pending)
+            // Complete button (Only if assignedTo == currentUserId and not completed)
             if (canComplete)
               SizedBox(
                 height: 52,
@@ -316,7 +328,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.check, size: 22),
                   label: const Text(
-                    'Complete',
+                    'Hoàn thành (Complete)',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
@@ -351,7 +363,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               )
             else
               Text(
-                'Only ${reminder.assignedToName} can complete this reminder',
+                'Chỉ ${reminder.assignedToName} mới có thể đánh dấu hoàn thành',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.grey.shade600,
@@ -392,25 +404,46 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               color: Color(0xFF151D1B),
             ),
           ),
-        ?valueWidget,
+        if (valueWidget != null) valueWidget,
       ],
     );
   }
 
-  Widget _buildStatusBadge(String status) {
-    final isDone = status == ReminderStatus.completed;
+  Widget _buildStatusBadge(ReminderModel reminder) {
+    Color bg = const Color(0xFFFFF1E0);
+    Color fg = const Color(0xFF8A5100);
+    String label = reminder.status;
+
+    if (reminder.isCompleted) {
+      bg = const Color(0xFFE7F0EC);
+      fg = const Color(0xFF0D7A68);
+      label = 'COMPLETED';
+    } else if (reminder.isOverdue) {
+      bg = const Color(0xFFFFEBEE);
+      fg = const Color(0xFFBA1A1A);
+      label = 'OVERDUE';
+    } else if (reminder.isOpen) {
+      bg = const Color(0xFFE0F2EC);
+      fg = const Color(0xFF006A6A);
+      label = 'OPEN';
+    } else if (reminder.isPending) {
+      bg = const Color(0xFFFFF1E0);
+      fg = const Color(0xFF8A5100);
+      label = 'PENDING';
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: isDone ? const Color(0xFFE7F0EC) : const Color(0xFFFFF1E0),
+        color: bg,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        status,
+        label,
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w700,
-          color: isDone ? const Color(0xFF0D7A68) : const Color(0xFF8A5100),
+          color: fg,
         ),
       ),
     );

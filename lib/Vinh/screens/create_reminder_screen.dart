@@ -37,6 +37,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   FamilyMember? _selectedMember;
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
+  String _selectedRepeatRule = 'NONE';
 
   String? _voiceNotePath;
   int? _voiceDurationSeconds;
@@ -80,6 +81,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       _voiceNotePath = existing.voiceNotePath;
       _voiceDurationSeconds = existing.voiceDurationSeconds;
       _voiceNoteDescription = existing.voiceNoteDescription;
+      _selectedRepeatRule = existing.repeatRule ?? 'NONE';
 
       // Parse existing date and time
       final parsedDt = existing.dueDateTime;
@@ -342,6 +344,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           title: _titleController.text.trim(),
           date: dateStr,
           time: timeStr,
+          repeatRule: _selectedRepeatRule,
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
@@ -374,6 +377,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           date: dateStr,
           time: timeStr,
           status: ReminderStatus.pending,
+          repeatRule: _selectedRepeatRule,
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
@@ -633,6 +637,60 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                       ),
                       const Icon(Icons.access_time, color: primaryColor),
                     ],
+                  ),
+                ),
+              ),
+
+              // 4.5. REPEAT FREQUENCY
+              const SizedBox(height: 20),
+              const Text(
+                'Lặp lại (Repeat)',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment<String>(
+                      value: 'NONE',
+                      label: Text('1 lần'),
+                      icon: Icon(Icons.event_outlined),
+                    ),
+                    ButtonSegment<String>(
+                      value: 'DAILY',
+                      label: Text('Hàng ngày'),
+                      icon: Icon(Icons.repeat),
+                    ),
+                    ButtonSegment<String>(
+                      value: 'WEEKLY',
+                      label: Text('Hàng tuần'),
+                      icon: Icon(Icons.calendar_view_week),
+                    ),
+                  ],
+                  selected: {_selectedRepeatRule},
+                  onSelectionChanged: (newSelection) {
+                    setState(() {
+                      _selectedRepeatRule = newSelection.first;
+                    });
+                  },
+                  style: ButtonStyle(
+                    backgroundColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return const Color(0xFFD4ECE5);
+                      }
+                      return Colors.white;
+                    }),
+                    foregroundColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return primaryColor;
+                      }
+                      return textPrimary;
+                    }),
                   ),
                 ),
               ),
