@@ -54,9 +54,11 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                Navigator.of(context).pop();
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
               },
               child: const Text(
                 'Đã hiểu',

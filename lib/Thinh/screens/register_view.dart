@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
@@ -7,11 +8,15 @@ import '../../Long/screens/main_navigation.dart';
 
 class RegisterView extends StatefulWidget {
   final String? initialEmail;
+  final String? initialName;
+  final String? initialPhotoUrl;
   final bool isGoogleRegistration;
 
   const RegisterView({
     super.key,
     this.initialEmail,
+    this.initialName,
+    this.initialPhotoUrl,
     this.isGoogleRegistration = false,
   });
 
@@ -46,6 +51,9 @@ class _RegisterViewState extends State<RegisterView> {
     if (widget.initialEmail != null) {
       _emailController.text = widget.initialEmail!;
     }
+    if (widget.initialName != null) {
+      _nameController.text = widget.initialName!;
+    }
   }
 
   Future<void> _handleRegister() async {
@@ -68,7 +76,7 @@ class _RegisterViewState extends State<RegisterView> {
           : !_emailPattern.hasMatch(email)
           ? _t('Vui lòng nhập email hợp lệ.', 'Enter a valid email.')
           : null;
-      _passwordError = password.isEmpty || password.length < 6
+      _passwordError = (password.isEmpty || password.length < 6)
           ? _t(
               'Mật khẩu phải có ít nhất 6 ký tự.',
               'Password must be at least 6 characters.',
@@ -124,13 +132,50 @@ class _RegisterViewState extends State<RegisterView> {
         Navigator.pop(context);
       }
     } catch (e) {
+      debugPrint('Registration error: $e');
       if (!mounted) return;
-      setState(
-        () => _formError = _t(
-          'Đăng ký thất bại. Vui lòng thử lại.',
-          'Registration failed. Please try again.',
-        ),
+      String errorMsg = _t(
+        'Đăng ký thất bại. Vui lòng thử lại.',
+        'Registration failed. Please try again.',
       );
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'email-already-in-use':
+            errorMsg = _t('Email này đã được sử dụng.', 'Email already in use.');
+            break;
+          case 'invalid-email':
+            errorMsg = _t('Email không hợp lệ.', 'Invalid email address.');
+            break;
+          case 'operation-not-allowed':
+            errorMsg = _t(
+              'Chưa bật đăng nhập Email/Password trong Firebase Console (Authentication > Sign-in method).',
+              'Email/Password sign-in is disabled in Firebase Console.',
+            );
+            break;
+          case 'weak-password':
+            errorMsg = _t('Mật khẩu quá yếu (tối thiểu 6 ký tự).', 'Password is too weak.');
+            break;
+          default:
+            errorMsg = e.message ?? errorMsg;
+        }
+      } else if (e is FirebaseException) {
+        if (e.code == 'permission-denied') {
+          errorMsg = _t(
+            'Lỗi phân quyền Firestore. Vui lòng kiểm tra Firestore Rules trên Firebase Console.',
+            'Firestore permission denied. Check Firestore security rules.',
+          );
+        } else {
+          errorMsg = e.message ?? errorMsg;
+        }
+      } else {
+        final err = e.toString();
+        if (err.contains('network') || err.contains('failed to fetch')) {
+          errorMsg = _t('Lỗi kết nối mạng. Vui lòng thử lại.', 'Network error. Please try again.');
+        } else {
+          errorMsg = err.replaceFirst('Exception: ', '');
+        }
+      }
+      setState(() => _formError = errorMsg);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -163,9 +208,103 @@ class _RegisterViewState extends State<RegisterView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.isGoogleRegistration) ...[
+              Center(
+                child: Column(
+                  children: [
+                    Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        Container(
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppColors.brand600,
+                              width: 3.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.brand900.withValues(alpha: 0.1),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: (widget.initialPhotoUrl != null &&
+                                    widget.initialPhotoUrl!.isNotEmpty)
+                                ? Image.network(
+                                    widget.initialPhotoUrl!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        const Icon(
+                                      Icons.person,
+                                      size: 52,
+                                      color: AppColors.brand700,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person,
+                                    size: 52,
+                                    color: AppColors.brand700,
+                                  ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.check_circle,
+                            size: 20,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.brand50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.brand200),
+                      ),
+                      child: Text(
+                        _t(
+                          'Tài khoản Google đã kết nối',
+                          'Google Account Connected',
+                        ),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.brand800,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             Text(
-              _t('Gia nhập Tổ Ấm Yêu Thương', 'Join A Loving Home'),
-              style: TextStyle(
+              widget.isGoogleRegistration
+                  ? _t('Hoàn tất thông tin cá nhân', 'Complete your profile')
+                  : _t('Gia nhập Tổ Ấm Yêu Thương', 'Join A Loving Home'),
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: AppColors.brand900,
@@ -173,11 +312,16 @@ class _RegisterViewState extends State<RegisterView> {
             ),
             const SizedBox(height: 8),
             Text(
-              _t(
-                'Tạo tài khoản để kết nối với các thành viên trong gia đình bạn.',
-                'Create an account to connect with your family.',
-              ),
-              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+              widget.isGoogleRegistration
+                  ? _t(
+                      'Xác nhận thông tin từ Google để vào ứng dụng ngay.',
+                      'Confirm your Google information to enter the app.',
+                    )
+                  : _t(
+                      'Tạo tài khoản để kết nối với các thành viên trong gia đình bạn.',
+                      'Create an account to connect with your family.',
+                    ),
+              style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 24),
             _buildField(
@@ -237,8 +381,10 @@ class _RegisterViewState extends State<RegisterView> {
                       ),
                     )
                   : Text(
-                      _t('Tạo tài khoản', 'Create Account'),
-                      style: TextStyle(
+                      widget.isGoogleRegistration
+                          ? _t('Vào ứng dụng ngay', 'Enter App Now')
+                          : _t('Tạo tài khoản', 'Create Account'),
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,

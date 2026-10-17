@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 import '../models/family_model.dart';
@@ -36,9 +38,46 @@ class SupabaseService {
   }
 
   Future<UserModel> getCurrentUser() async {
+    final fbUser = FirebaseAuth.instance.currentUser;
+    if (fbUser != null) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(fbUser.uid)
+            .get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          return UserModel(
+            id: fbUser.uid,
+            name: data['name']?.toString() ??
+                (fbUser.displayName != null && fbUser.displayName!.isNotEmpty
+                    ? fbUser.displayName!
+                    : 'Người dùng'),
+            email: data['email']?.toString() ?? fbUser.email ?? '',
+            avatarType: data['avatar_type']?.toString() ?? 'google',
+            avatarUrl: data['avatarUrl']?.toString() ?? fbUser.photoURL ?? '',
+          );
+        }
+      } catch (_) {}
+
+      return UserModel(
+        id: fbUser.uid,
+        name: (fbUser.displayName != null && fbUser.displayName!.isNotEmpty)
+            ? fbUser.displayName!
+            : 'Người dùng',
+        email: fbUser.email ?? '',
+        avatarType: 'google',
+        avatarUrl: fbUser.photoURL ?? '',
+      );
+    }
+
     if (_supabase.auth.currentUser == null) return _mock.currentUser;
     try {
-      final response = await _supabase.from('users').select().eq('id', currentUserId).maybeSingle();
+      final response = await _supabase
+          .from('users')
+          .select()
+          .eq('id', currentUserId)
+          .maybeSingle();
       if (response == null) return _mock.currentUser;
       return UserModel.fromJson(response);
     } catch (_) {

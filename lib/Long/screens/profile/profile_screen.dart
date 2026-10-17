@@ -6,6 +6,7 @@ import '../../models/user_model.dart';
 import '../../models/family_model.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../../Thinh/screens/auth_screen.dart';
+import '../../../Thinh/services/auth_service.dart';
 import '../../../Danh/danh_payment_entry.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -98,16 +99,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             ),
                             alignment: Alignment.center,
-                            child: Text(
-                              user.name.isNotEmpty
-                                  ? user.name.substring(0, 1).toUpperCase()
-                                  : '?',
-                              style: TextStyle(
-                                fontSize: 32,
-                                color: Colors.blue[900],
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                            child: user.avatarUrl.isNotEmpty
+                                ? ClipOval(
+                                    child: Image.network(
+                                      user.avatarUrl,
+                                      width: 72,
+                                      height: 72,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => Text(
+                                        user.name.isNotEmpty
+                                            ? user.name.substring(0, 1).toUpperCase()
+                                            : '?',
+                                        style: TextStyle(
+                                          fontSize: 32,
+                                          color: Colors.blue[900],
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    user.name.isNotEmpty
+                                        ? user.name.substring(0, 1).toUpperCase()
+                                        : '?',
+                                    style: TextStyle(
+                                      fontSize: 32,
+                                      color: Colors.blue[900],
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
@@ -266,7 +286,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       if (shouldLogout != true || !context.mounted) return;
 
                       try {
-                        await Supabase.instance.client.auth.signOut();
+                        await AuthService().logout();
+                        try {
+                          await Supabase.instance.client.auth.signOut();
+                        } catch (_) {}
                         if (context.mounted) {
                           Navigator.of(context).pushAndRemoveUntil(
                             MaterialPageRoute(
