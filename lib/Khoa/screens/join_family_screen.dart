@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../models/family_member.dart';
+import '../services/family_service.dart';
+
 class JoinFamilyScreen extends StatefulWidget {
   const JoinFamilyScreen({super.key});
 
@@ -10,8 +13,10 @@ class JoinFamilyScreen extends StatefulWidget {
 class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
+  final FamilyService _familyService = FamilyService();
 
   bool _isJoining = false;
+  String _selectedRole = FamilyMember.roleParent;
 
   static const Color background = Color(0xFFF2FAF7);
   static const Color primary = Color(0xFF07866F);
@@ -25,50 +30,54 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
   }
 
   Future<void> _joinFamily() async {
-    if (!_formKey.currentState!.validate()) return;
-
+    if (!_formKey.currentState!.validate() || _isJoining) return;
+    FocusScope.of(context).unfocus();
     setState(() => _isJoining = true);
 
-    await Future<void>.delayed(const Duration(milliseconds: 550));
-
-    if (!mounted) return;
-
-    setState(() => _isJoining = false);
-
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
+    try {
+      final family = await _familyService.joinFamily(
+        joinCode: _codeController.text,
+        role: _selectedRole,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-          title: const Text(
-            'Tham gia thành công',
-            style: TextStyle(fontWeight: FontWeight.w800, color: darkText),
-          ),
-          content: const Text(
-            'Bạn đã gửi yêu cầu tham gia gia đình. '
-            'Trong phiên bản kết nối thật, yêu cầu sẽ được gửi đến quản trị viên.',
-            style: TextStyle(color: mutedText, height: 1.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          title: const Text('Tham gia thành công', style: TextStyle(fontWeight: FontWeight.w800, color: darkText)),
+          content: Text(
+            'Bạn đã tham gia gia đình "${family.name}" với vai vế ${_roleLabel(_selectedRole)}.',
+            style: const TextStyle(color: mutedText, height: 1.5),
           ),
           actions: [
             TextButton(
-              onPressed: () async {
-                Navigator.of(context).pop();
-                if (context.mounted) {
-                  Navigator.of(context).pop();
-                }
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                if (mounted) Navigator.of(context).pop(family);
               },
-              child: const Text(
-                'Đã hiểu',
-                style: TextStyle(color: primary, fontWeight: FontWeight.w800),
-              ),
+              child: const Text('Đã hiểu', style: TextStyle(color: primary, fontWeight: FontWeight.w800)),
             ),
           ],
-        );
-      },
-    );
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _isJoining = false);
+    }
+  }
+
+  String _roleLabel(String role) {
+    switch (role) {
+      case FamilyMember.roleGrandparent: return 'Ông / Bà';
+      case FamilyMember.roleChild: return 'Con cái';
+      default: return 'Bố / Mẹ';
+    }
   }
 
   @override
@@ -102,7 +111,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                         border: Border.all(color: const Color(0xFFDCE9E5)),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.035),
+                            color: Colors.black.withValues(alpha: 0.035),
                             blurRadius: 18,
                             offset: const Offset(0, 7),
                           ),
@@ -227,6 +236,33 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               }
 
                               return null;
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: _RequiredLabel(text: 'Vai vế của bạn'),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedRole,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.family_restroom_rounded, size: 20, color: Color(0xFF6E8B83)),
+                              filled: true,
+                              fillColor: const Color(0xFFF8FBFA),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFDCE9E5))),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFDCE9E5))),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: primary, width: 1.5)),
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: FamilyMember.roleGrandparent, child: Text('Ông / Bà')),
+                              DropdownMenuItem(value: FamilyMember.roleParent, child: Text('Bố / Mẹ')),
+                              DropdownMenuItem(value: FamilyMember.roleChild, child: Text('Con cái')),
+                            ],
+                            onChanged: _isJoining ? null : (value) {
+                              if (value != null) setState(() => _selectedRole = value);
                             },
                           ),
 
