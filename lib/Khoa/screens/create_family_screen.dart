@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../models/family_member.dart';
+import '../services/family_service.dart';
 
 class CreateFamilyScreen extends StatefulWidget {
   const CreateFamilyScreen({super.key});
@@ -10,6 +14,9 @@ class CreateFamilyScreen extends StatefulWidget {
 class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
   final _formKey = GlobalKey<FormState>();
   final _familyNameController = TextEditingController();
+  final FamilyService _familyService = FamilyService();
+  String _selectedRole = FamilyMember.roleParent;
+  bool _isCreating = false;
 
   static const Color background = Color(0xFFF2FAF7);
   static const Color primary = Color(0xFF07866F);
@@ -22,45 +29,81 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
     super.dispose();
   }
 
-  void _createFamily() {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _createFamily() async {
+    if (!_formKey.currentState!.validate() || _isCreating) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _isCreating = true);
 
-    final familyName = _familyNameController.text.trim();
-
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
+    try {
+      final family = await _familyService.createFamily(
+        name: _familyNameController.text.trim(),
+        role: _selectedRole,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
           title: const Text(
             'Tạo gia đình thành công',
             style: TextStyle(fontWeight: FontWeight.w800, color: darkText),
           ),
-          content: Text(
-            'Gia đình "$familyName" đã được tạo. '
-            'Bạn có thể tiếp tục mời các thành viên.',
-            style: const TextStyle(color: mutedText, height: 1.5),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Gia đình "${family.name}" đã được tạo. Bạn là Owner của gia đình này.',
+                style: const TextStyle(color: mutedText, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              const Text('Mã mời thành viên', style: TextStyle(fontWeight: FontWeight.w700, color: darkText)),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: const Color(0xFFF2FAF7), borderRadius: BorderRadius.circular(12)),
+                child: SelectableText(
+                  family.joinCode,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 22, letterSpacing: 2, fontWeight: FontWeight.w800, color: primary),
+                ),
+              ),
+            ],
           ),
           actions: [
-            TextButton(
+            TextButton.icon(
               onPressed: () async {
-                Navigator.of(context).pop();
-                if (context.mounted) {
-                  Navigator.of(context).pop();
+                await Clipboard.setData(ClipboardData(text: family.joinCode));
+                if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã sao chép mã gia đình.')));
+                  Navigator.of(context).pop(family);
                 }
               },
-              child: const Text(
-                'Tiếp tục',
-                style: TextStyle(color: primary, fontWeight: FontWeight.w800),
-              ),
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('Sao chép mã & tiếp tục', style: TextStyle(color: primary, fontWeight: FontWeight.w800)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                if (mounted) Navigator.of(context).pop(family);
+              },
+              child: const Text('Đóng', style: TextStyle(color: primary, fontWeight: FontWeight.w700)),
             ),
           ],
-        );
-      },
-    );
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _isCreating = false);
+    }
   }
 
   @override
@@ -130,6 +173,24 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                               return null;
                             },
                           ),
+                          const SizedBox(height: 16),
+                          const _FieldLabel(text: 'Vai vế của bạn', requiredField: true),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedRole,
+                            decoration: _inputDecoration(
+                              hintText: 'Chọn vai vế',
+                              prefixIcon: Icons.family_restroom_rounded,
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: FamilyMember.roleGrandparent, child: Text('Ông / Bà')),
+                              DropdownMenuItem(value: FamilyMember.roleParent, child: Text('Bố / Mẹ')),
+                              DropdownMenuItem(value: FamilyMember.roleChild, child: Text('Con cái')),
+                            ],
+                            onChanged: _isCreating ? null : (value) {
+                              if (value != null) setState(() => _selectedRole = value);
+                            },
+                          ),
                         ],
                       ),
                     ),
@@ -172,9 +233,9 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                     SizedBox(
                       height: 54,
                       child: ElevatedButton.icon(
-                        onPressed: _createFamily,
-                        icon: const Icon(Icons.add_home_rounded),
-                        label: const Text('Tạo gia đình'),
+                        onPressed: _isCreating ? null : _createFamily,
+                        icon: _isCreating ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.add_home_rounded),
+                        label: Text(_isCreating ? 'Đang tạo...' : 'Tạo gia đình'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primary,
                           foregroundColor: Colors.white,
@@ -260,7 +321,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
       border: Border.all(color: const Color(0xFFDCE9E5)),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.035),
+          color: Colors.black.withValues(alpha: 0.035),
           blurRadius: 18,
           offset: const Offset(0, 7),
         ),
