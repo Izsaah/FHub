@@ -40,9 +40,17 @@ abstract class ReminderRepository {
     required String currentUserName,
   });
 
+  Future<ReminderModel> claimAndCompleteOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+    String? proofImageUrl,
+  });
+
   Future<bool> deleteReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   });
 
   Future<bool> restoreReminder({
@@ -333,14 +341,18 @@ class InMemoryReminderRepository implements ReminderRepository {
       }
     }
 
-    // 3. Validate Date + Time must be in the future
-    final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
-      reminder.date,
-      reminder.time,
-      now: now,
-    );
-    if (futureError != null) {
-      throw ReminderValidationException(futureError);
+    // 3. Validate Date + Time must be in the future (Chỉ kiểm tra nếu ngày hoặc giờ thay đổi)
+    final isDateTimeChanged =
+        existing.date != reminder.date || existing.time != reminder.time;
+    if (isDateTimeChanged) {
+      final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
+        reminder.date,
+        reminder.time,
+        now: now,
+      );
+      if (futureError != null) {
+        throw ReminderValidationException(futureError);
+      }
     }
 
     final updated = existing.copyWith(
@@ -391,6 +403,43 @@ class InMemoryReminderRepository implements ReminderRepository {
   }
 
   @override
+  Future<ReminderModel> claimAndCompleteOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+    String? proofImageUrl,
+  }) async {
+    await claimOpenTask(
+      reminderId: reminderId,
+      currentUserId: currentUserId,
+      currentUserName: currentUserName,
+    );
+    return completeReminder(
+      reminderId: reminderId,
+      currentUserId: currentUserId,
+      proofImageUrl: proofImageUrl,
+    );
+  }
+
+  DateTime? _calculateNextDueDate(String dateStr, String repeatRule) {
+    try {
+      final parts = dateStr.trim().split('/');
+      if (parts.length != 3) return null;
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final year = int.parse(parts[2]);
+      final cur = DateTime(year, month, day);
+
+      if (repeatRule == 'DAILY') {
+        return cur.add(const Duration(days: 1));
+      } else if (repeatRule == 'WEEKLY') {
+        return cur.add(const Duration(days: 7));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  @override
   Future<ReminderModel> completeReminder({
     required String reminderId,
     required String currentUserId,
@@ -425,6 +474,37 @@ class InMemoryReminderRepository implements ReminderRepository {
     );
 
     _reminders[index] = updated;
+
+    // Tự động sinh chu kỳ tiếp theo cho lời nhắc lặp lại (DAILY / WEEKLY)
+    final rule = existing.repeatRule;
+    if (rule == 'DAILY' || rule == 'WEEKLY') {
+      final nextDate = _calculateNextDueDate(existing.date, rule!);
+      if (nextDate != null) {
+        final nextDateStr =
+            '${nextDate.day.toString().padLeft(2, '0')}/${nextDate.month.toString().padLeft(2, '0')}/${nextDate.year}';
+        final nextReminder = ReminderModel(
+          id: 'rem_${DateTime.now().millisecondsSinceEpoch}_repeat',
+          familyId: existing.familyId,
+          creatorId: existing.creatorId,
+          creatorName: existing.creatorName,
+          assignedTo: existing.assignedTo,
+          assignedToName: existing.assignedToName,
+          title: existing.title,
+          date: nextDateStr,
+          time: existing.time,
+          repeatRule: existing.repeatRule,
+          status: existing.isOpenTask ? ReminderStatus.open : ReminderStatus.pending,
+          requiresProofImage: existing.requiresProofImage,
+          rewardStars: 0,
+          voiceNotePath: existing.voiceNotePath,
+          voiceDurationSeconds: existing.voiceDurationSeconds,
+          voiceNoteDescription: existing.voiceNoteDescription,
+          createdAt: DateTime.now(),
+        );
+        _reminders.add(nextReminder);
+      }
+    }
+
     _notify(existing.familyId);
     return updated;
   }
@@ -433,6 +513,7 @@ class InMemoryReminderRepository implements ReminderRepository {
   Future<bool> deleteReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   }) async {
     final index = _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
     if (index == -1) {
@@ -441,10 +522,20 @@ class InMemoryReminderRepository implements ReminderRepository {
 
     final existing = _reminders[index];
 
-    // Rule: Chỉ creator được delete: creator == currentUser. Người nhận không được delete.
-    if (existing.creatorId != currentUserId) {
+    // Rule: Cho phép xóa nếu là người tạo HOẶC là Bố/Mẹ/Ông/Bà/Chủ nhà
+    final isCreator = existing.creatorId == currentUserId;
+    bool isParentOrOwner = false;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      final currentMember = familyMembers.firstWhere(
+        (m) => m.id == currentUserId,
+        orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      );
+      isParentOrOwner = currentMember.isParent || currentMember.isGrandparent;
+    }
+
+    if (!isCreator && !isParentOrOwner) {
       throw ReminderPermissionException(
-        'Only creator can delete this reminder',
+        'Only the creator or a parent/owner can delete this reminder',
       );
     }
 

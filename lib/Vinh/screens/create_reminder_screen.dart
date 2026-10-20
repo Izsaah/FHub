@@ -49,6 +49,18 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   String? _dateTimeError;
   bool _isLoading = false;
 
+  FamilyMember? get _currentMember {
+    try {
+      return widget.familyMembers.firstWhere(
+        (m) => m.id == widget.currentUserId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool get _canAssignChores => _currentMember?.canAssignChores ?? true;
+
   void _onVoiceRecorded(String path, int durationSeconds, String description) {
     setState(() {
       _voiceNotePath = path;
@@ -266,6 +278,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       final dateStr = _formatDate(_selectedDate!);
       final timeStr = _formatTime(_selectedTime!);
       final isNowOpenTask = _selectedMember!.id == 'OPEN';
+      final effectiveProofRequired = _canAssignChores && _requiresProofImage;
 
       if (widget.isEditing) {
         final updated = widget.existingReminder!.copyWith(
@@ -278,7 +291,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
-          requiresProofImage: _requiresProofImage,
+          requiresProofImage: effectiveProofRequired,
           rewardStars: 0,
           status: isNowOpenTask ? ReminderStatus.open : null,
         );
@@ -311,7 +324,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           time: timeStr,
           repeatRule: _selectedRepeatRule,
           status: isNowOpenTask ? ReminderStatus.open : ReminderStatus.pending,
-          requiresProofImage: _requiresProofImage,
+          requiresProofImage: effectiveProofRequired,
           rewardStars: 0,
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
@@ -657,12 +670,14 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
               ),
 
               // 4.6. NGHIỆM THU VIỆC NHÀ (CAMERA PROOF)
-              const SizedBox(height: 20),
-              ChoreRewardCard(
-                requiresProofImage: _requiresProofImage,
-                onProofRequiredChanged: (val) =>
-                    setState(() => _requiresProofImage = val),
-              ),
+              if (_canAssignChores) ...[
+                const SizedBox(height: 20),
+                ChoreRewardCard(
+                  requiresProofImage: _requiresProofImage,
+                  onProofRequiredChanged: (val) =>
+                      setState(() => _requiresProofImage = val),
+                ),
+              ],
 
               if (_dateTimeError != null) ...[
                 const SizedBox(height: 8),

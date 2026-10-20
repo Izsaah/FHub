@@ -15,12 +15,14 @@ class ReminderListView extends StatelessWidget {
   final String currentUserId;
   final String selectedDateStr;
   final bool isShowingAll;
+  final bool isParentOrOwner;
   final VoidCallback onCreatePressed;
   final VoidCallback onShowAllPressed;
   final ValueChanged<ReminderModel> onTapReminder;
   final ValueChanged<ReminderModel> onCompleteReminder;
   final ValueChanged<ReminderModel> onDeleteReminder;
   final ValueChanged<ReminderModel> onClaimReminder;
+  final ValueChanged<ReminderModel>? onClaimAndCompleteReminder;
 
   const ReminderListView({
     super.key,
@@ -29,12 +31,14 @@ class ReminderListView extends StatelessWidget {
     required this.currentUserId,
     required this.selectedDateStr,
     required this.isShowingAll,
+    this.isParentOrOwner = false,
     required this.onCreatePressed,
     required this.onShowAllPressed,
     required this.onTapReminder,
     required this.onCompleteReminder,
     required this.onDeleteReminder,
     required this.onClaimReminder,
+    this.onClaimAndCompleteReminder,
   });
 
   @override
@@ -68,6 +72,9 @@ class ReminderListView extends StatelessWidget {
     final completedList =
         activeReminders.where((r) => r.isCompleted).toList();
 
+    bool canDelete(ReminderModel r) =>
+        r.creatorId == currentUserId || isParentOrOwner;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
       children: [
@@ -87,11 +94,14 @@ class ReminderListView extends StatelessWidget {
               onComplete: reminder.assignedTo == currentUserId
                   ? () => onCompleteReminder(reminder)
                   : null,
-              onDelete: reminder.creatorId == currentUserId
+              onDelete: canDelete(reminder)
                   ? () => onDeleteReminder(reminder)
                   : null,
               onClaim: reminder.isOpenTask
                   ? () => onClaimReminder(reminder)
+                  : null,
+              onClaimAndComplete: reminder.isOpenTask && onClaimAndCompleteReminder != null
+                  ? () => onClaimAndCompleteReminder!(reminder)
                   : null,
             ),
           ),
@@ -113,10 +123,13 @@ class ReminderListView extends StatelessWidget {
               onComplete: reminder.assignedTo == currentUserId
                   ? () => onCompleteReminder(reminder)
                   : null,
-              onDelete: reminder.creatorId == currentUserId
+              onDelete: canDelete(reminder)
                   ? () => onDeleteReminder(reminder)
                   : null,
               onClaim: () => onClaimReminder(reminder),
+              onClaimAndComplete: onClaimAndCompleteReminder != null
+                  ? () => onClaimAndCompleteReminder!(reminder)
+                  : null,
             ),
           ),
         ],
@@ -137,11 +150,14 @@ class ReminderListView extends StatelessWidget {
               onComplete: reminder.assignedTo == currentUserId
                   ? () => onCompleteReminder(reminder)
                   : null,
-              onDelete: reminder.creatorId == currentUserId
+              onDelete: canDelete(reminder)
                   ? () => onDeleteReminder(reminder)
                   : null,
               onClaim: reminder.isOpenTask
                   ? () => onClaimReminder(reminder)
+                  : null,
+              onClaimAndComplete: reminder.isOpenTask && onClaimAndCompleteReminder != null
+                  ? () => onClaimAndCompleteReminder!(reminder)
                   : null,
             ),
           ),
@@ -160,7 +176,7 @@ class ReminderListView extends StatelessWidget {
               reminder: reminder,
               currentUserId: currentUserId,
               onTap: () => onTapReminder(reminder),
-              onDelete: reminder.creatorId == currentUserId
+              onDelete: canDelete(reminder)
                   ? () => onDeleteReminder(reminder)
                   : null,
             ),

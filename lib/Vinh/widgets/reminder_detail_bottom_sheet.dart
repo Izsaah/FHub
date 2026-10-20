@@ -56,7 +56,14 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       !reminder.isDeleted &&
       reminder.assignedTo == currentUserId;
 
-  bool get canDelete => reminder.creatorId == currentUserId;
+  bool get canDelete {
+    if (reminder.creatorId == currentUserId) return true;
+    final currentMember = familyMembers.firstWhere(
+      (m) => m.id == currentUserId,
+      orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+    );
+    return currentMember.isParent || currentMember.isGrandparent;
+  }
 
   bool get canEdit => reminder.creatorId == currentUserId;
 
@@ -136,6 +143,52 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     }
   }
 
+  Future<void> _handleClaimAndComplete(BuildContext context) async {
+    try {
+      String? proofUrl;
+      if (reminder.requiresProofImage) {
+        proofUrl = await CameraProofDialog.show(
+          context,
+          reminder: reminder,
+          currentUserName: currentUserName,
+        );
+        if (proofUrl == null) {
+          return;
+        }
+      }
+
+      HapticFeedback.mediumImpact();
+      await repository.claimAndCompleteOpenTask(
+        reminderId: reminder.id,
+        currentUserId: currentUserId,
+        currentUserName: currentUserName,
+        proofImageUrl: proofUrl,
+      );
+
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🎉 Bạn đã hoàn thành việc chung "${reminder.title}" xuất sắc!',
+            ),
+            backgroundColor: const Color(0xFF005F50),
+          ),
+        );
+        onReminderUpdated?.call();
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _handleDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -169,6 +222,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         await repository.deleteReminder(
           reminderId: reminder.id,
           currentUserId: currentUserId,
+          familyMembers: familyMembers,
         );
         if (context.mounted) {
           Navigator.of(context).pop();
@@ -531,7 +585,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               const SizedBox(height: 24),
 
               // Nút hành động: Xung phong nhận việc / Hoàn thành
-              if (isOpenTask && !isCompleted)
+              if (isOpenTask && !isCompleted) ...[
                 SizedBox(
                   height: 52,
                   child: FilledButton.icon(
@@ -541,17 +595,47 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    icon: const Icon(Icons.front_hand_rounded, size: 22),
+                    icon: Icon(
+                      reminder.requiresProofImage
+                          ? Icons.camera_alt_rounded
+                          : Icons.check_circle_outline_rounded,
+                      size: 22,
+                    ),
+                    label: Text(
+                      reminder.requiresProofImage
+                          ? 'Làm ngay & Chụp ảnh'
+                          : 'Làm ngay & Hoàn thành',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onPressed: () => _handleClaimAndComplete(context),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF005F50),
+                      side: const BorderSide(color: Color(0xFF005F50)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    icon: const Icon(Icons.front_hand_rounded, size: 20),
                     label: const Text(
-                      'Xung phong nhận việc này',
+                      'Nhận việc để làm sau',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     onPressed: () => _handleClaim(context),
                   ),
-                )
+                ),
+              ]
               else if (canComplete)
                 SizedBox(
                   height: 52,

@@ -10,6 +10,7 @@ class ReminderCard extends StatelessWidget {
   final VoidCallback? onComplete;
   final VoidCallback? onDelete;
   final VoidCallback? onClaim;
+  final VoidCallback? onClaimAndComplete;
 
   const ReminderCard({
     super.key,
@@ -19,6 +20,7 @@ class ReminderCard extends StatelessWidget {
     this.onComplete,
     this.onDelete,
     this.onClaim,
+    this.onClaimAndComplete,
   });
 
   IconData _getIconForTitle(String title) {
@@ -63,7 +65,7 @@ class ReminderCard extends StatelessWidget {
     final isCompleted = reminder.isCompleted;
     final isOpenTask = reminder.isOpenTask;
     final canComplete = !isCompleted && reminder.assignedTo == currentUserId;
-    final canDelete = reminder.creatorId == currentUserId;
+    final canDelete = onDelete != null;
 
     const primaryColor = Color(0xFF0D7A68);
     const textPrimary = Color(0xFF151D1B);
@@ -357,37 +359,82 @@ class ReminderCard extends StatelessWidget {
                   ],
                 ),
 
-                // Claim Open Task Button Banner (if task is OPEN)
-                if (isOpenTask && !isCompleted && onClaim != null) ...[
+                // Claim / Complete Open Task Banner (if task is OPEN)
+                if (isOpenTask && !isCompleted && (onClaim != null || onClaimAndComplete != null)) ...[
                   const SizedBox(height: 10),
-                  InkWell(
-                    onTap: onClaim,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE0F2EC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF005F50)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.front_hand_rounded,
-                              size: 16, color: Color(0xFF005F50)),
-                          const SizedBox(width: 6),
-                          const Text(
-                            'Xung phong nhận việc này',
-                            style: TextStyle(
-                              color: Color(0xFF005F50),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
+                  Row(
+                    children: [
+                      if (onClaim != null)
+                        Expanded(
+                          child: InkWell(
+                            onTap: onClaim,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0F2EC),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF005F50)),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.front_hand_rounded,
+                                      size: 15, color: Color(0xFF005F50)),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Xung phong nhận việc',
+                                    style: TextStyle(
+                                      color: Color(0xFF005F50),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
+                      if (onClaim != null && onClaimAndComplete != null)
+                        const SizedBox(width: 8),
+                      if (onClaimAndComplete != null)
+                        Expanded(
+                          child: InkWell(
+                            onTap: onClaimAndComplete,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF005F50),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    reminder.requiresProofImage
+                                        ? Icons.camera_alt_rounded
+                                        : Icons.check_circle_outline_rounded,
+                                    size: 15,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    reminder.requiresProofImage
+                                        ? 'Làm & Chụp ảnh'
+                                        : 'Làm ngay & Xong',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ],
 
