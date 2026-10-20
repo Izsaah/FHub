@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import 'home/home_screen.dart';
 import 'family/family_screen.dart';
 import 'profile/profile_screen.dart';
+import '../../Ai/screens/ai_chat_screen.dart';
 import '../../Vinh/screens/reminder_list_screen.dart';
-
-import '../services/supabase_service.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -16,19 +15,6 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
-  late Future<bool> _hasFamilyFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _hasFamilyFuture = SupabaseService().hasFamily();
-  }
-
-  void _refreshFamilyStatus() {
-    setState(() {
-      _hasFamilyFuture = SupabaseService().hasFamily();
-    });
-  }
 
   final List<Widget> _screens = [
     const HomeScreen(),
@@ -41,6 +27,24 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _screens),
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'family_ai_assistant_fab',
+        backgroundColor: const Color(0xFF005F50),
+        foregroundColor: Colors.white,
+        elevation: 4,
+        icon: const Icon(Icons.auto_awesome, size: 20),
+        label: const Text(
+          'Trợ lý AI',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const AiChatScreen(),
+            ),
+          );
+        },
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
@@ -49,7 +53,7 @@ class _MainNavigationState extends State<MainNavigation> {
           });
         },
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.blue[800],
+        selectedItemColor: const Color(0xFF005F50),
         unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),

@@ -8,7 +8,9 @@
       "deviceId": "chrome",
       "toolArgs": [
         "--web-port",
-        "3000"
+        "3000",
+        "--web-browser-flag",
+        "--disable-web-security"
       ]
     },
     {
@@ -18,8 +20,16 @@
       "deviceId": "edge",
       "toolArgs": [
         "--web-port",
-        "3000"
+        "3000",
+        "--web-browser-flag",
+        "--disable-web-security"
       ]
+    },
+    {
+      "name": "FHub - Windows Desktop",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "windows"
     }
   ]
 }

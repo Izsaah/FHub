@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/danh_colors.dart';
+import '../theme/danh_svgs.dart';
 
 class PremiumBadgeWidget extends StatelessWidget {
   final bool isPremium;
@@ -39,12 +40,8 @@ class PremiumBadgeWidget extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.workspace_premium,
-              color: Colors.white,
-              size: compact ? 12 : 15,
-            ),
-            SizedBox(width: compact ? 3 : 5),
+            DanhSvgs.crown(size: compact ? 13 : 16),
+            SizedBox(width: compact ? 4 : 6),
             Text(
               customText ?? 'PREMIUM',
               style: TextStyle(

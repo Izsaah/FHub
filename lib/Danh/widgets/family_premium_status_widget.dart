@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../screens/premium_plan_screen.dart';
 import '../screens/manage_subscription_screen.dart';
+import '../screens/family_jackpot_screen.dart';
 import '../services/payment_service.dart';
 import '../theme/danh_colors.dart';
+import '../theme/danh_svgs.dart';
 import 'premium_badge_widget.dart';
 
 /// Widget hiển thị Trạng thái Gói & Hạn mức Thành viên của Gia đình
@@ -180,6 +182,92 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                   'Còn trống ${maxMembers - currentMemberCount} vị trí mời thêm vào gia đình.',
                   style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
                 ),
+
+              const SizedBox(height: 14),
+
+              // Banner Hũ Niềm Vui Gia Đình (Shopee Shake)
+              InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () {
+                  if (isPremium) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const FamilyJackpotScreen()),
+                    );
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PremiumPlanScreen()),
+                    );
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isPremium
+                          ? [const Color(0xFFFFF3E0), const Color(0xFFFFE0B2)]
+                          : [Colors.grey.shade100, Colors.grey.shade200],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isPremium ? const Color(0xFFFFB74D) : Colors.grey.shade300,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      DanhSvgs.goldenPot(size: 28),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Hũ Niềm Vui Gia Đình',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: isPremium ? const Color(0xFFE65100) : Colors.grey.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                if (isPremium)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE65100),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'HOT',
+                                      style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            Text(
+                              isPremium
+                                  ? 'Góp quỹ & Lắc điện thoại 30s nổ hũ'
+                                  : 'Mở khóa khi nâng cấp lên Tổ Ấm Premium',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isPremium ? const Color(0xFF8D4000) : Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        isPremium ? Icons.arrow_forward_ios_rounded : Icons.lock_outline_rounded,
+                        size: 16,
+                        color: isPremium ? const Color(0xFFE65100) : Colors.grey.shade600,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         );

@@ -136,6 +136,27 @@ class FamilyService {
           // A deactivated/memorialized membership is not silently reactivated.
           throw Exception('Tài khoản của bạn đã có trạng thái thành viên trong gia đình này. Hãy liên hệ Owner.');
         }
+
+        // Kiểm tra giới hạn thành viên theo gói cước Free (4 người) vs Premium (10 người)
+        final familyDoc = await transaction.get(_families.doc(family.id));
+        final famData = familyDoc.data() ?? <String, dynamic>{};
+        final bool isPrem = famData['isPremium'] as bool? ?? false;
+        final int maxMem = famData['maxMembers'] as int? ?? (isPrem ? 10 : 4);
+
+        final membersQuery = await _members
+            .where('familyId', isEqualTo: family.id)
+            .where('status', isEqualTo: FamilyMember.statusActive)
+            .get();
+        if (membersQuery.docs.length >= maxMem) {
+          if (!isPrem) {
+            throw Exception(
+              'Gia đình đã đạt tối đa 4 thành viên (Gói Cơ Bản). Vui lòng nâng cấp lên Family Hub Premium để mời thêm tối đa 10 người!',
+            );
+          } else {
+            throw Exception('Gia đình đã đạt tối đa 10 thành viên của gói Premium.');
+          }
+        }
+
         transaction.set(memberRef, {
           'familyId': family.id,
           'userId': uid,
