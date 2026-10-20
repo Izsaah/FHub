@@ -29,6 +29,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<Map<String, dynamic>> _fetchProfileData() async {
     final user = await _supabaseService.getCurrentUser();
     final family = await _supabaseService.getCurrentFamily();
+    if (family != null) {
+      DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
+    }
     return {'user': user, 'family': family};
   }
 

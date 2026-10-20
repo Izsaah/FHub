@@ -8,6 +8,10 @@ class DefaultFirebaseOptions {
   static const String defaultAuthDomain = 'fhub-1c45b.firebaseapp.com';
   static const String defaultStorageBucket = 'fhub-1c45b.firebasestorage.app';
 
+  /// SePay Sandbox API Key for QR payment gateway
+  static const String sepayApiKey =
+      'ZMSQWHDK3RPRBDC08DX9FVJ8TG9UEJYYS2M5A4VGWH7EOLOE6BXPXL1QNWTVMNOK';
+
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
       return web;

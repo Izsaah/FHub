@@ -1,8 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../../Long/services/supabase_service.dart';
+import '../services/family_jackpot_service.dart';
 import '../services/payment_service.dart';
 import '../theme/danh_colors.dart';
+import '../theme/danh_svgs.dart';
 import '../widgets/premium_badge_widget.dart';
+import 'family_jackpot_screen.dart';
 import 'premium_plan_screen.dart';
 
 class ManageSubscriptionScreen extends StatefulWidget {
@@ -19,7 +22,6 @@ class ManageSubscriptionScreen extends StatefulWidget {
 
 class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
   final PaymentService _paymentService = PaymentService();
-  final SupabaseService _supabaseService = SupabaseService();
   int _memberCount = 1;
 
   @override
@@ -44,21 +46,33 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
       setState(() => _memberCount = widget.initialMemberCount!);
       return;
     }
-    try {
-      final members = await _supabaseService.getFamilyMembers();
-      if (mounted) {
-        setState(() => _memberCount = members.isNotEmpty ? members.length : 1);
+
+    // Đọc số lượng thành viên thực tế từ Cloud Firestore
+    final familyId = _paymentService.currentFamilyId;
+    if (familyId.isNotEmpty) {
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('family_members')
+            .where('familyId', isEqualTo: familyId)
+            .get();
+        if (mounted && snap.docs.isNotEmpty) {
+          setState(() => _memberCount = snap.docs.length);
+          return;
+        }
+      } catch (e) {
+        debugPrint('ManageSubscriptionScreen: Error loading member count: $e');
       }
-    } catch (_) {
-      if (mounted) setState(() => _memberCount = 1);
     }
+
+    if (mounted) setState(() => _memberCount = 1);
   }
 
   void _resetToFreeForDemo() {
     _paymentService.resetToFreeForDemo();
+    FamilyJackpotService.instance.onPremiumLost();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Đã đặt lại về Gói Cơ Bản (Free) để thử nghiệm nhiều lần!'),
+        content: Text('Đã đặt lại về Gói Cơ Bản (Free). Hũ Niềm Vui chưa lắc đã bị tiêu hủy!'),
         backgroundColor: DanhColors.warning,
       ),
     );
@@ -105,7 +119,7 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Đặt lại về Free (Demo)',
+            tooltip: 'Đặt lại về Free (Demo mất gói -> mất hũ)',
             icon: const Icon(Icons.restart_alt_rounded, color: DanhColors.warning),
             onPressed: _resetToFreeForDemo,
           ),
@@ -146,12 +160,12 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: DanhColors.brand200),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.check_circle, size: 12, color: DanhColors.brand700),
-                              SizedBox(width: 4),
-                              Text(
+                              DanhSvgs.checkSuccess(size: 14),
+                              const SizedBox(width: 4),
+                              const Text(
                                 'Đang hoạt động',
                                 style: TextStyle(
                                   fontSize: 11,
@@ -240,6 +254,84 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 18),
+
+            // Đặc quyền Hũ Niềm Vui Gia Đình (Shopee Shake)
+            InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const FamilyJackpotScreen()),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isPremium
+                        ? [const Color(0xFFFFF8E1), const Color(0xFFFFECB3)]
+                        : [Colors.grey.shade100, Colors.grey.shade200],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isPremium ? const Color(0xFFFFB300) : Colors.grey.shade300,
+                    width: 1.5,
+                  ),
+                  boxShadow: isPremium ? DanhColors.premiumGlowShadow : DanhColors.fhubCardShadow,
+                ),
+                child: Row(
+                  children: [
+                    DanhSvgs.goldenPot(size: 46),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Hũ Niềm Vui Gia Đình',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                  color: isPremium ? const Color(0xFFE65100) : Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: isPremium ? const Color(0xFFE65100) : Colors.grey.shade500,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  isPremium ? 'MỞ KHÓA' : 'KHÓA',
+                                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            isPremium
+                                ? 'Nạp quỹ VietQR • Đại gia đình phát lệnh • Lắc 30s nổ hũ'
+                                : 'Đặc quyền riêng cho gói Premium (Mất gói là mất hũ!)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isPremium ? const Color(0xFF663C00) : Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Color(0xFFE65100), size: 24),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
 
             // Nút hành động
@@ -258,32 +350,30 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
                     MaterialPageRoute(builder: (_) => const PremiumPlanScreen()),
                   );
                 },
-                icon: const Icon(Icons.flash_on, color: DanhColors.gold, size: 20),
+                icon: DanhSvgs.lightning(size: 20),
                 label: const Text(
                   'Nâng Cấp Lên Family Hub Premium',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 ),
               )
             else
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: DanhColors.brand800,
-                  side: const BorderSide(color: DanhColors.brand800, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE65100),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Tổ ấm của bạn đang sở hữu gói Premium cao cấp nhất (10 thành viên).'),
-                      backgroundColor: DanhColors.brand800,
-                    ),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FamilyJackpotScreen()),
                   );
                 },
-                icon: const Icon(Icons.workspace_premium, color: DanhColors.goldDark, size: 20),
+                icon: DanhSvgs.goldenPot(size: 22),
                 label: const Text(
-                  'Gói Premium Đang Hoạt Động (10 người)',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  'Vào Hũ Niềm Vui Gia Đình Ngay',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
               ),
           ],
