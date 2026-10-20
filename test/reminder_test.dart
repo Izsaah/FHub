@@ -253,12 +253,12 @@ void main() {
         ),
       );
 
-      expect(find.text('Create Reminder'), findsOneWidget);
-      expect(find.text('Title'), findsOneWidget);
-      expect(find.text('For'), findsOneWidget);
-      expect(find.text('Date'), findsOneWidget);
-      expect(find.text('Time'), findsOneWidget);
-      expect(find.text('Create'), findsOneWidget);
+      expect(find.text('Tạo lời nhắc mới'), findsOneWidget);
+      expect(find.text('Nội dung việc cần làm *'), findsOneWidget);
+      expect(find.text('Người nhận việc'), findsOneWidget);
+      expect(find.text('Ngày thực hiện'), findsOneWidget);
+      expect(find.text('Giờ thực hiện'), findsOneWidget);
+      expect(find.text('Lưu lời nhắc'), findsOneWidget);
     });
 
     testWidgets('Reminder List Screen renders PENDING and COMPLETED items',
@@ -313,9 +313,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Reminders'), findsOneWidget);
-      expect(find.text('PENDING'), findsOneWidget);
-      expect(find.text('COMPLETED'), findsOneWidget);
+      expect(find.text('Nhắc việc gia đình'), findsOneWidget);
+      expect(find.text('CHỜ THỰC HIỆN'), findsOneWidget);
+      expect(find.text('ĐÃ HOÀN THÀNH'), findsOneWidget);
       expect(find.text('Take medicine'), findsOneWidget);
       expect(find.text('Buy vegetables'), findsOneWidget);
     });
@@ -586,10 +586,9 @@ void main() {
       expect(onlyMine, isTrue);
     });
 
-    testWidgets('ChoreRewardCard renders proof switch and star selectors',
+    testWidgets('ChoreRewardCard renders proof switch and toggles state',
         (tester) async {
       bool proofReq = false;
-      int stars = 0;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -598,12 +597,8 @@ void main() {
               builder: (context, setState) {
                 return ChoreRewardCard(
                   requiresProofImage: proofReq,
-                  rewardStars: stars,
                   onProofRequiredChanged: (val) {
                     setState(() => proofReq = val);
-                  },
-                  onRewardStarsChanged: (val) {
-                    setState(() => stars = val);
                   },
                 );
               },
@@ -612,14 +607,13 @@ void main() {
         ),
       );
 
-      expect(find.text('Dạy con & Nghiệm thu việc nhà'), findsOneWidget);
+      expect(find.text('Nghiệm thu hoàn thành việc nhà'), findsOneWidget);
       expect(find.textContaining('Bắt buộc chụp ảnh nghiệm thu'), findsOneWidget);
-      expect(find.text('+3 sao'), findsOneWidget);
 
-      await tester.tap(find.text('+3 sao'));
+      await tester.tap(find.byType(SwitchListTile));
       await tester.pumpAndSettle();
 
-      expect(stars, equals(3));
+      expect(proofReq, isTrue);
     });
 
     testWidgets('ReminderListView renders all 4 sections with custom callback',
@@ -698,10 +692,10 @@ void main() {
         ),
       );
 
-      expect(find.text('OVERDUE'), findsOneWidget);
-      expect(find.text('OPEN'), findsOneWidget);
-      expect(find.text('PENDING'), findsOneWidget);
-      expect(find.text('COMPLETED'), findsOneWidget);
+      expect(find.text('QUÁ HẠN'), findsOneWidget);
+      expect(find.text('VIỆC CHUNG CHƯA GÁN'), findsOneWidget);
+      expect(find.text('CHỜ THỰC HIỆN'), findsOneWidget);
+      expect(find.text('ĐÃ HOÀN THÀNH'), findsOneWidget);
       expect(find.text('Việc quá hạn'), findsOneWidget);
       expect(find.text('Việc mở chung'), findsOneWidget);
     });

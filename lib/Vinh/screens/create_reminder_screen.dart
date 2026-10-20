@@ -41,7 +41,6 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   TimeOfDay? _selectedTime;
   String _selectedRepeatRule = 'NONE';
   bool _requiresProofImage = false;
-  int _rewardStars = 0;
 
   String? _voiceNotePath;
   int? _voiceDurationSeconds;
@@ -87,7 +86,6 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       _voiceNoteDescription = existing.voiceNoteDescription;
       _selectedRepeatRule = existing.repeatRule ?? 'NONE';
       _requiresProofImage = existing.requiresProofImage;
-      _rewardStars = existing.rewardStars;
 
       // Parse existing date and time
       final parsedDt = existing.dueDateTime;
@@ -281,7 +279,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
           requiresProofImage: _requiresProofImage,
-          rewardStars: _rewardStars,
+          rewardStars: 0,
           status: isNowOpenTask ? ReminderStatus.open : null,
         );
 
@@ -314,7 +312,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           repeatRule: _selectedRepeatRule,
           status: isNowOpenTask ? ReminderStatus.open : ReminderStatus.pending,
           requiresProofImage: _requiresProofImage,
-          rewardStars: _rewardStars,
+          rewardStars: 0,
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
@@ -367,7 +365,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       backgroundColor: const Color(0xFFF3FBF8),
       appBar: AppBar(
         title: Text(
-          widget.isEditing ? 'Edit Reminder' : 'Create Reminder',
+          widget.isEditing ? 'Chỉnh sửa lời nhắc' : 'Tạo lời nhắc mới',
           style: const TextStyle(
             color: primaryColor,
             fontWeight: FontWeight.bold,
@@ -394,7 +392,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
             children: [
               // 1. TIÊU ĐỀ
               const Text(
-                'Title',
+                'Nội dung việc cần làm *',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -441,7 +439,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
 
               // 2. NGƯỜI NHẬN VIỆC (FOR)
               const Text(
-                'For',
+                'Người nhận việc',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -496,7 +494,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                                 const SizedBox(width: 10),
                                 Text(
                                   _selectedMember!.id == 'OPEN'
-                                      ? '👨‍👩‍👧 Cả nhà (Việc chung / Open Task)'
+                                      ? '👨‍👩‍👧 Cả nhà (Việc chung chưa gán)'
                                       : '${_selectedMember!.name} (${_selectedMember!.roleDisplayName})',
                                   style: const TextStyle(
                                     fontSize: 15,
@@ -523,7 +521,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
 
               // 3. NGÀY HẸN
               const Text(
-                'Date',
+                'Ngày thực hiện',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -548,7 +546,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                       Text(
                         _selectedDate != null
                             ? _formatDate(_selectedDate!)
-                            : 'Chọn Ngày',
+                            : 'Chọn ngày',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
@@ -565,7 +563,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
 
               // 4. GIỜ HẸN
               const Text(
-                'Time',
+                'Giờ thực hiện',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -590,7 +588,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                       Text(
                         _selectedTime != null
                             ? _formatTime(_selectedTime!)
-                            : 'Chọn Giờ',
+                            : 'Chọn giờ',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
@@ -607,7 +605,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
               // 4.5. TẦN SUẤT LẶP LẠI (REPEAT)
               const SizedBox(height: 20),
               const Text(
-                'Lặp lại (Repeat)',
+                'Tần suất lặp lại',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -621,7 +619,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                   segments: const [
                     ButtonSegment<String>(
                       value: 'NONE',
-                      label: Text('1 lần'),
+                      label: Text('Một lần'),
                       icon: Icon(Icons.event_outlined),
                     ),
                     ButtonSegment<String>(
@@ -658,15 +656,12 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
 
-              // 4.6. DẠY CON & NGHIỆM THU (CHORES & CAMERA PROOF & REWARD STARS)
+              // 4.6. NGHIỆM THU VIỆC NHÀ (CAMERA PROOF)
               const SizedBox(height: 20),
               ChoreRewardCard(
                 requiresProofImage: _requiresProofImage,
-                rewardStars: _rewardStars,
                 onProofRequiredChanged: (val) =>
                     setState(() => _requiresProofImage = val),
-                onRewardStarsChanged: (val) =>
-                    setState(() => _rewardStars = val),
               ),
 
               if (_dateTimeError != null) ...[
@@ -704,7 +699,11 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                           ),
                         )
                       : Text(
-                          widget.isEditing ? 'Update' : 'Create',
+                          widget.isEditing
+                              ? 'Cập nhật lời nhắc'
+                              : (_selectedMember?.id == 'OPEN'
+                                  ? 'Đăng việc cho cả nhà'
+                                  : 'Lưu lời nhắc'),
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

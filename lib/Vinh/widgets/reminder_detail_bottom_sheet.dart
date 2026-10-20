@@ -8,6 +8,7 @@ import '../screens/create_reminder_screen.dart';
 import 'camera_proof_dialog.dart';
 import 'voice_reminder_player.dart';
 
+/// Hộp thoại hiển thị chi tiết lời nhắc (Việt hóa 100%)
 class ReminderDetailBottomSheet extends StatelessWidget {
   final ReminderModel reminder;
   final String currentUserId;
@@ -20,7 +21,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     super.key,
     required this.reminder,
     required this.currentUserId,
-    this.currentUserName = 'Me',
+    this.currentUserName = 'Tôi',
     required this.repository,
     this.familyMembers = const [],
     this.onReminderUpdated,
@@ -30,7 +31,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     BuildContext context, {
     required ReminderModel reminder,
     required String currentUserId,
-    String currentUserName = 'Me',
+    String currentUserName = 'Tôi',
     required ReminderRepository repository,
     List<FamilyMember> familyMembers = const [],
     VoidCallback? onReminderUpdated,
@@ -69,7 +70,6 @@ class ReminderDetailBottomSheet extends StatelessWidget {
           currentUserName: currentUserName,
         );
         if (proofUrl == null) {
-          // User closed dialog without snapping proof
           return;
         }
       }
@@ -83,14 +83,11 @@ class ReminderDetailBottomSheet extends StatelessWidget {
 
       if (context.mounted) {
         Navigator.of(context).pop();
-        final successMsg = reminder.hasRewardStars
-            ? '🎉 Hoàn thành xuất sắc! Bạn nhận được +${reminder.rewardStars} ⭐ sao thưởng!'
-            : 'Đã hoàn thành công việc!';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(successMsg),
-            backgroundColor: const Color(0xFF0D7A68),
-            duration: const Duration(seconds: 3),
+          const SnackBar(
+            content: Text('🎉 Đã hoàn thành công việc!'),
+            backgroundColor: Color(0xFF0D7A68),
+            duration: Duration(seconds: 3),
           ),
         );
         onReminderUpdated?.call();
@@ -120,7 +117,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '🎉 Bạn đã nhận công việc "${reminder.title}" thành công!',
+              '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!',
             ),
             backgroundColor: const Color(0xFF0D7A68),
           ),
@@ -147,21 +144,21 @@ class ReminderDetailBottomSheet extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         title: const Text(
-          'Delete Reminder',
+          'Xóa lời nhắc',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text('Delete this reminder?'),
+        content: const Text('Bạn có chắc chắn muốn xóa lời nhắc này không?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Hủy'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFBA1A1A),
             ),
             onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Xóa'),
           ),
         ],
       ),
@@ -177,7 +174,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
           Navigator.of(context).pop();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Reminder deleted successfully.'),
+              content: Text('Đã xóa lời nhắc thành công.'),
             ),
           );
           onReminderUpdated?.call();
@@ -202,7 +199,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         builder: (ctx) => CreateReminderScreen(
           familyId: reminder.familyId,
           currentUserId: currentUserId,
-          currentUserName: reminder.creatorName ?? 'Me',
+          currentUserName: reminder.creatorName ?? 'Tôi',
           familyMembers: familyMembers,
           repository: repository,
           existingReminder: reminder,
@@ -279,7 +276,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Handle bar
+              // Thanh kéo mở
               Center(
                 child: Container(
                   width: 48,
@@ -292,7 +289,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Header with Title, Edit action (if creator), and Delete action (if creator)
+              // Tiêu đề & nút Sửa / Xóa
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -330,24 +327,24 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.edit_outlined,
                           color: Color(0xFF0D7A68)),
-                      tooltip: 'Edit Reminder',
+                      tooltip: 'Chỉnh sửa lời nhắc',
                       onPressed: () => _handleEdit(context),
                     ),
                   if (canDelete)
                     IconButton(
                       icon: const Icon(Icons.delete_outline,
                           color: Color(0xFFBA1A1A)),
-                      tooltip: 'Delete Reminder',
+                      tooltip: 'Xóa lời nhắc',
                       onPressed: () => _handleDelete(context),
                     ),
                 ],
               ),
               const SizedBox(height: 16),
 
-              // Detail fields (For, Time, Date, Status, Stars, Proof)
+              // Chi tiết: Người nhận, Giờ, Ngày, Lặp lại, Nghiệm thu, Trạng thái
               _buildDetailRow(
                 icon: Icons.person_outline,
-                label: 'For',
+                label: 'Giao cho',
                 valueWidget: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -401,13 +398,13 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               const SizedBox(height: 10),
               _buildDetailRow(
                 icon: Icons.access_time,
-                label: 'Time',
+                label: 'Giờ',
                 value: reminder.time,
               ),
               const SizedBox(height: 10),
               _buildDetailRow(
                 icon: Icons.calendar_today_outlined,
-                label: 'Date',
+                label: 'Ngày',
                 value: reminder.displayDate,
               ),
               if (reminder.isRecurring) ...[
@@ -416,40 +413,8 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                   icon: Icons.repeat_rounded,
                   label: 'Lặp lại',
                   value: reminder.repeatRule == 'DAILY'
-                      ? 'Hàng ngày (Daily)'
-                      : 'Hàng tuần (Weekly)',
-                ),
-              ],
-              if (reminder.hasRewardStars) ...[
-                const SizedBox(height: 10),
-                _buildDetailRow(
-                  icon: Icons.star_rounded,
-                  label: 'Thưởng sao',
-                  valueWidget: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF8E1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFFFD54F)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.star_rounded,
-                            size: 16, color: Color(0xFFFFA000)),
-                        const SizedBox(width: 4),
-                        Text(
-                          '+${reminder.rewardStars} sao dạy con',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFB78103),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                      ? 'Hàng ngày'
+                      : 'Hàng tuần',
                 ),
               ],
               if (reminder.requiresProofImage) ...[
@@ -468,8 +433,8 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                     ),
                     child: Text(
                       reminder.hasProofImage
-                          ? '✅ Đã có ảnh bằng chứng'
-                          : '📸 Bắt buộc chụp ảnh khi nộp',
+                          ? '✅ Đã có ảnh nghiệm thu'
+                          : '📸 Bắt buộc chụp ảnh hoàn thành',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -484,11 +449,11 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               const SizedBox(height: 10),
               _buildDetailRow(
                 icon: Icons.info_outline,
-                label: 'Status',
+                label: 'Trạng thái',
                 valueWidget: _buildStatusBadge(reminder),
               ),
 
-              // Proof Image Display (if completed and has image)
+              // Xem ảnh nghiệm thu
               if (reminder.hasProofImage) ...[
                 const SizedBox(height: 16),
                 const Text(
@@ -546,11 +511,11 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                 ),
               ],
 
-              // Voice Note Player if present
+              // Lời nhắc giọng nói
               if (reminder.hasVoiceNote) ...[
                 const SizedBox(height: 16),
                 const Text(
-                  'Bản ghi âm lời nhắc (Voice Note):',
+                  'Lời nhắc giọng nói:',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -565,7 +530,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               ],
               const SizedBox(height: 24),
 
-              // Action button row: Claim Open Task OR Complete Button
+              // Nút hành động: Xung phong nhận việc / Hoàn thành
               if (isOpenTask && !isCompleted)
                 SizedBox(
                   height: 52,
@@ -577,11 +542,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                       ),
                     ),
                     icon: const Icon(Icons.front_hand_rounded, size: 22),
-                    label: Text(
-                      reminder.hasRewardStars
-                          ? 'Xung phong nhận việc (+${reminder.rewardStars} ⭐)'
-                          : 'Xung phong nhận việc này',
-                      style: const TextStyle(
+                    label: const Text(
+                      'Xung phong nhận việc này',
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -608,7 +571,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                     label: Text(
                       reminder.requiresProofImage
                           ? 'Chụp ảnh nghiệm thu & Hoàn thành'
-                          : 'Hoàn thành (Complete)',
+                          : 'Đánh dấu đã hoàn thành',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -631,7 +594,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                       Icon(Icons.check_circle, color: primaryColor),
                       SizedBox(width: 8),
                       Text(
-                        'Completed',
+                        'Đã hoàn thành',
                         style: TextStyle(
                           color: primaryColor,
                           fontWeight: FontWeight.w600,
@@ -693,24 +656,24 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   Widget _buildStatusBadge(ReminderModel reminder) {
     Color bg = const Color(0xFFFFF1E0);
     Color fg = const Color(0xFF8A5100);
-    String label = reminder.status;
+    String label = 'CHỜ THỰC HIỆN';
 
     if (reminder.isCompleted) {
       bg = const Color(0xFFE7F0EC);
       fg = const Color(0xFF0D7A68);
-      label = 'COMPLETED';
+      label = 'ĐÃ HOÀN THÀNH';
     } else if (reminder.isOverdue) {
       bg = const Color(0xFFFFEBEE);
       fg = const Color(0xFFBA1A1A);
-      label = 'OVERDUE';
+      label = 'QUÁ HẠN';
     } else if (reminder.isOpen) {
       bg = const Color(0xFFE0F2EC);
       fg = const Color(0xFF006A6A);
-      label = 'OPEN';
+      label = 'VIỆC CHUNG (ĐANG MỞ)';
     } else if (reminder.isPending) {
       bg = const Color(0xFFFFF1E0);
       fg = const Color(0xFF8A5100);
-      label = 'PENDING';
+      label = 'CHỜ THỰC HIỆN';
     }
 
     return Container(

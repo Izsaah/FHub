@@ -32,7 +32,7 @@ class ReminderEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             const Text(
-              'No reminders yet.',
+              'Chưa có lời nhắc nào.',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -41,7 +41,7 @@ class ReminderEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Create a reminder to help your family stay organized and connected.',
+              'Hãy tạo lời nhắc để giúp gia đình bạn phân chia việc nhà ngăn nắp và gắn kết hơn.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -60,7 +60,7 @@ class ReminderEmptyState extends StatelessWidget {
               ),
               icon: const Icon(Icons.add),
               label: const Text(
-                'Create Reminder',
+                'Tạo lời nhắc mới',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               onPressed: onCreatePressed,

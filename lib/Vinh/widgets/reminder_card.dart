@@ -215,7 +215,7 @@ class ReminderCard extends StatelessWidget {
                                     Text(
                                       isOpenTask
                                           ? '👨‍👩‍👧 Việc chung'
-                                          : 'For ${reminder.assignedToName}',
+                                          : reminder.assignedToName,
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
@@ -240,33 +240,6 @@ class ReminderCard extends StatelessWidget {
                                   color: primaryColor,
                                 ),
                               ),
-                              if (reminder.hasRewardStars)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 1.5),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFFF8E1),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                        color: const Color(0xFFFFD54F)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.star_rounded,
-                                          size: 12, color: Color(0xFFFFA000)),
-                                      const SizedBox(width: 2),
-                                      Text(
-                                        '+${reminder.rewardStars} sao',
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFFB78103),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
                               if (reminder.requiresProofImage && !isCompleted)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
@@ -282,7 +255,7 @@ class ReminderCard extends StatelessWidget {
                                           size: 11, color: Color(0xFF5E35B1)),
                                       SizedBox(width: 2),
                                       Text(
-                                        'Cần ảnh',
+                                        'Cần ảnh nghiệm thu',
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,
@@ -404,11 +377,9 @@ class ReminderCard extends StatelessWidget {
                           const Icon(Icons.front_hand_rounded,
                               size: 16, color: Color(0xFF005F50)),
                           const SizedBox(width: 6),
-                          Text(
-                            reminder.hasRewardStars
-                                ? 'Xung phong nhận việc (+${reminder.rewardStars} ⭐)'
-                                : 'Xung phong nhận việc này',
-                            style: const TextStyle(
+                          const Text(
+                            'Xung phong nhận việc này',
+                            style: TextStyle(
                               color: Color(0xFF005F50),
                               fontWeight: FontWeight.bold,
                               fontSize: 13,

@@ -75,13 +75,11 @@ class _CalendarPageState extends State<CalendarPage> {
         proofImageUrl: proofUrl,
       );
       if (mounted) {
-        final successMsg = reminder.hasRewardStars
-            ? '🎉 Hoàn thành xuất sắc! Bạn nhận được +${reminder.rewardStars} ⭐ sao thưởng!'
-            : 'Đã hoàn thành nhắc nhở!';
+        const successMsg = 'Đã hoàn thành công việc!';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(successMsg),
-            backgroundColor: const Color(0xFF005F50),
+            backgroundColor: Color(0xFF005F50),
           ),
         );
         setState(() {});
@@ -135,21 +133,21 @@ class _CalendarPageState extends State<CalendarPage> {
           borderRadius: BorderRadius.circular(16),
         ),
         title: const Text(
-          'Delete Reminder',
+          'Xóa lời nhắc',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text('Delete this reminder?'),
+        content: const Text('Bạn có chắc chắn muốn xóa lời nhắc này?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Hủy'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFBA1A1A),
             ),
             onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Xóa'),
           ),
         ],
       ),
@@ -204,7 +202,7 @@ class _CalendarPageState extends State<CalendarPage> {
       backgroundColor: const Color(0xFFF3FBF8),
       appBar: AppBar(
         title: const Text(
-          'Lịch Gia Đình (Calendar)',
+          'Lịch Gia Đình',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -335,7 +333,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       // 1. OVERDUE
                       if (overdueList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'QUÁ HẠN (OVERDUE)',
+                          title: 'QUÁ HẠN',
                           count: overdueList.length,
                           color: const Color(0xFFBA1A1A),
                           icon: Icons.warning_amber_rounded,
@@ -361,7 +359,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       // 2. OPEN
                       if (openList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'ĐANG MỞ (OPEN)',
+                          title: 'VIỆC CHUNG CHƯA GÁN',
                           count: openList.length,
                           color: const Color(0xFF006A6A),
                           icon: Icons.lock_open_rounded,
@@ -385,7 +383,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       // 3. PENDING
                       if (pendingList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'CHỜ XỬ LÝ (PENDING)',
+                          title: 'CHỜ THỰC HIỆN',
                           count: pendingList.length,
                           color: const Color(0xFF49454F),
                           icon: Icons.hourglass_top_rounded,
@@ -411,7 +409,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       // 4. COMPLETED
                       if (completedList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'ĐÃ HOÀN THÀNH (COMPLETED)',
+                          title: 'ĐÃ HOÀN THÀNH',
                           count: completedList.length,
                           color: const Color(0xFF005F50),
                           icon: Icons.check_circle_outline_rounded,
@@ -439,7 +437,7 @@ class _CalendarPageState extends State<CalendarPage> {
         backgroundColor: primaryColor,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(
-          'Tạo nhắc nhở',
+          'Tạo lời nhắc',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,

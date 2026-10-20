@@ -143,33 +143,6 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                       ],
                     ),
                   ),
-                  if (widget.reminder.hasRewardStars)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF382A00),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFFFB900)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star_rounded,
-                              color: Color(0xFFFFB900), size: 14),
-                          const SizedBox(width: 3),
-                          Text(
-                            '+${widget.reminder.rewardStars} sao',
-                            style: const TextStyle(
-                              color: Color(0xFFFFB900),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   IconButton(
                     icon: const Icon(Icons.close, color: Colors.white70),
                     visualDensity: VisualDensity.compact,
@@ -440,11 +413,9 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                             icon: const Icon(Icons.check_circle, size: 20),
-                            label: Text(
-                              widget.reminder.hasRewardStars
-                                  ? 'Xác nhận (+${widget.reminder.rewardStars} ⭐)'
-                                  : 'Xác nhận nộp ảnh',
-                              style: const TextStyle(
+                            label: const Text(
+                              'Xác nhận nộp ảnh',
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
                               ),

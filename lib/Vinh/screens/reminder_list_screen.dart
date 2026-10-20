@@ -214,7 +214,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     widget.onUserChanged?.call(member.id);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Switched view to ${member.name} (${member.role})'),
+        content: Text('Đã chuyển góc nhìn sang ${member.name} (${member.role})'),
         duration: const Duration(seconds: 1),
       ),
     );
@@ -239,7 +239,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     if (reminder.creatorId != _currentUserId) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Only the creator can delete this reminder.'),
+          content: Text('Chỉ người tạo mới có thể xóa lời nhắc này.'),
           backgroundColor: Color(0xFFBA1A1A),
         ),
       );
@@ -253,21 +253,21 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           borderRadius: BorderRadius.circular(16),
         ),
         title: const Text(
-          'Delete Reminder',
+          'Xóa lời nhắc',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text('Delete this reminder?'),
+        content: const Text('Bạn có chắc chắn muốn xóa lời nhắc này?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Hủy'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFBA1A1A),
             ),
             onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Xóa'),
           ),
         ],
       ),
@@ -284,7 +284,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             SnackBar(
               content: Text('Đã xóa "${reminder.title}".'),
               action: SnackBarAction(
-                label: 'HOÀN TÁC (UNDO)',
+                label: 'HOÀN TÁC',
                 textColor: const Color(0xFFaaffe9),
                 onPressed: () async {
                   await _repository.restoreReminder(
@@ -332,13 +332,11 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         proofImageUrl: proofUrl,
       );
       if (mounted) {
-        final successMsg = reminder.hasRewardStars
-            ? '🎉 Hoàn thành xuất sắc! Bạn nhận được +${reminder.rewardStars} ⭐ sao thưởng!'
-            : 'Reminder marked as COMPLETED!';
+        const successMsg = 'Đã hoàn thành công việc!';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(successMsg),
-            backgroundColor: const Color(0xFF005F50),
+            backgroundColor: Color(0xFF005F50),
           ),
         );
         setState(() {});
@@ -448,7 +446,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Reminders',
+                    'Nhắc việc gia đình',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 20,
@@ -491,7 +489,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           ),
           // Chuyển đổi thành viên người dùng chủ động
           PopupMenuButton<FamilyMember>(
-            tooltip: 'Switch Active User',
+            tooltip: 'Chuyển đổi góc nhìn thành viên',
             icon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

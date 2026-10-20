@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/family_member.dart';
 import '../services/member_color_helper.dart';
 
-/// BottomSheet chọn người nhận lời nhắc:
+/// Hộp thoại chọn người nhận lời nhắc:
 /// - Chọn thành viên cụ thể trong gia đình
-/// - Hoặc chọn "👨‍👩‍👧 Cả nhà (Việc chung / Open Task)"
+/// - Hoặc chọn "👨‍👩‍👧 Cả nhà (Việc chung chưa gán)"
 class MemberPickerBottomSheet extends StatelessWidget {
   final List<FamilyMember> familyMembers;
   final FamilyMember? selectedMember;
@@ -51,7 +51,7 @@ class MemberPickerBottomSheet extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Chọn người nhận việc (For)',
+                    'Chọn người nhận việc',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -67,7 +67,7 @@ class MemberPickerBottomSheet extends StatelessWidget {
             ),
             const Divider(height: 1, color: Color(0xFFE2EAE7)),
 
-            // 1. Tùy chọn đặc biệt: Cả nhà (Việc chung / Open Task)
+            // 1. Tùy chọn đặc biệt: Cả nhà (Việc chung chưa gán)
             ListTile(
               leading: const CircleAvatar(
                 radius: 18,
@@ -79,7 +79,7 @@ class MemberPickerBottomSheet extends StatelessWidget {
                 ),
               ),
               title: const Text(
-                '👨‍👩‍👧 Cả nhà (Việc chung / Open Task)',
+                '👨‍👩‍👧 Cả nhà (Việc chung chưa gán)',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
@@ -87,7 +87,7 @@ class MemberPickerBottomSheet extends StatelessWidget {
                 ),
               ),
               subtitle: const Text(
-                'Chưa gán ai, các thành viên có thể xung phong nhận việc',
+                'Chưa giao cho ai, các thành viên có thể xung phong nhận làm',
                 style: TextStyle(fontSize: 12, color: textMuted),
               ),
               trailing: selectedMember?.id == 'OPEN'
@@ -101,7 +101,7 @@ class MemberPickerBottomSheet extends StatelessWidget {
                   const FamilyMember(
                     id: 'OPEN',
                     name: 'Cả nhà',
-                    role: 'Open Task',
+                    role: 'Việc chung',
                     familyId: '',
                   ),
                 );

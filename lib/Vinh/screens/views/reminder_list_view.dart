@@ -71,10 +71,10 @@ class ReminderListView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
       children: [
-        // 1. OVERDUE SECTION (Ưu tiên cao nhất)
+        // 1. Nhóm Quá Hạn (Ưu tiên cao nhất)
         if (overdueList.isNotEmpty) ...[
           ReminderSectionHeader(
-            title: 'OVERDUE',
+            title: 'QUÁ HẠN',
             count: overdueList.length,
             color: const Color(0xFFBA1A1A),
             icon: Icons.warning_amber_rounded,
@@ -97,10 +97,10 @@ class ReminderListView extends StatelessWidget {
           ),
         ],
 
-        // 2. OPEN SECTION (Việc chung chưa ai nhận)
+        // 2. Nhóm Việc chung chưa gán ai
         if (openList.isNotEmpty) ...[
           ReminderSectionHeader(
-            title: 'OPEN',
+            title: 'VIỆC CHUNG CHƯA GÁN',
             count: openList.length,
             color: const Color(0xFF006A6A),
             icon: Icons.lock_open_rounded,
@@ -121,10 +121,10 @@ class ReminderListView extends StatelessWidget {
           ),
         ],
 
-        // 3. PENDING SECTION (Việc sắp tới)
+        // 3. Nhóm Việc chờ thực hiện
         if (pendingList.isNotEmpty) ...[
           ReminderSectionHeader(
-            title: 'PENDING',
+            title: 'CHỜ THỰC HIỆN',
             count: pendingList.length,
             color: const Color(0xFF49454F),
             icon: Icons.hourglass_top_rounded,
@@ -147,10 +147,10 @@ class ReminderListView extends StatelessWidget {
           ),
         ],
 
-        // 4. COMPLETED SECTION (Đã hoàn thành)
+        // 4. Nhóm Việc đã hoàn thành
         if (completedList.isNotEmpty) ...[
           ReminderSectionHeader(
-            title: 'COMPLETED',
+            title: 'ĐÃ HOÀN THÀNH',
             count: completedList.length,
             color: const Color(0xFF005F50),
             icon: Icons.check_circle_outline_rounded,
