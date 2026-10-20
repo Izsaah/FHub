@@ -142,7 +142,9 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .single();
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(res));
+      final model = ReminderModel.fromJson(Map<String, dynamic>.from(res));
+      MultiTierEscalationService.instance.scheduleMultiTierEscalation(model);
+      return model;
     } catch (_) {
       return _fallbackRepository.createReminder(
         reminder: sanitizedReminder,
@@ -239,7 +241,9 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .single();
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      final model = ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance.scheduleMultiTierEscalation(model);
+      return model;
     } catch (e) {
       if (e is ReminderPermissionException ||
           e is ReminderValidationException) {
@@ -298,7 +302,9 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .single();
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      final claimedModel = ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance.scheduleMultiTierEscalation(claimedModel);
+      return claimedModel;
     } catch (e) {
       if (e is ReminderValidationException) rethrow;
       return _fallbackRepository.claimOpenTask(
@@ -422,7 +428,9 @@ class SupabaseReminderRepository implements ReminderRepository {
         }
       }
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      final completed = ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance.cancelEscalation(reminderId);
+      return completed;
     } catch (e) {
       if (e is ReminderPermissionException ||
           e is ReminderValidationException) {
@@ -481,6 +489,7 @@ class SupabaseReminderRepository implements ReminderRepository {
           .update({'status': ReminderStatus.deleted})
           .eq('id', reminderId);
 
+      MultiTierEscalationService.instance.cancelEscalation(reminderId);
       return true;
     } catch (e) {
       if (e is ReminderPermissionException) rethrow;

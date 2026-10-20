@@ -6,6 +6,7 @@ import '../services/reminder_repository.dart';
 import '../services/supabase_config.dart';
 import '../widgets/camera_proof_dialog.dart';
 import '../widgets/family_progress_card.dart';
+import '../widgets/multi_tier_simulation_dialog.dart';
 import '../widgets/reminder_detail_bottom_sheet.dart';
 import '../widgets/reminder_scope_filter_chips.dart';
 import '../widgets/weekly_calendar_strip.dart';
@@ -437,6 +438,38 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     }
   }
 
+  Future<void> _openDemoSimulation() async {
+    final list = await _repository.getReminders(familyId: _familyId);
+    final target = list.firstWhere(
+      (r) => !r.isCompleted && !r.isDeleted,
+      orElse: () => list.isNotEmpty
+          ? list.first
+          : ReminderModel(
+              id: 'demo_simulation_task',
+              familyId: _familyId,
+              creatorId: _currentUserId,
+              creatorName: _currentUserName,
+              assignedTo: _currentUserId,
+              assignedToName: _currentUserName,
+              title: 'Tập thể dục & Uống nước buổi sáng',
+              date: _formatDate(DateTime.now()),
+              time: '08:00',
+              status: ReminderStatus.pending,
+              createdAt: DateTime.now(),
+            ),
+    );
+
+    if (mounted) {
+      MultiTierSimulationDialog.show(
+        context,
+        reminder: target,
+        repository: _repository,
+        currentUserId: _currentUserId,
+        onReminderCompleted: () => setState(() {}),
+      );
+    }
+  }
+
   void _showDetailBottomSheet(ReminderModel reminder) {
     ReminderDetailBottomSheet.show(
       context,
@@ -627,9 +660,22 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                     ),
                   ),
                 );
+              } else if (val == 'demo_simulation') {
+                _openDemoSimulation();
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'demo_simulation',
+                child: Row(
+                  children: [
+                    Icon(Icons.science_rounded,
+                        size: 18, color: Color(0xFFE65100)),
+                    SizedBox(width: 8),
+                    Text('🧪 Thử nghiệm Nhắc đa tầng (10s)'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'full_calendar',
                 child: Row(

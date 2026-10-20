@@ -6,6 +6,7 @@ import '../services/member_color_helper.dart';
 import '../services/reminder_repository.dart';
 import '../screens/create_reminder_screen.dart';
 import 'camera_proof_dialog.dart';
+import 'multi_tier_simulation_dialog.dart';
 import 'voice_reminder_player.dart';
 
 /// Hộp thoại hiển thị chi tiết lời nhắc (Việt hóa 100%)
@@ -698,6 +699,40 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                     fontStyle: FontStyle.italic,
                   ),
                 ),
+              const SizedBox(height: 16),
+              // Nút Demo Nhắc lịch Đa tầng (10 Giây)
+              SizedBox(
+                height: 46,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFE65100),
+                    side: const BorderSide(color: Color(0xFFFFB74D), width: 1.5),
+                    backgroundColor: const Color(0xFFFFF8E1),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.science_rounded, size: 20),
+                  label: const Text(
+                    '🧪 Thử nghiệm Nhắc đa tầng (Demo 10s)',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onPressed: () {
+                    MultiTierSimulationDialog.show(
+                      context,
+                      reminder: reminder,
+                      repository: repository,
+                      currentUserId: currentUserId,
+                      onReminderCompleted: () {
+                        onReminderUpdated?.call();
+                      },
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         ),

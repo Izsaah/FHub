@@ -8,14 +8,13 @@ import 'package:fhub/Vinh/screens/reminder_list_screen.dart';
 import 'package:fhub/Vinh/screens/create_reminder_screen.dart';
 import 'package:fhub/Vinh/screens/calendar_page.dart';
 import 'package:fhub/Vinh/screens/views/reminder_list_view.dart';
-import 'package:fhub/Vinh/screens/views/reminder_calendar_view.dart';
 import 'package:fhub/Vinh/widgets/chore_reward_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_scope_filter_chips.dart';
 import 'package:fhub/Vinh/widgets/weekly_calendar_strip.dart';
 import 'package:fhub/Vinh/widgets/family_progress_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_detail_bottom_sheet.dart';
-import 'package:fhub/Vinh/widgets/voice_recorder_widget.dart';
+import 'package:fhub/Vinh/widgets/multi_tier_simulation_dialog.dart';
 import 'package:fhub/Vinh/widgets/voice_reminder_player.dart';
 
 void main() {
@@ -1149,6 +1148,220 @@ void main() {
         ),
         throwsA(isA<ReminderValidationException>()),
       );
+    });
+  });
+
+  group('Mục 3: Multi-Tier Escalation & 10s Demo Tests', () {
+    final futureDt = DateTime.now().add(const Duration(days: 2));
+    final futureDateStr =
+        '${futureDt.day.toString().padLeft(2, '0')}/${futureDt.month.toString().padLeft(2, '0')}/${futureDt.year}';
+
+    test('MultiTierEscalationService schedules 3 tiers and cancelEscalation clears timers', () {
+      final reminder = ReminderModel(
+        id: 'escalation_test_1',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Làm bài tập Lý',
+        date: futureDateStr,
+        time: '18:00',
+        status: ReminderStatus.pending,
+      );
+
+      final service = MultiTierEscalationService.instance;
+      service.cancelAll();
+      expect(service.hasActiveEscalation(reminder.id), isFalse);
+
+      service.scheduleMultiTierEscalation(reminder);
+      expect(service.hasActiveEscalation(reminder.id), isTrue);
+
+      service.cancelEscalation(reminder.id);
+      expect(service.hasActiveEscalation(reminder.id), isFalse);
+    });
+
+    test('Completing or deleting reminder automatically cancels multi-tier escalation', () async {
+      final service = MultiTierEscalationService.instance;
+      service.cancelAll();
+      final repo = InMemoryReminderRepository();
+
+      final created = await repo.createReminder(
+        reminder: ReminderModel(
+          id: 'auto_cancel_test',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_dad',
+          assignedToName: 'Dad',
+          title: 'Đi siêu thị',
+          date: futureDateStr,
+          time: '20:00',
+          status: ReminderStatus.pending,
+        ),
+        currentUserId: 'user_dad',
+      );
+
+      expect(service.hasActiveEscalation(created.id), isTrue);
+
+      // Complete reminder -> auto cancels escalation
+      await repo.completeReminder(
+        reminderId: created.id,
+        currentUserId: 'user_dad',
+      );
+      expect(service.hasActiveEscalation(created.id), isFalse);
+
+      // Create another one and delete it -> auto cancels escalation
+      final created2 = await repo.createReminder(
+        reminder: ReminderModel(
+          id: 'auto_cancel_del_test',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_dad',
+          assignedToName: 'Dad',
+          title: 'Tưới cây cảnh',
+          date: futureDateStr,
+          time: '21:00',
+          status: ReminderStatus.pending,
+        ),
+        currentUserId: 'user_dad',
+      );
+      expect(service.hasActiveEscalation(created2.id), isTrue);
+
+      await repo.deleteReminder(
+        reminderId: created2.id,
+        currentUserId: 'user_dad',
+      );
+      expect(service.hasActiveEscalation(created2.id), isFalse);
+    });
+
+    test('10-second demo stream emits Tier 1 immediately and cleans up on stopDemo', () async {
+      final service = MultiTierEscalationService.instance;
+      final reminder = ReminderModel(
+        id: 'demo_test_stream',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        creatorName: 'Bố',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Nộp báo cáo đồ án',
+        date: futureDateStr,
+        time: '10:00',
+        status: ReminderStatus.pending,
+      );
+
+      final stream = service.start10SecondDemo(reminder);
+      final firstAlert = await stream.first;
+
+      expect(firstAlert.tier, EscalationTier.tier1Due);
+      expect(firstAlert.simulatedSeconds, 0);
+      expect(firstAlert.reminderTitle, 'Nộp báo cáo đồ án');
+      expect(firstAlert.message, contains('Đến giờ hẹn thực hiện'));
+      expect(firstAlert.tierDisplayName, contains('Mốc 1'));
+
+      service.stopDemo();
+    });
+
+    testWidgets('MultiTierSimulationDialog widget renders countdown, timeline steps, and buttons',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final repo = InMemoryReminderRepository();
+      final reminder = ReminderModel(
+        id: 'dialog_sim_test',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        creatorName: 'Bố',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Rửa chén & Lau bếp',
+        date: futureDateStr,
+        time: '19:00',
+        status: ReminderStatus.pending,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MultiTierSimulationDialog(
+              reminder: reminder,
+              repository: repo,
+              currentUserId: 'user_minh',
+            ),
+          ),
+        ),
+      );
+
+      // Verify header and title
+      expect(find.text('Mô phỏng Nhắc lịch Đa tầng'), findsOneWidget);
+      expect(find.text('Rửa chén & Lau bếp'), findsOneWidget);
+
+      // Verify 3 timeline steps
+      expect(find.text('Mốc 1 (0s ↔ Đúng giờ hẹn 0h)'), findsOneWidget);
+      expect(find.text('Mốc 2 (5s ↔ Trễ hạn +6 tiếng)'), findsOneWidget);
+      expect(find.text('Mốc 3 (10s ↔ Trễ hạn +12 tiếng)'), findsOneWidget);
+
+      // Verify Complete Early button
+      final completeButton = find.text('✓ Hoàn thành ngay (Dừng rung)');
+      expect(completeButton, findsOneWidget);
+
+      // Tap Complete Early
+      await tester.ensureVisible(completeButton);
+      await tester.tap(completeButton);
+      await tester.pump();
+
+      expect(find.text('Đã hủy toàn bộ cảnh báo rung!'), findsOneWidget);
+
+      // Clean up timer and animation
+      MultiTierEscalationService.instance.stopDemo();
+    });
+
+    testWidgets('ReminderDetailBottomSheet renders Demo button and opens MultiTierSimulationDialog',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final repo = InMemoryReminderRepository();
+      final reminder = ReminderModel(
+        id: 'bottom_sheet_demo_btn_test',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        creatorName: 'Bố',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Dọn dẹp phòng khách',
+        date: futureDateStr,
+        time: '09:00',
+        status: ReminderStatus.pending,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReminderDetailBottomSheet(
+              reminder: reminder,
+              currentUserId: 'user_minh',
+              repository: repo,
+            ),
+          ),
+        ),
+      );
+
+      // Verify Demo button is rendered
+      final demoBtn = find.text('🧪 Thử nghiệm Nhắc đa tầng (Demo 10s)');
+      expect(demoBtn, findsOneWidget);
+
+      // Tap Demo button to open dialog
+      await tester.ensureVisible(demoBtn);
+      await tester.tap(demoBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(MultiTierSimulationDialog), findsOneWidget);
+
+      // Clean up
+      MultiTierEscalationService.instance.stopDemo();
     });
   });
 }
