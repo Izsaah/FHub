@@ -953,4 +953,168 @@ void main() {
       expect(find.byIcon(Icons.edit_outlined), findsNothing);
     });
   });
+
+  group('Logic Enhancements & Loophole Fixes Tests', () {
+    test('Recurring DAILY reminder automatically creates next occurrence on completion', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'recur_1',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Uống vitamin',
+          date: '20/10/2026',
+          time: '08:00',
+          repeatRule: 'DAILY',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      final completed = await repo.completeReminder(
+        reminderId: 'recur_1',
+        currentUserId: 'user_minh',
+      );
+
+      expect(completed.isCompleted, isTrue);
+
+      final all = await repo.getReminders(familyId: 'f1');
+      expect(all.length, 2);
+
+      final next = all.firstWhere((r) => r.id != 'recur_1');
+      expect(next.title, 'Uống vitamin');
+      expect(next.date, '21/10/2026');
+      expect(next.time, '08:00');
+      expect(next.repeatRule, 'DAILY');
+      expect(next.isPending, isTrue);
+    });
+
+    test('Updating reminder without changing date/time succeeds even if time is past', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'past_rem_1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_mom',
+          assignedToName: 'Mom',
+          title: 'Tiêu đề cũ',
+          date: '20/10/2026',
+          time: '07:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      // Mock 'now' as 08:00 (past 07:00)
+      final updated = await repo.updateReminder(
+        reminder: const ReminderModel(
+          id: 'past_rem_1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_mom',
+          assignedToName: 'Mom',
+          title: 'Tiêu đề mới đã sửa',
+          date: '20/10/2026',
+          time: '07:00',
+          status: ReminderStatus.pending,
+        ),
+        currentUserId: 'user_minh',
+        now: DateTime(2026, 10, 20, 8, 0),
+      );
+
+      expect(updated.title, 'Tiêu đề mới đã sửa');
+    });
+
+    test('Parent or Owner can delete reminder created by another member (Child)', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'child_rem_1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_dad',
+          assignedToName: 'Dad',
+          title: 'Việc con tạo nhầm',
+          date: '25/10/2026',
+          time: '10:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      const members = [
+        FamilyMember(id: 'user_minh', name: 'Minh', role: FamilyMember.roleChild, familyId: 'f1'),
+        FamilyMember(id: 'user_dad', name: 'Bố Hùng', role: FamilyMember.roleParent, familyId: 'f1'),
+      ];
+
+      // Non-parent other child cannot delete
+      expect(
+        () => repo.deleteReminder(
+          reminderId: 'child_rem_1',
+          currentUserId: 'user_other_child',
+          familyMembers: members,
+        ),
+        throwsA(isA<ReminderPermissionException>()),
+      );
+
+      // Parent (Dad) can delete
+      final success = await repo.deleteReminder(
+        reminderId: 'child_rem_1',
+        currentUserId: 'user_dad',
+        familyMembers: members,
+      );
+      expect(success, isTrue);
+
+      final all = await repo.getReminders(familyId: 'f1');
+      expect(all.where((r) => !r.isDeleted).isEmpty, isTrue);
+    });
+
+    test('Claim and complete open task in a single step', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'open_chore_fast',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: 'OPEN',
+          assignedToName: 'Cả nhà',
+          title: 'Quét sân nhanh',
+          date: '25/10/2026',
+          time: '11:00',
+          status: ReminderStatus.open,
+          requiresProofImage: true,
+        ),
+      ]);
+
+      final completed = await repo.claimAndCompleteOpenTask(
+        reminderId: 'open_chore_fast',
+        currentUserId: 'user_minh',
+        currentUserName: 'Minh',
+        proofImageUrl: 'assets/proofs/clean_yard.jpg',
+      );
+
+      expect(completed.isCompleted, isTrue);
+      expect(completed.assignedTo, 'user_minh');
+      expect(completed.assignedToName, 'Minh');
+      expect(completed.proofImageUrl, 'assets/proofs/clean_yard.jpg');
+    });
+
+    testWidgets('Child user in CreateReminderScreen does not see ChoreRewardCard', (tester) async {
+      final repo = InMemoryReminderRepository();
+      const members = [
+        FamilyMember(id: 'user_minh', name: 'Minh', role: FamilyMember.roleChild, familyId: 'f1'),
+        FamilyMember(id: 'user_dad', name: 'Bố', role: FamilyMember.roleParent, familyId: 'f1'),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateReminderScreen(
+            familyId: 'f1',
+            currentUserId: 'user_minh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+
+      // Child user should NOT see camera proof switch card
+      expect(find.byType(ChoreRewardCard), findsNothing);
+    });
+  });
 }

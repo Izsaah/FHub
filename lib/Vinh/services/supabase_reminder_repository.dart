@@ -204,13 +204,18 @@ class SupabaseReminderRepository implements ReminderRepository {
         }
       }
 
-      final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
-        reminder.date,
-        reminder.time,
-        now: now,
-      );
-      if (futureError != null) {
-        throw ReminderValidationException(futureError);
+      // 3. Validate Date + Time must be in the future (Chỉ kiểm tra nếu ngày hoặc giờ thay đổi)
+      final isDateTimeChanged =
+          existing.date != reminder.date || existing.time != reminder.time;
+      if (isDateTimeChanged) {
+        final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
+          reminder.date,
+          reminder.time,
+          now: now,
+        );
+        if (futureError != null) {
+          throw ReminderValidationException(futureError);
+        }
       }
 
       final updateMap = {
@@ -287,6 +292,43 @@ class SupabaseReminderRepository implements ReminderRepository {
   }
 
   @override
+  Future<ReminderModel> claimAndCompleteOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+    String? proofImageUrl,
+  }) async {
+    await claimOpenTask(
+      reminderId: reminderId,
+      currentUserId: currentUserId,
+      currentUserName: currentUserName,
+    );
+    return completeReminder(
+      reminderId: reminderId,
+      currentUserId: currentUserId,
+      proofImageUrl: proofImageUrl,
+    );
+  }
+
+  DateTime? _calculateNextDueDate(String dateStr, String repeatRule) {
+    try {
+      final parts = dateStr.trim().split('/');
+      if (parts.length != 3) return null;
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final year = int.parse(parts[2]);
+      final cur = DateTime(year, month, day);
+
+      if (repeatRule == 'DAILY') {
+        return cur.add(const Duration(days: 1));
+      } else if (repeatRule == 'WEEKLY') {
+        return cur.add(const Duration(days: 7));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  @override
   Future<ReminderModel> completeReminder({
     required String reminderId,
     required String currentUserId,
@@ -328,11 +370,39 @@ class SupabaseReminderRepository implements ReminderRepository {
           .update({
             'status': ReminderStatus.completed,
             'completed_at': DateTime.now().toIso8601String(),
-            'proof_image_url': ?effectiveProof,
+            'proof_image_url': effectiveProof,
           })
           .eq('id', reminderId)
           .select()
           .single();
+
+      // Tự động sinh chu kỳ tiếp theo cho lời nhắc lặp lại (DAILY / WEEKLY)
+      final rule = existing.repeatRule;
+      if (rule == 'DAILY' || rule == 'WEEKLY') {
+        final nextDate = _calculateNextDueDate(existing.date, rule!);
+        if (nextDate != null) {
+          final nextDateStr =
+              '${nextDate.day.toString().padLeft(2, '0')}/${nextDate.month.toString().padLeft(2, '0')}/${nextDate.year}';
+          try {
+            await client.from('reminders').insert({
+              'family_id': existing.familyId,
+              'creator_id': existing.creatorId,
+              'assigned_to': existing.assignedTo,
+              'title': existing.title,
+              'date': nextDateStr,
+              'time': existing.time,
+              'repeat_rule': existing.repeatRule,
+              'status': existing.isOpenTask ? ReminderStatus.open : ReminderStatus.pending,
+              'requires_proof_image': existing.requiresProofImage,
+              'reward_stars': 0,
+              'voice_note_path': existing.voiceNotePath,
+              'voice_duration_seconds': existing.voiceDurationSeconds,
+              'voice_note_description': existing.voiceNoteDescription,
+              'created_at': DateTime.now().toIso8601String(),
+            });
+          } catch (_) {}
+        }
+      }
 
       return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
     } catch (e) {
@@ -352,12 +422,14 @@ class SupabaseReminderRepository implements ReminderRepository {
   Future<bool> deleteReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   }) async {
     final client = _client;
     if (client == null) {
       return _fallbackRepository.deleteReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        familyMembers: familyMembers,
       );
     }
 
@@ -369,9 +441,20 @@ class SupabaseReminderRepository implements ReminderRepository {
           .single();
       final existing = ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
-      if (existing.creatorId != currentUserId) {
+      // Rule: Cho phép xóa nếu là người tạo HOẶC là Bố/Mẹ/Ông/Bà/Chủ nhà
+      final isCreator = existing.creatorId == currentUserId;
+      bool isParentOrOwner = false;
+      if (familyMembers != null && familyMembers.isNotEmpty) {
+        final currentMember = familyMembers.firstWhere(
+          (m) => m.id == currentUserId,
+          orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+        );
+        isParentOrOwner = currentMember.isParent || currentMember.isGrandparent;
+      }
+
+      if (!isCreator && !isParentOrOwner) {
         throw ReminderPermissionException(
-          'Only creator can delete this reminder',
+          'Only the creator or a parent/owner can delete this reminder',
         );
       }
 
@@ -386,6 +469,7 @@ class SupabaseReminderRepository implements ReminderRepository {
       return _fallbackRepository.deleteReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        familyMembers: familyMembers,
       );
     }
   }

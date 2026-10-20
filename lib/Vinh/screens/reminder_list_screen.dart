@@ -236,10 +236,17 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   }
 
   Future<void> _confirmAndDelete(ReminderModel reminder) async {
-    if (reminder.creatorId != _currentUserId) {
+    final isCreator = reminder.creatorId == _currentUserId;
+    final currentMember = _familyMembers.firstWhere(
+      (m) => m.id == _currentUserId,
+      orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+    );
+    final isParentOrOwner = currentMember.isParent || currentMember.isGrandparent;
+
+    if (!isCreator && !isParentOrOwner) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Chỉ người tạo mới có thể xóa lời nhắc này.'),
+          content: Text('Chỉ người tạo hoặc Bố Mẹ/Chủ nhà mới có thể xóa lời nhắc này.'),
           backgroundColor: Color(0xFFBA1A1A),
         ),
       );
@@ -278,6 +285,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         await _repository.deleteReminder(
           reminderId: reminder.id,
           currentUserId: _currentUserId,
+          familyMembers: _familyMembers,
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -366,6 +374,51 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           SnackBar(
             content: Text(
               '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!',
+            ),
+            backgroundColor: const Color(0xFF005F50),
+          ),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _claimAndCompleteReminder(ReminderModel reminder) async {
+    try {
+      String? proofUrl;
+      if (reminder.requiresProofImage) {
+        proofUrl = await CameraProofDialog.show(
+          context,
+          reminder: reminder,
+          currentUserName: _currentUserName,
+        );
+        if (proofUrl == null) {
+          // Người dùng hủy chụp ảnh
+          return;
+        }
+      }
+
+      HapticFeedback.mediumImpact();
+      await _repository.claimAndCompleteOpenTask(
+        reminderId: reminder.id,
+        currentUserId: _currentUserId,
+        currentUserName: _currentUserName,
+        proofImageUrl: proofUrl,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🎉 Bạn đã hoàn thành việc chung "${reminder.title}" xuất sắc!',
             ),
             backgroundColor: const Color(0xFF005F50),
           ),
@@ -700,12 +753,18 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   currentUserId: _currentUserId,
                   selectedDateStr: selectedDateStr,
                   isShowingAll: _showAll,
+                  isParentOrOwner: _familyMembers.any(
+                    (m) =>
+                        m.id == _currentUserId &&
+                        (m.isParent || m.isGrandparent),
+                  ),
                   onCreatePressed: _openCreateReminder,
                   onShowAllPressed: () => setState(() => _showAll = true),
                   onTapReminder: _showDetailBottomSheet,
                   onCompleteReminder: _completeReminder,
                   onDeleteReminder: _confirmAndDelete,
                   onClaimReminder: _claimReminder,
+                  onClaimAndCompleteReminder: _claimAndCompleteReminder,
                 ),
               ),
             ],

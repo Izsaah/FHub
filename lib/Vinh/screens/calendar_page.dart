@@ -124,8 +124,61 @@ class _CalendarPageState extends State<CalendarPage> {
     }
   }
 
+  bool get _isParentOrOwner {
+    final currentMember = widget.familyMembers.firstWhere(
+      (m) => m.id == widget.currentUserId,
+      orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+    );
+    return currentMember.isParent || currentMember.isGrandparent;
+  }
+
+  Future<void> _claimAndCompleteReminder(ReminderModel reminder) async {
+    try {
+      String? proofUrl;
+      if (reminder.requiresProofImage) {
+        proofUrl = await CameraProofDialog.show(
+          context,
+          reminder: reminder,
+          currentUserName: widget.currentUserName,
+        );
+        if (proofUrl == null) {
+          return;
+        }
+      }
+
+      await widget.repository.claimAndCompleteOpenTask(
+        reminderId: reminder.id,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
+        proofImageUrl: proofUrl,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🎉 Bạn đã hoàn thành việc chung "${reminder.title}" xuất sắc!',
+            ),
+            backgroundColor: const Color(0xFF005F50),
+          ),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _confirmAndDelete(ReminderModel reminder) async {
-    if (reminder.creatorId != widget.currentUserId) return;
+    final isCreator = reminder.creatorId == widget.currentUserId;
+    if (!isCreator && !_isParentOrOwner) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -158,6 +211,7 @@ class _CalendarPageState extends State<CalendarPage> {
         await widget.repository.deleteReminder(
           reminderId: reminder.id,
           currentUserId: widget.currentUserId,
+          familyMembers: widget.familyMembers,
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -346,11 +400,14 @@ class _CalendarPageState extends State<CalendarPage> {
                             onComplete: reminder.assignedTo == widget.currentUserId
                                 ? () => _completeReminder(reminder)
                                 : null,
-                            onDelete: reminder.creatorId == widget.currentUserId
+                            onDelete: (reminder.creatorId == widget.currentUserId || _isParentOrOwner)
                                 ? () => _confirmAndDelete(reminder)
                                 : null,
                             onClaim: reminder.isOpenTask
                                 ? () => _claimReminder(reminder)
+                                : null,
+                            onClaimAndComplete: reminder.isOpenTask
+                                ? () => _claimAndCompleteReminder(reminder)
                                 : null,
                           ),
                         ),
@@ -372,10 +429,11 @@ class _CalendarPageState extends State<CalendarPage> {
                             onComplete: reminder.assignedTo == widget.currentUserId
                                 ? () => _completeReminder(reminder)
                                 : null,
-                            onDelete: reminder.creatorId == widget.currentUserId
+                            onDelete: (reminder.creatorId == widget.currentUserId || _isParentOrOwner)
                                 ? () => _confirmAndDelete(reminder)
                                 : null,
                             onClaim: () => _claimReminder(reminder),
+                            onClaimAndComplete: () => _claimAndCompleteReminder(reminder),
                           ),
                         ),
                       ],
@@ -396,11 +454,14 @@ class _CalendarPageState extends State<CalendarPage> {
                             onComplete: reminder.assignedTo == widget.currentUserId
                                 ? () => _completeReminder(reminder)
                                 : null,
-                            onDelete: reminder.creatorId == widget.currentUserId
+                            onDelete: (reminder.creatorId == widget.currentUserId || _isParentOrOwner)
                                 ? () => _confirmAndDelete(reminder)
                                 : null,
                             onClaim: reminder.isOpenTask
                                 ? () => _claimReminder(reminder)
+                                : null,
+                            onClaimAndComplete: reminder.isOpenTask
+                                ? () => _claimAndCompleteReminder(reminder)
                                 : null,
                           ),
                         ),
@@ -419,7 +480,7 @@ class _CalendarPageState extends State<CalendarPage> {
                             reminder: reminder,
                             currentUserId: widget.currentUserId,
                             onTap: () => _showDetailBottomSheet(reminder),
-                            onDelete: reminder.creatorId == widget.currentUserId
+                            onDelete: (reminder.creatorId == widget.currentUserId || _isParentOrOwner)
                                 ? () => _confirmAndDelete(reminder)
                                 : null,
                           ),
