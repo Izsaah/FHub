@@ -4,6 +4,8 @@ import '../models/reminder_model.dart';
 import '../services/member_color_helper.dart';
 import '../services/reminder_repository.dart';
 import '../services/reminder_validator.dart';
+import '../widgets/chore_reward_card.dart';
+import '../widgets/member_picker_bottom_sheet.dart';
 import '../widgets/voice_recorder_widget.dart';
 
 class CreateReminderScreen extends StatefulWidget {
@@ -38,6 +40,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   String _selectedRepeatRule = 'NONE';
+  bool _requiresProofImage = false;
 
   String? _voiceNotePath;
   int? _voiceDurationSeconds;
@@ -82,6 +85,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       _voiceDurationSeconds = existing.voiceDurationSeconds;
       _voiceNoteDescription = existing.voiceNoteDescription;
       _selectedRepeatRule = existing.repeatRule ?? 'NONE';
+      _requiresProofImage = existing.requiresProofImage;
 
       // Parse existing date and time
       final parsedDt = existing.dueDateTime;
@@ -94,27 +98,32 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         _selectedTime = TimeOfDay(hour: (now.hour + 1) % 24, minute: now.minute);
       }
 
-      // Find matching assigned member
-      _selectedMember = widget.familyMembers.firstWhere(
-        (m) => m.id == existing.assignedTo,
-        orElse: () => FamilyMember(
-          id: existing.assignedTo,
-          name: existing.assignedToName,
-          role: 'Member',
-          familyId: existing.familyId,
-        ),
-      );
+      // Find matching assigned member (hoặc Open Task)
+      if (existing.isOpenTask) {
+        _selectedMember = const FamilyMember(
+          id: 'OPEN',
+          name: 'Cả nhà (Việc chung)',
+          role: 'Open Task',
+          familyId: '',
+        );
+      } else {
+        _selectedMember = widget.familyMembers.firstWhere(
+          (m) => m.id == existing.assignedTo,
+          orElse: () => FamilyMember(
+            id: existing.assignedTo,
+            name: existing.assignedToName,
+            role: 'Member',
+            familyId: widget.familyId,
+          ),
+        );
+      }
     } else {
-      // Default to tomorrow or later today if early
+      // Default initial date/time: Hôm nay + 1 tiếng
       final now = DateTime.now();
-      // Default date is today
       _selectedDate = DateTime(now.year, now.month, now.day);
-      // Default time is 1 hour in the future
-      final nextHour = now.hour < 23 ? now.hour + 1 : 23;
-      final nextMinute = now.minute;
-      _selectedTime = TimeOfDay(hour: nextHour, minute: nextMinute);
+      _selectedTime = TimeOfDay(hour: (now.hour + 1) % 24, minute: 0);
 
-      // If family members exist, default to the first one that is not current user, or first
+      // Default member: Thành viên đầu tiên khác user hiện tại
       if (widget.familyMembers.isNotEmpty) {
         _selectedMember = widget.familyMembers.firstWhere(
           (m) => m.id != widget.currentUserId,
@@ -142,20 +151,41 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     return '$h:$m';
   }
 
+  bool _validateDateTime() {
+    if (_selectedDate == null || _selectedTime == null) {
+      setState(() {
+        _dateTimeError = 'Vui lòng chọn ngày và giờ';
+      });
+      return false;
+    }
+
+    final err = widget.isEditing
+        ? null
+        : ReminderValidator.validateFutureDateTime(
+            _selectedDate,
+            _selectedTime,
+          );
+
+    setState(() {
+      _dateTimeError = err;
+    });
+
+    return err == null;
+  }
+
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? now,
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: DateTime(now.year + 2),
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now.add(const Duration(days: 365 * 5)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF0D7A68),
+              primary: Color(0xFF005F50),
               onPrimary: Colors.white,
-              surface: Colors.white,
               onSurface: Color(0xFF151D1B),
             ),
           ),
@@ -167,22 +197,22 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _validateDateTime();
       });
+      _validateDateTime();
     }
   }
 
   Future<void> _pickTime() async {
+    final now = TimeOfDay.now();
     final picked = await showTimePicker(
       context: context,
-      initialTime: _selectedTime ?? TimeOfDay.now(),
+      initialTime: _selectedTime ?? now,
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF0D7A68),
+              primary: Color(0xFF005F50),
               onPrimary: Colors.white,
-              surface: Colors.white,
               onSurface: Color(0xFF151D1B),
             ),
           ),
@@ -194,140 +224,39 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     if (picked != null) {
       setState(() {
         _selectedTime = picked;
-        _validateDateTime();
       });
+      _validateDateTime();
     }
   }
 
-  bool _validateDateTime() {
-    final error = ReminderValidator.validateFutureDateTime(
-      _selectedDate,
-      _selectedTime,
+  Future<void> _showMemberPickerBottomSheet() async {
+    final picked = await MemberPickerBottomSheet.show(
+      context,
+      familyMembers: widget.familyMembers,
+      selectedMember: _selectedMember,
     );
-    setState(() {
-      _dateTimeError = error;
-    });
-    return error == null;
-  }
-
-  Future<void> _pickMember() async {
-    const primaryColor = Color(0xFF0D7A68);
-    const textPrimary = Color(0xFF151D1B);
-
-    final selected = await showModalBottomSheet<FamilyMember>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Select Member (For)',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: textPrimary,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 20),
-                        onPressed: () => Navigator.of(ctx).pop(),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: Color(0xFFE2EAE7)),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: widget.familyMembers.length,
-                    itemBuilder: (ctx, index) {
-                      final member = widget.familyMembers[index];
-                      final isSelected = member.id == _selectedMember?.id;
-                      final primary =
-                          MemberColorHelper.getPrimaryColor(member.name);
-                      final bg =
-                          MemberColorHelper.getBackgroundColor(member.name);
-
-                      return ListTile(
-                        leading: CircleAvatar(
-                          radius: 18,
-                          backgroundColor: bg,
-                          child: Text(
-                            member.name.isNotEmpty
-                                ? member.name[0].toUpperCase()
-                                : '?',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: primary,
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          member.name,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.w500,
-                            color: isSelected ? primaryColor : textPrimary,
-                          ),
-                        ),
-                        subtitle: Text(
-                          member.role,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF6E7A75),
-                          ),
-                        ),
-                        trailing: isSelected
-                            ? const Icon(Icons.check_circle,
-                                color: primaryColor)
-                            : null,
-                        tileColor: isSelected
-                            ? const Color(0xFFE7F5F2)
-                            : Colors.transparent,
-                        onTap: () => Navigator.of(ctx).pop(member),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (selected != null) {
+    if (picked != null) {
       setState(() {
-        _selectedMember = selected;
+        _selectedMember = picked;
       });
     }
   }
 
   Future<void> _submit() async {
-    final formValid = _formKey.currentState?.validate() ?? false;
-    final dateTimeValid = _validateDateTime();
+    final isFormValid = _formKey.currentState?.validate() ?? false;
+    final isDtValid = _validateDateTime();
 
-    if (!formValid || !dateTimeValid) {
+    if (!isFormValid || !isDtValid) {
       return;
     }
 
-    if (_selectedMember == null || _selectedDate == null || _selectedTime == null) {
+    if (_selectedMember == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng chọn người nhận việc hoặc Việc chung cho cả nhà.'),
+          backgroundColor: Color(0xFFBA1A1A),
+        ),
+      );
       return;
     }
 
@@ -336,55 +265,62 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     try {
       final dateStr = _formatDate(_selectedDate!);
       final timeStr = _formatTime(_selectedTime!);
+      final isNowOpenTask = _selectedMember!.id == 'OPEN';
 
       if (widget.isEditing) {
-        final updatedModel = widget.existingReminder!.copyWith(
-          assignedTo: _selectedMember!.id,
-          assignedToName: _selectedMember!.name,
+        final updated = widget.existingReminder!.copyWith(
           title: _titleController.text.trim(),
+          assignedTo: isNowOpenTask ? '' : _selectedMember!.id,
+          assignedToName: isNowOpenTask ? 'Cả nhà' : _selectedMember!.name,
           date: dateStr,
           time: timeStr,
           repeatRule: _selectedRepeatRule,
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
+          requiresProofImage: _requiresProofImage,
+          rewardStars: 0,
+          status: isNowOpenTask ? ReminderStatus.open : null,
         );
 
-        final result = await widget.repository.updateReminder(
-          reminder: updatedModel,
+        await widget.repository.updateReminder(
+          reminder: updated,
           currentUserId: widget.currentUserId,
           familyMembers: widget.familyMembers,
         );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Reminder "${result.title}" updated!'),
-              backgroundColor: const Color(0xFF0D7A68),
+            const SnackBar(
+              content: Text('Cập nhật lời nhắc thành công!'),
+              backgroundColor: Color(0xFF005F50),
             ),
           );
-          Navigator.of(context).pop(result);
+          Navigator.of(context).pop();
         }
       } else {
-        final reminder = ReminderModel(
-          id: '',
+        final newReminder = ReminderModel(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
           familyId: widget.familyId,
           creatorId: widget.currentUserId,
           creatorName: widget.currentUserName,
-          assignedTo: _selectedMember!.id,
-          assignedToName: _selectedMember!.name,
           title: _titleController.text.trim(),
+          assignedTo: isNowOpenTask ? '' : _selectedMember!.id,
+          assignedToName: isNowOpenTask ? 'Cả nhà' : _selectedMember!.name,
           date: dateStr,
           time: timeStr,
-          status: ReminderStatus.pending,
           repeatRule: _selectedRepeatRule,
+          status: isNowOpenTask ? ReminderStatus.open : ReminderStatus.pending,
+          requiresProofImage: _requiresProofImage,
+          rewardStars: 0,
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
+          createdAt: DateTime.now(),
         );
 
-        final created = await widget.repository.createReminder(
-          reminder: reminder,
+        await widget.repository.createReminder(
+          reminder: newReminder,
           currentUserId: widget.currentUserId,
           familyMembers: widget.familyMembers,
         );
@@ -392,16 +328,19 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Reminder "${created.title}" created!'),
-              backgroundColor: const Color(0xFF0D7A68),
+              content: Text(
+                isNowOpenTask
+                    ? '🎉 Tạo việc mở cho cả nhà thành công!'
+                    : 'Tạo lời nhắc thành công!',
+              ),
+              backgroundColor: const Color(0xFF005F50),
             ),
           );
-          Navigator.of(context).pop(created);
+          Navigator.of(context).pop();
         }
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.toString()),
@@ -409,12 +348,16 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF0D7A68);
+    const primaryColor = Color(0xFF005F50);
     const textPrimary = Color(0xFF151D1B);
     const textMuted = Color(0xFF6E7A75);
 
@@ -422,18 +365,22 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       backgroundColor: const Color(0xFFF3FBF8),
       appBar: AppBar(
         title: Text(
-          widget.isEditing ? 'Edit Reminder' : 'Create Reminder',
+          widget.isEditing ? 'Chỉnh sửa lời nhắc' : 'Tạo lời nhắc mới',
           style: const TextStyle(
+            color: primaryColor,
             fontWeight: FontWeight.bold,
-            color: textPrimary,
+            fontSize: 20,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFEDF5F2),
         elevation: 0,
-        iconTheme: const IconThemeData(color: textPrimary),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: primaryColor),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(color: const Color(0xFFE2EAE7), height: 1),
+          child: Container(color: const Color(0xFFDCE8E3), height: 1),
         ),
       ),
       body: SingleChildScrollView(
@@ -441,11 +388,11 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         child: Form(
           key: _formKey,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. TITLE
+              // 1. TIÊU ĐỀ
               const Text(
-                'Title',
+                'Nội dung việc cần làm *',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -455,14 +402,13 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
               const SizedBox(height: 8),
               TextFormField(
                 controller: _titleController,
-                style: const TextStyle(fontSize: 17),
+                maxLength: 100,
                 decoration: InputDecoration(
-                  hintText: 'Buy milk',
+                  hintText: 'Nhập việc cần làm hoặc bấm ghi âm giọng nói...',
                   hintStyle: const TextStyle(color: textMuted),
                   filled: true,
                   fillColor: Colors.white,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  contentPadding: const EdgeInsets.all(16),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: const BorderSide(color: Color(0xFFBDC9C4)),
@@ -473,27 +419,27 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide:
-                        const BorderSide(color: primaryColor, width: 2),
+                    borderSide: const BorderSide(color: primaryColor, width: 2),
                   ),
                 ),
-                validator: ReminderValidator.validateTitle,
+                validator: (val) =>
+                    ReminderValidator.validateTitle(val?.trim() ?? ''),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
-              // 1.1 GHI ÂM GIỌNG NÓI (VOICE REMINDER VIA MICROPHONE & SPEAKER)
+              // 1.5. GHI ÂM LỜI NHẮC GIỌNG NÓI
               VoiceRecorderWidget(
-                onVoiceRecorded: _onVoiceRecorded,
-                onVoiceRemoved: _onVoiceRemoved,
                 initialAudioPath: _voiceNotePath,
                 initialDuration: _voiceDurationSeconds,
                 initialDescription: _voiceNoteDescription,
+                onVoiceRecorded: _onVoiceRecorded,
+                onVoiceRemoved: _onVoiceRemoved,
               ),
               const SizedBox(height: 20),
 
-              // 2. FOR (Assigned Member)
+              // 2. NGƯỜI NHẬN VIỆC (FOR)
               const Text(
-                'For',
+                'Người nhận việc',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -502,7 +448,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
               ),
               const SizedBox(height: 8),
               InkWell(
-                onTap: _pickMember,
+                onTap: _showMemberPickerBottomSheet,
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
                   height: 56,
@@ -518,51 +464,64 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                       _selectedMember != null
                           ? Row(
                               children: [
-                                CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: MemberColorHelper.getBackgroundColor(
-                                      _selectedMember!.name),
-                                  child: Text(
-                                    _selectedMember!.name.isNotEmpty
-                                        ? _selectedMember!.name[0].toUpperCase()
-                                        : '?',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: MemberColorHelper.getPrimaryColor(
-                                          _selectedMember!.name),
+                                if (_selectedMember!.id == 'OPEN')
+                                  const CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: Color(0xFFE0F7FA),
+                                    child: Icon(Icons.groups_rounded,
+                                        color: Color(0xFF00796B), size: 16),
+                                  )
+                                else
+                                  CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor:
+                                        MemberColorHelper.getBackgroundColor(
+                                            _selectedMember!.name),
+                                    child: Text(
+                                      _selectedMember!.name.isNotEmpty
+                                          ? _selectedMember!.name[0]
+                                              .toUpperCase()
+                                          : '?',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color:
+                                            MemberColorHelper.getPrimaryColor(
+                                                _selectedMember!.name),
+                                      ),
                                     ),
                                   ),
-                                ),
                                 const SizedBox(width: 10),
                                 Text(
-                                  '${_selectedMember!.name} (${_selectedMember!.role})',
+                                  _selectedMember!.id == 'OPEN'
+                                      ? '👨‍👩‍👧 Cả nhà (Việc chung chưa gán)'
+                                      : '${_selectedMember!.name} (${_selectedMember!.roleDisplayName})',
                                   style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
                                     color: textPrimary,
                                   ),
                                 ),
                               ],
                             )
                           : const Text(
-                              'Select Member',
+                              'Chọn thành viên',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w500,
                                 color: textMuted,
                               ),
                             ),
-                      const Icon(Icons.person_outline, color: primaryColor),
+                      const Icon(Icons.arrow_drop_down, color: primaryColor),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 20),
 
-              // 3. DATE
+              // 3. NGÀY HẸN
               const Text(
-                'Date',
+                'Ngày thực hiện',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -587,11 +546,12 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                       Text(
                         _selectedDate != null
                             ? _formatDate(_selectedDate!)
-                            : 'Select Date',
+                            : 'Chọn ngày',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
-                          color: _selectedDate != null ? textPrimary : textMuted,
+                          color:
+                              _selectedDate != null ? textPrimary : textMuted,
                         ),
                       ),
                       const Icon(Icons.calendar_month, color: primaryColor),
@@ -601,9 +561,9 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
               ),
               const SizedBox(height: 20),
 
-              // 4. TIME
+              // 4. GIỜ HẸN
               const Text(
-                'Time',
+                'Giờ thực hiện',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -628,11 +588,12 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                       Text(
                         _selectedTime != null
                             ? _formatTime(_selectedTime!)
-                            : 'Select Time',
+                            : 'Chọn giờ',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
-                          color: _selectedTime != null ? textPrimary : textMuted,
+                          color:
+                              _selectedTime != null ? textPrimary : textMuted,
                         ),
                       ),
                       const Icon(Icons.access_time, color: primaryColor),
@@ -641,10 +602,10 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
 
-              // 4.5. REPEAT FREQUENCY
+              // 4.5. TẦN SUẤT LẶP LẠI (REPEAT)
               const SizedBox(height: 20),
               const Text(
-                'Lặp lại (Repeat)',
+                'Tần suất lặp lại',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -658,7 +619,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                   segments: const [
                     ButtonSegment<String>(
                       value: 'NONE',
-                      label: Text('1 lần'),
+                      label: Text('Một lần'),
                       icon: Icon(Icons.event_outlined),
                     ),
                     ButtonSegment<String>(
@@ -695,40 +656,31 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 ),
               ),
 
-              // 5. Future Date + Time Error Message
+              // 4.6. NGHIỆM THU VIỆC NHÀ (CAMERA PROOF)
+              const SizedBox(height: 20),
+              ChoreRewardCard(
+                requiresProofImage: _requiresProofImage,
+                onProofRequiredChanged: (val) =>
+                    setState(() => _requiresProofImage = val),
+              ),
+
               if (_dateTimeError != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFDAD6),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.error_outline,
-                          color: Color(0xFFBA1A1A), size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _dateTimeError!,
-                          style: const TextStyle(
-                            color: Color(0xFFBA1A1A),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 8),
+                Text(
+                  _dateTimeError!,
+                  style: const TextStyle(
+                    color: Color(0xFFBA1A1A),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
-              const SizedBox(height: 32),
+              const SizedBox(height: 36),
 
-              // 6. CREATE BUTTON
+              // 5. NÚT SUBMIT
               SizedBox(
-                height: 54,
+                width: double.infinity,
+                height: 56,
                 child: FilledButton(
                   style: FilledButton.styleFrom(
                     backgroundColor: primaryColor,
@@ -743,18 +695,23 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                           height: 24,
                           child: CircularProgressIndicator(
                             color: Colors.white,
-                            strokeWidth: 2.5,
+                            strokeWidth: 2,
                           ),
                         )
                       : Text(
-                          widget.isEditing ? 'Save Changes' : 'Create',
+                          widget.isEditing
+                              ? 'Cập nhật lời nhắc'
+                              : (_selectedMember?.id == 'OPEN'
+                                  ? 'Đăng việc cho cả nhà'
+                                  : 'Lưu lời nhắc'),
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                 ),
               ),
+              const SizedBox(height: 24),
             ],
           ),
         ),

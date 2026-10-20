@@ -31,6 +31,13 @@ abstract class ReminderRepository {
   Future<ReminderModel> completeReminder({
     required String reminderId,
     required String currentUserId,
+    String? proofImageUrl,
+  });
+
+  Future<ReminderModel> claimOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
   });
 
   Future<bool> deleteReminder({
@@ -66,6 +73,41 @@ class InMemoryReminderRepository implements ReminderRepository {
         '${yesterday.day.toString().padLeft(2, '0')}/${yesterday.month.toString().padLeft(2, '0')}/${yesterday.year}';
 
     _reminders.addAll([
+      // 1. Việc nhà cho con: Yêu cầu chụp ảnh nghiệm thu + Thưởng 3 sao
+      ReminderModel(
+        id: 'rem_chore_1',
+        familyId: 'family_1',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Rửa bát & dọn bếp sau bữa tối',
+        date: todayStr,
+        time: '20:00',
+        status: ReminderStatus.pending,
+        repeatRule: 'DAILY',
+        requiresProofImage: true,
+        rewardStars: 3,
+        createdAt: now.subtract(const Duration(hours: 2)),
+      ),
+      // 2. Việc chung gia đình (Open Task): Cả nhà xung phong nhận việc + 2 sao
+      ReminderModel(
+        id: 'rem_open_1',
+        familyId: 'family_1',
+        creatorId: 'user_dad',
+        creatorName: 'Dad',
+        assignedTo: 'OPEN',
+        assignedToName: 'Cả nhà',
+        title: 'Dọn dẹp phòng khách đón khách',
+        date: todayStr,
+        time: '17:30',
+        status: ReminderStatus.open,
+        repeatRule: 'NONE',
+        requiresProofImage: true,
+        rewardStars: 2,
+        createdAt: now.subtract(const Duration(hours: 4)),
+      ),
+      // 3. Việc quá hạn
       ReminderModel(
         id: 'rem_overdue_1',
         familyId: 'family_1',
@@ -80,6 +122,7 @@ class InMemoryReminderRepository implements ReminderRepository {
         repeatRule: 'NONE',
         createdAt: now.subtract(const Duration(days: 2)),
       ),
+      // 4. Lời nhắc uống thuốc hàng ngày (con nhắc mẹ)
       ReminderModel(
         id: 'rem_1',
         familyId: 'family_1',
@@ -94,6 +137,7 @@ class InMemoryReminderRepository implements ReminderRepository {
         repeatRule: 'DAILY',
         createdAt: now.subtract(const Duration(hours: 3)),
       ),
+      // 5. Việc mua sữa hàng tuần (nhờ bố)
       ReminderModel(
         id: 'rem_2',
         familyId: 'family_1',
@@ -108,21 +152,27 @@ class InMemoryReminderRepository implements ReminderRepository {
         repeatRule: 'WEEKLY',
         createdAt: now.subtract(const Duration(hours: 1)),
       ),
+      // 6. Việc đã hoàn thành kèm ảnh nghiệm thu & 2 sao
       ReminderModel(
         id: 'rem_3',
         familyId: 'family_1',
-        creatorId: 'user_dad',
-        creatorName: 'Dad',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
         assignedTo: 'user_minh',
         assignedToName: 'Minh',
-        title: 'Mua rau củ siêu thị',
+        title: 'Gấp quần áo & dọn phòng ngủ',
         date: todayStr,
         time: '12:00',
         status: ReminderStatus.completed,
         repeatRule: 'NONE',
+        requiresProofImage: true,
+        rewardStars: 2,
+        proofImageUrl:
+            'https://images.unsplash.com/photo-1540518614846-7ede433c4ef4?auto=format&fit=crop&w=400&q=80',
         completedAt: now.subtract(const Duration(minutes: 30)),
         createdAt: now.subtract(const Duration(hours: 5)),
       ),
+      // 7. Lời nhắc thoại từ Mẹ
       ReminderModel(
         id: 'rem_voice_1',
         familyId: 'family_1',
@@ -196,8 +246,12 @@ class InMemoryReminderRepository implements ReminderRepository {
       throw ReminderValidationException(titleError);
     }
 
-    // 2. Validate Assigned Member if list provided
-    if (familyMembers != null && familyMembers.isNotEmpty) {
+    // 2. Validate Assigned Member if list provided (allow open task: OPEN / ALL)
+    if (familyMembers != null &&
+        familyMembers.isNotEmpty &&
+        reminder.assignedTo != 'OPEN' &&
+        reminder.assignedTo != 'ALL' &&
+        reminder.assignedTo.isNotEmpty) {
       final memberError = ReminderValidator.validateAssignedMember(
         reminder.assignedTo,
         familyMembers,
@@ -220,7 +274,7 @@ class InMemoryReminderRepository implements ReminderRepository {
     // 4. Validate creator matches current user
     if (reminder.creatorId != currentUserId) {
       throw ReminderPermissionException(
-        'Reminder creator must match current logged-in user',
+        'Only the creator can set their ID as creator',
       );
     }
 
@@ -228,12 +282,11 @@ class InMemoryReminderRepository implements ReminderRepository {
       id: reminder.id.isEmpty
           ? 'rem_${DateTime.now().millisecondsSinceEpoch}'
           : reminder.id,
-      status: ReminderStatus.pending,
       createdAt: now ?? DateTime.now(),
     );
 
     _reminders.add(newReminder);
-    _notify(reminder.familyId);
+    _notify(newReminder.familyId);
     return newReminder;
   }
 
@@ -265,8 +318,12 @@ class InMemoryReminderRepository implements ReminderRepository {
       throw ReminderValidationException(titleError);
     }
 
-    // 2. Validate Assigned Member if list provided
-    if (familyMembers != null && familyMembers.isNotEmpty) {
+    // 2. Validate Assigned Member if list provided (allow open task)
+    if (familyMembers != null &&
+        familyMembers.isNotEmpty &&
+        reminder.assignedTo != 'OPEN' &&
+        reminder.assignedTo != 'ALL' &&
+        reminder.assignedTo.isNotEmpty) {
       final memberError = ReminderValidator.validateAssignedMember(
         reminder.assignedTo,
         familyMembers,
@@ -292,6 +349,10 @@ class InMemoryReminderRepository implements ReminderRepository {
       assignedToName: reminder.assignedToName,
       date: reminder.date,
       time: reminder.time,
+      repeatRule: reminder.repeatRule,
+      requiresProofImage: reminder.requiresProofImage,
+      proofImageUrl: reminder.proofImageUrl,
+      rewardStars: reminder.rewardStars,
       voiceNotePath: reminder.voiceNotePath,
       voiceDurationSeconds: reminder.voiceDurationSeconds,
       voiceNoteDescription: reminder.voiceNoteDescription,
@@ -303,9 +364,37 @@ class InMemoryReminderRepository implements ReminderRepository {
   }
 
   @override
+  Future<ReminderModel> claimOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+  }) async {
+    final index = _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
+    if (index == -1) {
+      throw ReminderNotFoundException();
+    }
+
+    final existing = _reminders[index];
+    if (existing.isCompleted) {
+      throw ReminderValidationException('Công việc này đã hoàn thành!');
+    }
+
+    final updated = existing.copyWith(
+      assignedTo: currentUserId,
+      assignedToName: currentUserName,
+      status: ReminderStatus.pending,
+    );
+
+    _reminders[index] = updated;
+    _notify(existing.familyId);
+    return updated;
+  }
+
+  @override
   Future<ReminderModel> completeReminder({
     required String reminderId,
     required String currentUserId,
+    String? proofImageUrl,
   }) async {
     final index = _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
     if (index == -1) {
@@ -315,16 +404,24 @@ class InMemoryReminderRepository implements ReminderRepository {
     final existing = _reminders[index];
 
     // Rule: Chỉ người được giao reminder mới được Complete.
-    // currentUser == assignedTo
     if (existing.assignedTo != currentUserId) {
       throw ReminderPermissionException(
         'Only the assigned member can complete this reminder',
       );
     }
 
+    // Rule AC3: Bắt buộc đính kèm ảnh nếu requiresProofImage == true
+    final effectiveProof = proofImageUrl ?? existing.proofImageUrl;
+    if (existing.requiresProofImage && (effectiveProof == null || effectiveProof.isEmpty)) {
+      throw ReminderValidationException(
+        'Công việc này bắt buộc phải có ảnh nghiệm thu trước khi hoàn thành!',
+      );
+    }
+
     final updated = existing.copyWith(
       status: ReminderStatus.completed,
       completedAt: DateTime.now(),
+      proofImageUrl: effectiveProof,
     );
 
     _reminders[index] = updated;

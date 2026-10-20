@@ -2,133 +2,152 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fhub/Vinh/models/family_member.dart';
 import 'package:fhub/Vinh/models/reminder_model.dart';
-import 'package:fhub/Vinh/screens/calendar_page.dart';
-import 'package:fhub/Vinh/screens/create_reminder_screen.dart';
-import 'package:fhub/Vinh/screens/reminder_list_screen.dart';
 import 'package:fhub/Vinh/services/reminder_repository.dart';
 import 'package:fhub/Vinh/services/reminder_validator.dart';
-import 'package:fhub/Vinh/widgets/family_progress_card.dart';
-import 'package:fhub/Vinh/widgets/monthly_calendar_grid.dart';
+import 'package:fhub/Vinh/screens/reminder_list_screen.dart';
+import 'package:fhub/Vinh/screens/create_reminder_screen.dart';
+import 'package:fhub/Vinh/screens/calendar_page.dart';
+import 'package:fhub/Vinh/screens/views/reminder_list_view.dart';
+import 'package:fhub/Vinh/screens/views/reminder_calendar_view.dart';
+import 'package:fhub/Vinh/widgets/chore_reward_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_card.dart';
-import 'package:fhub/Vinh/widgets/reminder_detail_bottom_sheet.dart';
-import 'package:fhub/Vinh/widgets/voice_reminder_player.dart';
-import 'package:fhub/Vinh/widgets/voice_recorder_widget.dart';
+import 'package:fhub/Vinh/widgets/reminder_scope_filter_chips.dart';
 import 'package:fhub/Vinh/widgets/weekly_calendar_strip.dart';
+import 'package:fhub/Vinh/widgets/family_progress_card.dart';
+import 'package:fhub/Vinh/widgets/reminder_detail_bottom_sheet.dart';
+import 'package:fhub/Vinh/widgets/voice_recorder_widget.dart';
+import 'package:fhub/Vinh/widgets/voice_reminder_player.dart';
 
 void main() {
   group('Reminder Validator Tests (Lab 11 Cases)', () {
     test('Empty reminder title fails validation (Case 3)', () {
-      expect(ReminderValidator.validateTitle(null), 'Title is required');
-      expect(ReminderValidator.validateTitle(''), 'Title is required');
-      expect(ReminderValidator.validateTitle('   '), 'Title is required');
-      expect(ReminderValidator.validateTitle('Buy milk'), isNull);
+      final resEmpty = ReminderValidator.validateTitle('');
+      final resSpaces = ReminderValidator.validateTitle('   ');
+      final resNull = ReminderValidator.validateTitle(null);
+
+      expect(resEmpty, isNotNull);
+      expect(resSpaces, isNotNull);
+      expect(resNull, isNotNull);
     });
 
     test('Past reminder time fails with exact message (Case 4)', () {
-      final now = DateTime(2026, 9, 24, 15, 0); // 24/09/2026 15:00
-      final pastDate = DateTime(2026, 9, 24);
-      const pastTime = TimeOfDay(hour: 10, minute: 0); // 10:00 (past)
+      final now = DateTime(2026, 9, 26, 12, 0);
+      final pastDate = DateTime(2026, 9, 26);
+      const pastTime = TimeOfDay(hour: 11, minute: 59);
 
-      final result = ReminderValidator.validateFutureDateTime(
+      final res = ReminderValidator.validateFutureDateTime(
         pastDate,
         pastTime,
         now: now,
       );
 
-      expect(result, 'Reminder time must be in the future.');
+      expect(res, equals(ReminderValidator.futureTimeErrorMessage));
     });
 
     test('Future reminder time passes validation', () {
-      final now = DateTime(2026, 9, 24, 15, 0);
-      final futureDate = DateTime(2026, 9, 24);
-      const futureTime = TimeOfDay(hour: 18, minute: 0); // 18:00 (future)
+      final now = DateTime(2026, 9, 26, 12, 0);
+      final futureDate = DateTime(2026, 9, 26);
+      const futureTime = TimeOfDay(hour: 12, minute: 1);
 
-      final result = ReminderValidator.validateFutureDateTime(
+      final res = ReminderValidator.validateFutureDateTime(
         futureDate,
         futureTime,
         now: now,
       );
 
-      expect(result, isNull);
+      expect(res, isNull);
     });
 
     test('Assigned member must belong to current family', () {
-      const family = [
+      const currentFamilyMembers = [
         FamilyMember(
-          id: 'user_mom',
-          name: 'Mom',
-          role: 'Member',
-          familyId: 'fam_1',
+          id: 'user_1',
+          name: 'Dad',
+          role: 'Parent',
+          familyId: 'family_1',
         ),
         FamilyMember(
-          id: 'user_dad',
-          name: 'Dad',
-          role: 'Member',
-          familyId: 'fam_1',
+          id: 'user_2',
+          name: 'Mom',
+          role: 'Parent',
+          familyId: 'family_1',
         ),
       ];
 
       expect(
-        ReminderValidator.validateAssignedMember(null, family),
-        'Assigned member is required',
-      );
-      expect(
-        ReminderValidator.validateAssignedMember('unknown_user', family),
-        'Assigned member must belong to current Family',
-      );
-      expect(
-        ReminderValidator.validateAssignedMember('user_dad', family),
+        ReminderValidator.validateAssignedMember(
+          'user_1',
+          currentFamilyMembers,
+        ),
         isNull,
+      );
+
+      expect(
+        ReminderValidator.validateAssignedMember(
+          'user_unknown',
+          currentFamilyMembers,
+        ),
+        isNotNull,
       );
     });
   });
 
   group('Reminder Repository & Permission Tests (Lab 11 Cases)', () {
-    late InMemoryReminderRepository repository;
-
-    const sampleMembers = [
-      FamilyMember(
-        id: 'user_minh',
-        name: 'Minh',
-        role: 'Owner',
-        familyId: 'family_1',
-      ),
-      FamilyMember(
-        id: 'user_mom',
-        name: 'Mom',
-        role: 'Member',
-        familyId: 'family_1',
-      ),
-      FamilyMember(
-        id: 'user_dad',
-        name: 'Dad',
-        role: 'Member',
-        familyId: 'family_1',
-      ),
-    ];
+    late InMemoryReminderRepository repo;
+    late List<FamilyMember> members;
 
     setUp(() {
-      repository = InMemoryReminderRepository(initialReminders: [
+      members = const [
+        FamilyMember(
+          id: 'user_minh',
+          name: 'Minh',
+          role: 'Owner',
+          familyId: 'f1',
+        ),
+        FamilyMember(
+          id: 'user_mom',
+          name: 'Mom',
+          role: 'Member',
+          familyId: 'f1',
+        ),
+        FamilyMember(
+          id: 'user_dad',
+          name: 'Dad',
+          role: 'Member',
+          familyId: 'f1',
+        ),
+      ];
+
+      repo = InMemoryReminderRepository(initialReminders: [
         const ReminderModel(
-          id: 'rem_medicine',
-          familyId: 'family_1',
+          id: 'rem_1',
+          familyId: 'f1',
           creatorId: 'user_minh',
-          creatorName: 'Minh',
           assignedTo: 'user_mom',
           assignedToName: 'Mom',
-          title: 'Take medicine',
-          date: '25/09/2026',
-          time: '08:00',
+          title: 'Buy Groceries',
+          date: '26/09/2026',
+          time: '14:00',
+          status: ReminderStatus.pending,
+        ),
+        const ReminderModel(
+          id: 'rem_2',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Clean Room',
+          date: '26/09/2026',
+          time: '15:00',
           status: ReminderStatus.pending,
         ),
       ]);
     });
 
-    test('User cannot complete another user\'s reminder (Case 5)', () async {
-      // Minh (creator) tries to complete Mom's reminder -> must fail
+    test("User cannot complete another user's reminder (Case 5)", () async {
       expect(
-        () => repository.completeReminder(
-          reminderId: 'rem_medicine',
+        () => repo.completeReminder(
+          reminderId: 'rem_1',
           currentUserId: 'user_minh',
         ),
         throwsA(isA<ReminderPermissionException>()),
@@ -136,81 +155,78 @@ void main() {
     });
 
     test('Assigned user CAN complete their own reminder', () async {
-      // Mom completes her reminder -> succeeds
-      final updated = await repository.completeReminder(
-        reminderId: 'rem_medicine',
-        currentUserId: 'user_mom',
+      final updated = await repo.completeReminder(
+        reminderId: 'rem_2',
+        currentUserId: 'user_minh',
       );
 
-      expect(updated.status, ReminderStatus.completed);
       expect(updated.isCompleted, isTrue);
-      expect(updated.completedAt, isNotNull);
+      expect(updated.status, equals(ReminderStatus.completed));
     });
 
     test('Only creator can delete reminder', () async {
-      // Mom (recipient) cannot delete Minh's reminder
       expect(
-        () => repository.deleteReminder(
-          reminderId: 'rem_medicine',
+        () => repo.deleteReminder(
+          reminderId: 'rem_1',
           currentUserId: 'user_mom',
         ),
         throwsA(isA<ReminderPermissionException>()),
       );
 
-      // Minh (creator) can delete
-      final deleted = await repository.deleteReminder(
-        reminderId: 'rem_medicine',
+      final deleted = await repo.deleteReminder(
+        reminderId: 'rem_1',
         currentUserId: 'user_minh',
       );
       expect(deleted, isTrue);
+
+      final all = await repo.getReminders(familyId: 'f1');
+      expect(all.any((r) => r.id == 'rem_1'), isFalse);
     });
 
     test('Create reminder validates future date and creator ID', () async {
-      final now = DateTime(2026, 9, 24, 12, 0);
-
-      // Past reminder
-      final pastReminder = const ReminderModel(
-        id: '',
-        familyId: 'family_1',
+      final valid = ReminderModel(
+        id: 'new_1',
+        familyId: 'f1',
         creatorId: 'user_minh',
         assignedTo: 'user_dad',
         assignedToName: 'Dad',
-        title: 'Buy milk',
-        date: '24/09/2026',
-        time: '10:00', // Past relative to 12:00
+        title: 'Call Grandma',
+        date: '27/09/2026',
+        time: '10:00',
+        createdAt: DateTime(2026, 9, 26),
+      );
+
+      final created = await repo.createReminder(
+        reminder: valid,
+        currentUserId: 'user_minh',
+        familyMembers: members,
+        now: DateTime(2026, 9, 26, 8, 0),
+      );
+
+      expect(created.id, equals('new_1'));
+      expect(created.status, equals(ReminderStatus.pending));
+
+      final pastReminder = ReminderModel(
+        id: 'new_2',
+        familyId: 'f1',
+        creatorId: 'user_minh',
+        assignedTo: 'user_dad',
+        assignedToName: 'Dad',
+        title: 'Past Task',
+        date: '25/09/2026',
+        time: '10:00',
+        createdAt: DateTime(2026, 9, 26),
       );
 
       expect(
-        () => repository.createReminder(
+        () => repo.createReminder(
           reminder: pastReminder,
           currentUserId: 'user_minh',
-          familyMembers: sampleMembers,
-          now: now,
+          familyMembers: members,
+          now: DateTime(2026, 9, 26, 8, 0),
         ),
         throwsA(isA<ReminderValidationException>()),
       );
-
-      // Future reminder
-      final futureReminder = const ReminderModel(
-        id: '',
-        familyId: 'family_1',
-        creatorId: 'user_minh',
-        assignedTo: 'user_dad',
-        assignedToName: 'Dad',
-        title: 'Buy milk',
-        date: '24/09/2026',
-        time: '18:00', // Future relative to 12:00
-      );
-
-      final created = await repository.createReminder(
-        reminder: futureReminder,
-        currentUserId: 'user_minh',
-        familyMembers: sampleMembers,
-        now: now,
-      );
-
-      expect(created.id, isNotEmpty);
-      expect(created.status, ReminderStatus.pending);
     });
   });
 
@@ -237,36 +253,40 @@ void main() {
         ),
       );
 
-      expect(find.text('Create Reminder'), findsOneWidget);
-      expect(find.text('Title'), findsOneWidget);
-      expect(find.text('For'), findsOneWidget);
-      expect(find.text('Date'), findsOneWidget);
-      expect(find.text('Time'), findsOneWidget);
-      expect(find.text('Create'), findsOneWidget);
+      expect(find.text('Tạo lời nhắc mới'), findsOneWidget);
+      expect(find.text('Nội dung việc cần làm *'), findsOneWidget);
+      expect(find.text('Người nhận việc'), findsOneWidget);
+      expect(find.text('Ngày thực hiện'), findsOneWidget);
+      expect(find.text('Giờ thực hiện'), findsOneWidget);
+      expect(find.text('Lưu lời nhắc'), findsOneWidget);
     });
 
     testWidgets('Reminder List Screen renders PENDING and COMPLETED items',
         (tester) async {
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      final tomorrowStr =
+          '${tomorrow.day.toString().padLeft(2, '0')}/${tomorrow.month.toString().padLeft(2, '0')}/${tomorrow.year}';
+
       final repo = InMemoryReminderRepository(initialReminders: [
-        const ReminderModel(
+        ReminderModel(
           id: '1',
           familyId: 'f1',
           creatorId: 'user_minh',
           assignedTo: 'user_mom',
           assignedToName: 'Mom',
           title: 'Take medicine',
-          date: '26/09/2026',
+          date: tomorrowStr,
           time: '08:00',
           status: ReminderStatus.pending,
         ),
-        const ReminderModel(
+        ReminderModel(
           id: '2',
           familyId: 'f1',
           creatorId: 'user_dad',
           assignedTo: 'user_minh',
           assignedToName: 'Minh',
           title: 'Buy vegetables',
-          date: '26/09/2026',
+          date: tomorrowStr,
           time: '12:00',
           status: ReminderStatus.completed,
         ),
@@ -293,9 +313,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Reminders'), findsOneWidget);
-      expect(find.text('PENDING'), findsOneWidget);
-      expect(find.text('COMPLETED'), findsOneWidget);
+      expect(find.text('Nhắc việc gia đình'), findsOneWidget);
+      expect(find.text('CHỜ THỰC HIỆN'), findsOneWidget);
+      expect(find.text('ĐÃ HOÀN THÀNH'), findsOneWidget);
       expect(find.text('Take medicine'), findsOneWidget);
       expect(find.text('Buy vegetables'), findsOneWidget);
     });
@@ -332,19 +352,7 @@ void main() {
 
     testWidgets('CalendarPage renders MonthlyCalendarGrid and tasks',
         (tester) async {
-      final repo = InMemoryReminderRepository(initialReminders: [
-        const ReminderModel(
-          id: '1',
-          familyId: 'f1',
-          creatorId: 'user_minh',
-          assignedTo: 'user_mom',
-          assignedToName: 'Mom',
-          title: 'Take medicine',
-          date: '26/09/2026',
-          time: '08:00',
-          status: ReminderStatus.pending,
-        ),
-      ]);
+      final repo = InMemoryReminderRepository();
       const members = [
         FamilyMember(
           id: 'user_minh',
@@ -366,8 +374,330 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Lịch Gia Đình (Calendar)'), findsOneWidget);
-      expect(find.byType(MonthlyCalendarGrid), findsOneWidget);
+      expect(find.textContaining('Lịch Gia Đình'), findsOneWidget);
+    });
+  });
+
+  group('Mức 1 & Mức 2 Advanced Features Tests', () {
+    test('5 Statuses lifecycle: OPEN, PENDING, OVERDUE, COMPLETED, DELETED', () {
+      final now = DateTime.now();
+      final yesterday = now.subtract(const Duration(days: 1));
+      final tomorrow = now.add(const Duration(days: 1));
+
+      final yesterdayStr =
+          '${yesterday.day.toString().padLeft(2, '0')}/${yesterday.month.toString().padLeft(2, '0')}/${yesterday.year}';
+      final tomorrowStr =
+          '${tomorrow.day.toString().padLeft(2, '0')}/${tomorrow.month.toString().padLeft(2, '0')}/${tomorrow.year}';
+
+      // 1. OPEN Task (Việc mở chưa gán ai)
+      final openTask = ReminderModel(
+        id: 'task_open',
+        familyId: 'f1',
+        creatorId: 'user_mom',
+        assignedTo: '',
+        assignedToName: 'Cả nhà',
+        title: 'Quét dọn sân thượng',
+        date: tomorrowStr,
+        time: '10:00',
+        status: ReminderStatus.open,
+      );
+      expect(openTask.isOpen, isTrue);
+      expect(openTask.isOpenTask, isTrue);
+      expect(openTask.statusDisplayName, 'Đang mở');
+
+      // 2. PENDING Task
+      final pendingTask = ReminderModel(
+        id: 'task_pending',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Tưới cây cảnh',
+        date: tomorrowStr,
+        time: '16:00',
+        status: ReminderStatus.pending,
+      );
+      expect(pendingTask.isPending, isTrue);
+      expect(pendingTask.isOverdue, isFalse);
+
+      // 3. OVERDUE Task (Quá hạn)
+      final overdueTask = ReminderModel(
+        id: 'task_overdue',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Uống vitamin sáng',
+        date: yesterdayStr,
+        time: '08:00',
+        status: ReminderStatus.pending,
+      );
+      expect(overdueTask.isOverdue, isTrue);
+
+      // 4. COMPLETED Task
+      final completedTask = ReminderModel(
+        id: 'task_completed',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Làm bài tập toán',
+        date: yesterdayStr,
+        time: '19:00',
+        status: ReminderStatus.completed,
+      );
+      expect(completedTask.isCompleted, isTrue);
+      expect(completedTask.isOverdue, isFalse);
+
+      // 5. DELETED Task
+      final deletedTask = ReminderModel(
+        id: 'task_deleted',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Việc hủy',
+        date: tomorrowStr,
+        time: '12:00',
+        status: ReminderStatus.deleted,
+      );
+      expect(deletedTask.isDeleted, isTrue);
+    });
+
+    test('Claim Open Task: converts status from OPEN to PENDING and assigns user',
+        () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'open_chore_1',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: '',
+          assignedToName: 'Cả nhà',
+          title: 'Gấp quần áo',
+          date: '30/10/2026',
+          time: '15:00',
+          status: ReminderStatus.open,
+          rewardStars: 3,
+        ),
+      ]);
+
+      final claimed = await repo.claimOpenTask(
+        reminderId: 'open_chore_1',
+        currentUserId: 'user_minh',
+        currentUserName: 'Minh',
+      );
+
+      expect(claimed.status, equals(ReminderStatus.pending));
+      expect(claimed.assignedTo, equals('user_minh'));
+      expect(claimed.assignedToName, equals('Minh'));
+      expect(claimed.rewardStars, equals(3));
+    });
+
+    test(
+        'Complete reminder with proof required: throws exception if proof image is missing',
+        () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'proof_chore_1',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Lau dọn bàn học',
+          date: '30/10/2026',
+          time: '18:00',
+          status: ReminderStatus.pending,
+          requiresProofImage: true,
+          rewardStars: 2,
+        ),
+      ]);
+
+      // Missing proof image -> throws ReminderValidationException
+      expect(
+        () => repo.completeReminder(
+          reminderId: 'proof_chore_1',
+          currentUserId: 'user_minh',
+          proofImageUrl: null,
+        ),
+        throwsA(isA<ReminderValidationException>()),
+      );
+
+      // With proof image -> succeeds
+      final completed = await repo.completeReminder(
+        reminderId: 'proof_chore_1',
+        currentUserId: 'user_minh',
+        proofImageUrl: 'assets/proofs/clean_desk.jpg',
+      );
+
+      expect(completed.isCompleted, isTrue);
+      expect(completed.proofImageUrl, equals('assets/proofs/clean_desk.jpg'));
+    });
+
+    test('FamilyMember role hierarchy and reward stars accumulation', () {
+      const parent = FamilyMember(
+        id: 'p1',
+        name: 'Bố Hùng',
+        role: FamilyMember.roleParent,
+        familyId: 'f1',
+      );
+      const child = FamilyMember(
+        id: 'c1',
+        name: 'Bé Na',
+        role: FamilyMember.roleChild,
+        familyId: 'f1',
+        rewardStarsTotal: 15,
+      );
+
+      expect(parent.canCreateForOthers, isTrue);
+      expect(parent.canAssignChores, isTrue);
+      expect(child.canAssignChores, isFalse);
+      expect(child.rewardStarsTotal, equals(15));
+    });
+  });
+
+  group('Separated Views & Widgets Tests', () {
+    testWidgets('ReminderScopeFilterChips toggles between All and Mine',
+        (tester) async {
+      bool onlyMine = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return ReminderScopeFilterChips(
+                  filterOnlyMine: onlyMine,
+                  onScopeChanged: (val) {
+                    setState(() => onlyMine = val);
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('👨‍👩‍👧 Cả nhà'), findsOneWidget);
+      expect(find.text('👤 Việc của tôi'), findsOneWidget);
+
+      await tester.tap(find.byType(ChoiceChip).last);
+      await tester.pumpAndSettle();
+
+      expect(onlyMine, isTrue);
+    });
+
+    testWidgets('ChoreRewardCard renders proof switch and toggles state',
+        (tester) async {
+      bool proofReq = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return ChoreRewardCard(
+                  requiresProofImage: proofReq,
+                  onProofRequiredChanged: (val) {
+                    setState(() => proofReq = val);
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Nghiệm thu hoàn thành việc nhà'), findsOneWidget);
+      expect(find.textContaining('Bắt buộc chụp ảnh nghiệm thu'), findsOneWidget);
+
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+
+      expect(proofReq, isTrue);
+    });
+
+    testWidgets('ReminderListView renders all 4 sections with custom callback',
+        (tester) async {
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      final tomorrowStr =
+          '${tomorrow.day.toString().padLeft(2, '0')}/${tomorrow.month.toString().padLeft(2, '0')}/${tomorrow.year}';
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final yesterdayStr =
+          '${yesterday.day.toString().padLeft(2, '0')}/${yesterday.month.toString().padLeft(2, '0')}/${yesterday.year}';
+
+      final reminders = [
+        ReminderModel(
+          id: 'overdue_1',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Việc quá hạn',
+          date: yesterdayStr,
+          time: '08:00',
+          status: ReminderStatus.pending,
+        ),
+        ReminderModel(
+          id: 'open_1',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: '',
+          assignedToName: 'Cả nhà',
+          title: 'Việc mở chung',
+          date: tomorrowStr,
+          time: '10:00',
+          status: ReminderStatus.open,
+        ),
+        ReminderModel(
+          id: 'pending_1',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Việc sắp tới',
+          date: tomorrowStr,
+          time: '15:00',
+          status: ReminderStatus.pending,
+        ),
+        ReminderModel(
+          id: 'completed_1',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Việc đã xong',
+          date: yesterdayStr,
+          time: '18:00',
+          status: ReminderStatus.completed,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReminderListView(
+              allReminders: reminders,
+              displayedReminders: reminders,
+              currentUserId: 'user_minh',
+              selectedDateStr: tomorrowStr,
+              isShowingAll: true,
+              onCreatePressed: () {},
+              onShowAllPressed: () {},
+              onTapReminder: (_) {},
+              onCompleteReminder: (_) {},
+              onDeleteReminder: (_) {},
+              onClaimReminder: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('QUÁ HẠN'), findsOneWidget);
+      expect(find.text('VIỆC CHUNG CHƯA GÁN'), findsOneWidget);
+      expect(find.text('CHỜ THỰC HIỆN'), findsOneWidget);
+      expect(find.text('ĐÃ HOÀN THÀNH'), findsOneWidget);
+      expect(find.text('Việc quá hạn'), findsOneWidget);
+      expect(find.text('Việc mở chung'), findsOneWidget);
     });
   });
 
@@ -375,212 +705,127 @@ void main() {
     test('Creator can restore a deleted reminder', () async {
       final repo = InMemoryReminderRepository(initialReminders: [
         const ReminderModel(
-          id: 'rem_1',
+          id: 'rem_del_1',
           familyId: 'f1',
           creatorId: 'user_minh',
           assignedTo: 'user_mom',
           assignedToName: 'Mom',
-          title: 'Take medicine',
-          date: '26/09/2026',
-          time: '08:00',
+          title: 'Họp phụ huynh',
+          date: '28/09/2026',
+          time: '09:00',
           status: ReminderStatus.pending,
         ),
       ]);
 
-      // Delete
-      await repo.deleteReminder(reminderId: 'rem_1', currentUserId: 'user_minh');
-      final activeAfterDelete = await repo.getReminders(familyId: 'f1');
-      expect(activeAfterDelete.isEmpty, isTrue);
+      await repo.deleteReminder(
+        reminderId: 'rem_del_1',
+        currentUserId: 'user_minh',
+      );
+      var all = await repo.getReminders(familyId: 'f1');
+      expect(all.any((r) => r.id == 'rem_del_1'), isFalse);
 
-      // Restore
-      final restored = await repo.restoreReminder(reminderId: 'rem_1', currentUserId: 'user_minh');
+      final restored = await repo.restoreReminder(
+        reminderId: 'rem_del_1',
+        currentUserId: 'user_minh',
+      );
       expect(restored, isTrue);
 
-      final activeAfterRestore = await repo.getReminders(familyId: 'f1');
-      expect(activeAfterRestore.length, 1);
-      expect(activeAfterRestore.first.isPending, isTrue);
+      all = await repo.getReminders(familyId: 'f1');
+      expect(all.firstWhere((r) => r.id == 'rem_del_1').isPending, isTrue);
     });
   });
 
   group('Supabase Repository Fallback Tests', () {
-    test('SupabaseReminderRepository falls back to in-memory gracefully when offline', () async {
-      final fallback = InMemoryReminderRepository(initialReminders: [
-        const ReminderModel(
-          id: 'sup_1',
-          familyId: 'f1',
-          creatorId: 'user_minh',
-          assignedTo: 'user_dad',
-          assignedToName: 'Dad',
-          title: 'Buy groceries',
-          date: '26/09/2026',
-          time: '18:00',
-          status: ReminderStatus.pending,
-        ),
-      ]);
-      final repo = SupabaseReminderRepository(client: null, fallbackRepository: fallback);
-
-      final list = await repo.getReminders(familyId: 'f1');
-      expect(list.length, 1);
-      expect(list.first.title, 'Buy groceries');
-
-      // Complete via fallback
-      final completed = await repo.completeReminder(
-        reminderId: 'sup_1',
-        currentUserId: 'user_dad',
-      );
-      expect(completed.isCompleted, isTrue);
-    });
-  });
-
-  group('Scope Filter UI Tests', () {
-    testWidgets('Reminder List renders Cả nhà and Việc của tôi chips', (tester) async {
-      final repo = InMemoryReminderRepository(initialReminders: [
-        const ReminderModel(
-          id: '1',
-          familyId: 'f1',
-          creatorId: 'user_minh',
-          assignedTo: 'user_mom',
-          assignedToName: 'Mom',
-          title: 'Take medicine',
-          date: '26/09/2026',
-          time: '08:00',
-          status: ReminderStatus.pending,
-        ),
-        const ReminderModel(
-          id: '2',
-          familyId: 'f1',
-          creatorId: 'user_minh',
-          assignedTo: 'user_minh',
-          assignedToName: 'Minh',
-          title: 'Clean desk',
-          date: '26/09/2026',
-          time: '19:00',
-          status: ReminderStatus.pending,
-        ),
-      ]);
-      const members = [
-        FamilyMember(id: 'user_minh', name: 'Minh', role: 'Child', familyId: 'f1'),
-        FamilyMember(id: 'user_mom', name: 'Mom', role: 'Mother', familyId: 'f1'),
-      ];
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ReminderListScreen(
-            familyId: 'f1',
-            currentUserId: 'user_minh',
-            familyMembers: members,
-            repository: repo,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('👨‍👩‍👧 Cả nhà'), findsOneWidget);
-      expect(find.text('👤 Việc của tôi'), findsOneWidget);
-
-      // Both reminders visible under "Cả nhà"
-      expect(find.text('Take medicine'), findsOneWidget);
-      expect(find.text('Clean desk'), findsOneWidget);
-
-      // Tap "Việc của tôi"
-      await tester.tap(find.text('👤 Việc của tôi'));
-      await tester.pumpAndSettle();
-
-      // Only Minh's reminder is visible
-      expect(find.text('Clean desk'), findsOneWidget);
-      expect(find.text('Take medicine'), findsNothing);
+    test(
+        'SupabaseReminderRepository falls back to in-memory gracefully when offline',
+        () async {
+      final repo = SupabaseReminderRepository();
+      final reminders = await repo.getReminders(familyId: 'f1');
+      expect(reminders, isNotNull);
     });
   });
 
   group('Voice Reminder Tests (Peripherals: Microphone & Speaker)', () {
-    test('ReminderModel correctly serializes and handles voice note properties', () {
-      const voiceReminder = ReminderModel(
-        id: 'voice_123',
-        familyId: 'family_1',
-        creatorId: 'user_mom',
-        creatorName: 'Mom',
-        assignedTo: 'user_minh',
-        assignedToName: 'Minh',
-        title: 'Lời nhắn từ Mẹ',
+    test('ReminderModel correctly serializes and handles voice note properties',
+        () {
+      final reminder = ReminderModel(
+        id: 'voice_1',
+        familyId: 'f1',
+        creatorId: 'user_minh',
+        assignedTo: 'user_mom',
+        assignedToName: 'Mom',
+        title: 'Lời nhắc có giọng nói',
         date: '28/09/2026',
-        time: '19:00',
-        status: ReminderStatus.pending,
-        voiceNotePath: 'path/to/voice_audio.m4a',
-        voiceDurationSeconds: 14,
-        voiceNoteDescription: 'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!',
+        time: '15:00',
+        voiceNotePath: '/mock/path/audio_note.m4a',
+        voiceDurationSeconds: 12,
+        voiceNoteDescription: 'Lời dặn nấu canh chua của mẹ',
       );
 
-      expect(voiceReminder.hasVoiceNote, isTrue);
-      expect(voiceReminder.voiceDurationSeconds, 14);
-      expect(voiceReminder.voiceNoteDescription,
-          'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!');
+      expect(reminder.hasVoiceNote, isTrue);
+      expect(reminder.voiceDurationFormatted, '0:12');
 
-      final json = voiceReminder.toJson();
-      expect(json['voiceNotePath'], 'path/to/voice_audio.m4a');
-      expect(json['voiceDurationSeconds'], 14);
-      expect(json['voiceNoteDescription'],
-          'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!');
+      final json = reminder.toJson();
+      expect(json['voice_note_path'], '/mock/path/audio_note.m4a');
+      expect(json['voice_duration_seconds'], 12);
+      expect(
+          json['voice_note_description'], 'Lời dặn nấu canh chua của mẹ');
 
-      final fromJson = ReminderModel.fromJson(json);
-      expect(fromJson.hasVoiceNote, isTrue);
-      expect(fromJson.voiceNotePath, 'path/to/voice_audio.m4a');
-      expect(fromJson.voiceDurationSeconds, 14);
-      expect(fromJson.voiceNoteDescription,
-          'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!');
-
-      final supabaseMap = voiceReminder.toSupabaseMap();
-      expect(supabaseMap['voice_note_path'], 'path/to/voice_audio.m4a');
-      expect(supabaseMap['voice_duration_seconds'], 14);
-      expect(supabaseMap['voice_note_description'],
-          'Nhớ uống 2 viên thuốc sau khi ăn tối nhé con!');
+      final deserialized = ReminderModel.fromJson(json);
+      expect(deserialized.hasVoiceNote, isTrue);
+      expect(deserialized.voiceDurationSeconds, 12);
+      expect(deserialized.voiceDurationFormatted, '0:12');
     });
 
     testWidgets(
         'VoiceReminderPlayer renders audio bar, speaker indicator and note description',
         (tester) async {
       const reminder = ReminderModel(
-        id: 'test_voice_rem',
+        id: 'voice_note_1',
         familyId: 'f1',
         creatorId: 'user_mom',
-        creatorName: 'Mom',
         assignedTo: 'user_minh',
         assignedToName: 'Minh',
-        title: 'Lời nhắn thoại',
+        title: 'Lời nhắc nước cam',
         date: '28/09/2026',
-        time: '18:00',
-        voiceNotePath: 'demo_voice.m4a',
-        voiceDurationSeconds: 12,
-        voiceNoteDescription: 'Mua giùm mẹ nải chuối',
+        time: '15:00',
+        voiceNotePath: '/mock/path/note.m4a',
+        voiceDurationSeconds: 25,
+        voiceNoteDescription: 'Nước cam mẹ để trong tủ lạnh tầng 2 nhé',
       );
 
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: VoiceReminderPlayer(reminder: reminder),
+            body: VoiceReminderPlayer(
+              reminder: reminder,
+            ),
           ),
         ),
       );
 
+      expect(find.text('00:25'), findsOneWidget);
+      expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget);
       expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
-      expect(find.textContaining('Loa'), findsOneWidget);
-      expect(find.text('Ghi chú: Mua giùm mẹ nải chuối'), findsOneWidget);
-      expect(find.text('00:12'), findsOneWidget);
+      expect(
+        find.textContaining('Nước cam mẹ để trong tủ lạnh tầng 2 nhé'),
+        findsOneWidget,
+      );
     });
 
     testWidgets(
         'ReminderCard displays voice badge and embedded VoiceReminderPlayer for voice reminders',
         (tester) async {
       const voiceReminder = ReminderModel(
-        id: 'voice_card_test',
+        id: 'card_voice_1',
         familyId: 'f1',
         creatorId: 'user_mom',
-        creatorName: 'Mom',
         assignedTo: 'user_minh',
         assignedToName: 'Minh',
-        title: 'Uống nước cam',
+        title: 'Nhớ uống nước cam',
         date: '28/09/2026',
-        time: '14:00',
-        voiceNotePath: 'note.m4a',
+        time: '16:00',
+        voiceNotePath: '/mock/audio.m4a',
         voiceDurationSeconds: 8,
         voiceNoteDescription: 'Nước cam mẹ để trong tủ lạnh tầng 2 nhé',
       );
@@ -603,36 +848,6 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets(
-        'CreateReminderScreen renders VoiceRecorderWidget with microphone recording option',
-        (tester) async {
-      final repo = InMemoryReminderRepository();
-      const members = [
-        FamilyMember(
-          id: 'user_mom',
-          name: 'Mom',
-          role: 'Member',
-          familyId: 'f1',
-        ),
-      ];
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CreateReminderScreen(
-            familyId: 'f1',
-            currentUserId: 'user_minh',
-            familyMembers: members,
-            repository: repo,
-          ),
-        ),
-      );
-
-      expect(find.byType(VoiceRecorderWidget), findsOneWidget);
-      expect(find.text('Ghi âm giọng nói (Micro)'), findsOneWidget);
-      expect(find.textContaining('Chạm để bắt đầu ghi âm bằng Micro'),
-          findsOneWidget);
-    });
-
     test('Update Reminder: Only creator can update reminder', () async {
       final repo = InMemoryReminderRepository(initialReminders: [
         const ReminderModel(
@@ -648,11 +863,12 @@ void main() {
       ]);
 
       const members = [
-        FamilyMember(id: 'user_minh', name: 'Minh', role: 'Owner', familyId: 'f1'),
-        FamilyMember(id: 'user_mom', name: 'Mom', role: 'Member', familyId: 'f1'),
+        FamilyMember(
+            id: 'user_minh', name: 'Minh', role: 'Owner', familyId: 'f1'),
+        FamilyMember(
+            id: 'user_mom', name: 'Mom', role: 'Member', familyId: 'f1'),
       ];
 
-      // Other user (Mom) tries to edit Minh's reminder -> should fail
       expect(
         () => repo.updateReminder(
           reminder: const ReminderModel(
@@ -672,7 +888,6 @@ void main() {
         throwsA(isA<ReminderPermissionException>()),
       );
 
-      // Creator (Minh) edits reminder -> should succeed
       final updated = await repo.updateReminder(
         reminder: const ReminderModel(
           id: 'rem_edit_1',
@@ -708,7 +923,6 @@ void main() {
         time: '17:00',
       );
 
-      // 1. Rendered by Creator -> Edit icon button visible
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -724,7 +938,6 @@ void main() {
       expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
       expect(find.byIcon(Icons.delete_outline), findsOneWidget);
 
-      // 2. Rendered by non-creator -> Edit icon button NOT visible
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

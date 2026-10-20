@@ -4,15 +4,18 @@ import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../services/reminder_repository.dart';
 import '../services/supabase_config.dart';
+import '../widgets/camera_proof_dialog.dart';
 import '../widgets/family_progress_card.dart';
-import '../widgets/monthly_calendar_grid.dart';
-import '../widgets/reminder_card.dart';
 import '../widgets/reminder_detail_bottom_sheet.dart';
-import '../widgets/reminder_section_header.dart';
+import '../widgets/reminder_scope_filter_chips.dart';
 import '../widgets/weekly_calendar_strip.dart';
 import 'calendar_page.dart';
 import 'create_reminder_screen.dart';
+import 'views/reminder_calendar_view.dart';
+import 'views/reminder_list_view.dart';
 
+/// Coordinator Screen quản lý màn hình chính của tính năng Lời nhắc (Reminders).
+/// Điều phối giữa List View và Calendar View, tìm kiếm, lọc theo người và ngày.
 class ReminderListScreen extends StatefulWidget {
   final String? familyId;
   final String? currentUserId;
@@ -127,21 +130,27 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       if (resolvedMembers.isEmpty) {
         resolvedMembers = [
           FamilyMember(
-            id: userId,
-            name: userName,
-            role: 'Owner',
-            familyId: resolvedFamilyId,
-          ),
-          FamilyMember(
             id: 'user_mom',
             name: 'Mom',
-            role: 'Member',
+            role: FamilyMember.roleParent,
             familyId: resolvedFamilyId,
           ),
           FamilyMember(
             id: 'user_dad',
             name: 'Dad',
-            role: 'Member',
+            role: FamilyMember.roleParent,
+            familyId: resolvedFamilyId,
+          ),
+          FamilyMember(
+            id: 'user_minh',
+            name: 'Minh',
+            role: FamilyMember.roleChild,
+            familyId: resolvedFamilyId,
+          ),
+          FamilyMember(
+            id: 'user_grandma',
+            name: 'Bà Ngoại',
+            role: FamilyMember.roleGrandparent,
             familyId: resolvedFamilyId,
           ),
         ];
@@ -166,21 +175,27 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           _familyMembers = widget.familyMembers ??
               const [
                 FamilyMember(
-                  id: 'user_minh',
-                  name: 'Minh',
-                  role: 'Owner',
-                  familyId: 'family_1',
-                ),
-                FamilyMember(
                   id: 'user_mom',
                   name: 'Mom',
-                  role: 'Member',
+                  role: FamilyMember.roleParent,
                   familyId: 'family_1',
                 ),
                 FamilyMember(
                   id: 'user_dad',
                   name: 'Dad',
-                  role: 'Member',
+                  role: FamilyMember.roleParent,
+                  familyId: 'family_1',
+                ),
+                FamilyMember(
+                  id: 'user_minh',
+                  name: 'Minh',
+                  role: FamilyMember.roleChild,
+                  familyId: 'family_1',
+                ),
+                FamilyMember(
+                  id: 'user_grandma',
+                  name: 'Bà Ngoại',
+                  role: FamilyMember.roleGrandparent,
                   familyId: 'family_1',
                 ),
               ];
@@ -199,7 +214,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     widget.onUserChanged?.call(member.id);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Switched view to ${member.name} (${member.role})'),
+        content: Text('Đã chuyển góc nhìn sang ${member.name} (${member.role})'),
         duration: const Duration(seconds: 1),
       ),
     );
@@ -224,7 +239,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     if (reminder.creatorId != _currentUserId) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Only the creator can delete this reminder.'),
+          content: Text('Chỉ người tạo mới có thể xóa lời nhắc này.'),
           backgroundColor: Color(0xFFBA1A1A),
         ),
       );
@@ -238,21 +253,21 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           borderRadius: BorderRadius.circular(16),
         ),
         title: const Text(
-          'Delete Reminder',
+          'Xóa lời nhắc',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text('Delete this reminder?'),
+        content: const Text('Bạn có chắc chắn muốn xóa lời nhắc này?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Hủy'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFBA1A1A),
             ),
             onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Xóa'),
           ),
         ],
       ),
@@ -269,7 +284,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             SnackBar(
               content: Text('Đã xóa "${reminder.title}".'),
               action: SnackBarAction(
-                label: 'HOÀN TÁC (UNDO)',
+                label: 'HOÀN TÁC',
                 textColor: const Color(0xFFaaffe9),
                 onPressed: () async {
                   await _repository.restoreReminder(
@@ -297,16 +312,62 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
   Future<void> _completeReminder(ReminderModel reminder) async {
     try {
+      String? proofUrl;
+      if (reminder.requiresProofImage) {
+        proofUrl = await CameraProofDialog.show(
+          context,
+          reminder: reminder,
+          currentUserName: _currentUserName,
+        );
+        if (proofUrl == null) {
+          // User canceled without taking photo
+          return;
+        }
+      }
+
       HapticFeedback.mediumImpact();
       await _repository.completeReminder(
         reminderId: reminder.id,
         currentUserId: _currentUserId,
+        proofImageUrl: proofUrl,
+      );
+      if (mounted) {
+        const successMsg = 'Đã hoàn thành công việc!';
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(successMsg),
+            backgroundColor: Color(0xFF005F50),
+          ),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _claimReminder(ReminderModel reminder) async {
+    try {
+      HapticFeedback.mediumImpact();
+      await _repository.claimOpenTask(
+        reminderId: reminder.id,
+        currentUserId: _currentUserId,
+        currentUserName: _currentUserName,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Reminder marked as COMPLETED!'),
-            backgroundColor: Color(0xFF005F50),
+          SnackBar(
+            content: Text(
+              '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!',
+            ),
+            backgroundColor: const Color(0xFF005F50),
           ),
         );
         setState(() {});
@@ -328,6 +389,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       context,
       reminder: reminder,
       currentUserId: _currentUserId,
+      currentUserName: _currentUserName,
       repository: _repository,
       familyMembers: _familyMembers,
       onReminderUpdated: () => setState(() {}),
@@ -384,7 +446,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Reminders',
+                    'Nhắc việc gia đình',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 20,
@@ -408,7 +470,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         elevation: 1,
         shadowColor: Colors.black12,
         actions: [
-          // Search toggle
+          // Tìm kiếm
           IconButton(
             icon: Icon(
               _isSearchOpen ? Icons.close : Icons.search,
@@ -425,9 +487,9 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               });
             },
           ),
-          // Switch user for testing permissions
+          // Chuyển đổi thành viên người dùng chủ động
           PopupMenuButton<FamilyMember>(
-            tooltip: 'Switch Active User',
+            tooltip: 'Chuyển đổi góc nhìn thành viên',
             icon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -478,6 +540,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               );
             }).toList(),
           ),
+          // Chuyển đổi qua lại giữa List View và Calendar View
           IconButton(
             icon: Icon(
               _isCalendarView
@@ -494,6 +557,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               });
             },
           ),
+          // Menu mở toàn trang Calendar
           PopupMenuButton<String>(
             tooltip: 'Tùy chọn khác',
             icon: const Icon(Icons.more_vert, color: primaryColor),
@@ -517,7 +581,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 value: 'full_calendar',
                 child: Row(
                   children: [
-                    Icon(Icons.open_in_new_rounded, size: 18, color: primaryColor),
+                    Icon(Icons.open_in_new_rounded,
+                        size: 18, color: primaryColor),
                     SizedBox(width: 8),
                     Text('Mở trang Lịch toàn màn hình'),
                   ],
@@ -537,12 +602,12 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         builder: (context, snapshot) {
           final allReminders = snapshot.data ?? [];
 
-          // 1. Filter by Scope: All vs Mine
+          // 1. Lọc theo Scope: Tất cả vs Việc của tôi
           final scopedReminders = _filterOnlyMine
               ? allReminders.where((r) => r.assignedTo == _currentUserId).toList()
               : allReminders;
 
-          // 2. Filter by Search Query
+          // 2. Lọc theo từ khóa tìm kiếm (Title hoặc Tên/Vai trò người nhận)
           final searchedReminders = _searchQuery.isEmpty
               ? scopedReminders
               : scopedReminders.where((r) {
@@ -570,127 +635,26 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           final selectedDateStr = _formatDate(_selectedDate);
           final displayedReminders = _showAll
               ? searchedReminders
-              : searchedReminders.where((r) => r.date == selectedDateStr).toList();
-
-          final activeReminders =
-              displayedReminders.where((r) => !r.isDeleted).toList();
-
-          final overdueList = activeReminders
-              .where((r) => r.isOverdue && !r.isCompleted)
-              .toList();
-
-          final openList = activeReminders
-              .where((r) => r.isOpen && !r.isOverdue && !r.isCompleted)
-              .toList();
-
-          final pendingList = activeReminders
-              .where((r) => r.isPending && !r.isOverdue && !r.isOpen && !r.isCompleted)
-              .toList();
-
-          final completedList =
-              activeReminders.where((r) => r.isCompleted).toList();
+              : searchedReminders
+                  .where((r) => r.date == selectedDateStr)
+                  .toList();
 
           return Column(
             children: [
-              // 0. Scope Filter Chips ([ Cả nhà ] vs [ Việc của tôi ])
-              Container(
-                color: const Color(0xFFEDF5F2),
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ChoiceChip(
-                        avatar: Icon(
-                          Icons.groups_rounded,
-                          size: 18,
-                          color: !_filterOnlyMine
-                              ? primaryColor
-                              : const Color(0xFF49454F),
-                        ),
-                        label: const Center(
-                          child: Text(
-                            '👨‍👩‍👧 Cả nhà',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        selected: !_filterOnlyMine,
-                        selectedColor: const Color(0xFFD4ECE5),
-                        backgroundColor: Colors.white,
-                        labelStyle: TextStyle(
-                          color: !_filterOnlyMine
-                              ? primaryColor
-                              : const Color(0xFF49454F),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: !_filterOnlyMine
-                                ? primaryColor
-                                : const Color(0xFFC4C7C5),
-                          ),
-                        ),
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() => _filterOnlyMine = false);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ChoiceChip(
-                        avatar: Icon(
-                          Icons.person_rounded,
-                          size: 18,
-                          color: _filterOnlyMine
-                              ? primaryColor
-                              : const Color(0xFF49454F),
-                        ),
-                        label: const Center(
-                          child: Text(
-                            '👤 Việc của tôi',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        selected: _filterOnlyMine,
-                        selectedColor: const Color(0xFFD4ECE5),
-                        backgroundColor: Colors.white,
-                        labelStyle: TextStyle(
-                          color: _filterOnlyMine
-                              ? primaryColor
-                              : const Color(0xFF49454F),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: _filterOnlyMine
-                                ? primaryColor
-                                : const Color(0xFFC4C7C5),
-                          ),
-                        ),
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() => _filterOnlyMine = true);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+              // Thanh lọc phạm vi: [👨‍👩‍👧 Cả nhà] vs [👤 Việc của tôi]
+              ReminderScopeFilterChips(
+                filterOnlyMine: _filterOnlyMine,
+                onScopeChanged: (val) => setState(() => _filterOnlyMine = val),
               ),
 
-              // 1. Dual-View Header (Monthly Calendar Grid vs Weekly Calendar Strip)
+              // Calendar View hoặc Weekly Strip
               if (_isCalendarView) ...[
-                MonthlyCalendarGrid(
+                ReminderCalendarView(
                   currentMonth: _currentMonth,
                   selectedDate: _selectedDate,
+                  showAll: _showAll,
                   reminders: scopedReminders,
+                  selectedDateFormatted: selectedDateStr,
                   onDateSelected: (date) {
                     setState(() {
                       _selectedDate = date;
@@ -702,41 +666,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                       _currentMonth = newMonth;
                     });
                   },
+                  onShowAllPressed: () => setState(() => _showAll = true),
                 ),
-                if (!_showAll)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.filter_alt_outlined, size: 16, color: primaryColor),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Đang lọc theo ngày: $selectedDateStr',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: primaryColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                        TextButton(
-                          onPressed: () => setState(() => _showAll = true),
-                          child: const Text(
-                            'Xem tất cả',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: primaryColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
               ] else
                 WeeklyCalendarStrip(
                   selectedDate: _selectedDate,
@@ -755,122 +686,27 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   },
                 ),
 
-              // 2. Family Daily Progress Card
+              // Family Daily Progress Card
               FamilyProgressCard(
                 reminders: _showAll ? searchedReminders : displayedReminders,
                 dateTitle: _showAll ? 'Tất cả' : selectedDateStr,
               ),
 
-              // 3. Reminder List (Prioritized by OVERDUE -> OPEN -> PENDING -> COMPLETED)
+              // List View phân nhóm theo 4 mức ưu tiên
               Expanded(
-                child: allReminders.isEmpty
-                    ? _buildEmptyState()
-                    : (displayedReminders.isEmpty
-                        ? _buildDayEmptyState(selectedDateStr)
-                        : ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                            children: [
-                              // 1. OVERDUE SECTION (Highest Priority)
-                              if (overdueList.isNotEmpty) ...[
-                                ReminderSectionHeader(
-                                  title: 'QUÁ HẠN (OVERDUE)',
-                                  count: overdueList.length,
-                                  color: const Color(0xFFBA1A1A),
-                                  icon: Icons.warning_amber_rounded,
-                                ),
-                                ...overdueList.map(
-                                  (reminder) => ReminderCard(
-                                    reminder: reminder,
-                                    currentUserId: _currentUserId,
-                                    onTap: () =>
-                                        _showDetailBottomSheet(reminder),
-                                    onComplete:
-                                        reminder.assignedTo == _currentUserId
-                                            ? () => _completeReminder(reminder)
-                                            : null,
-                                    onDelete:
-                                        reminder.creatorId == _currentUserId
-                                            ? () => _confirmAndDelete(reminder)
-                                            : null,
-                                  ),
-                                ),
-                              ],
-
-                              // 2. OPEN SECTION
-                              if (openList.isNotEmpty) ...[
-                                ReminderSectionHeader(
-                                  title: 'ĐANG MỞ (OPEN)',
-                                  count: openList.length,
-                                  color: const Color(0xFF006A6A),
-                                  icon: Icons.lock_open_rounded,
-                                ),
-                                ...openList.map(
-                                  (reminder) => ReminderCard(
-                                    reminder: reminder,
-                                    currentUserId: _currentUserId,
-                                    onTap: () =>
-                                        _showDetailBottomSheet(reminder),
-                                    onComplete:
-                                        reminder.assignedTo == _currentUserId
-                                            ? () => _completeReminder(reminder)
-                                            : null,
-                                    onDelete:
-                                        reminder.creatorId == _currentUserId
-                                            ? () => _confirmAndDelete(reminder)
-                                            : null,
-                                  ),
-                                ),
-                              ],
-
-                              // 3. PENDING SECTION
-                              if (pendingList.isNotEmpty) ...[
-                                ReminderSectionHeader(
-                                  title: 'CHỜ XỬ LÝ (PENDING)',
-                                  count: pendingList.length,
-                                  color: const Color(0xFF49454F),
-                                  icon: Icons.hourglass_top_rounded,
-                                ),
-                                ...pendingList.map(
-                                  (reminder) => ReminderCard(
-                                    reminder: reminder,
-                                    currentUserId: _currentUserId,
-                                    onTap: () =>
-                                        _showDetailBottomSheet(reminder),
-                                    onComplete:
-                                        reminder.assignedTo == _currentUserId
-                                            ? () => _completeReminder(reminder)
-                                            : null,
-                                    onDelete:
-                                        reminder.creatorId == _currentUserId
-                                            ? () => _confirmAndDelete(reminder)
-                                            : null,
-                                  ),
-                                ),
-                              ],
-
-                              // 4. COMPLETED SECTION
-                              if (completedList.isNotEmpty) ...[
-                                ReminderSectionHeader(
-                                  title: 'ĐÃ HOÀN THÀNH (COMPLETED)',
-                                  count: completedList.length,
-                                  color: const Color(0xFF005F50),
-                                  icon: Icons.check_circle_outline_rounded,
-                                ),
-                                ...completedList.map(
-                                  (reminder) => ReminderCard(
-                                    reminder: reminder,
-                                    currentUserId: _currentUserId,
-                                    onTap: () =>
-                                        _showDetailBottomSheet(reminder),
-                                    onDelete:
-                                        reminder.creatorId == _currentUserId
-                                            ? () => _confirmAndDelete(reminder)
-                                            : null,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          )),
+                child: ReminderListView(
+                  allReminders: allReminders,
+                  displayedReminders: displayedReminders,
+                  currentUserId: _currentUserId,
+                  selectedDateStr: selectedDateStr,
+                  isShowingAll: _showAll,
+                  onCreatePressed: _openCreateReminder,
+                  onShowAllPressed: () => setState(() => _showAll = true),
+                  onTapReminder: _showDetailBottomSheet,
+                  onCompleteReminder: _completeReminder,
+                  onDeleteReminder: _confirmAndDelete,
+                  onClaimReminder: _claimReminder,
+                ),
               ),
             ],
           );
@@ -887,125 +723,6 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             fontWeight: FontWeight.bold,
             fontSize: 15,
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDayEmptyState(String dateStr) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE7F0EC),
-                borderRadius: BorderRadius.circular(32),
-              ),
-              child: const Icon(
-                Icons.event_available_outlined,
-                size: 32,
-                color: Color(0xFF0D7A68),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Chưa có việc cho ngày $dateStr',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF151D1B),
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Nhấn "Tạo nhắc nhở" để thêm mới, hoặc xem "Tất cả" trên lịch.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFF6E7A75),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextButton.icon(
-              icon: const Icon(Icons.list_alt, color: Color(0xFF0D7A68)),
-              label: const Text(
-                'Xem tất cả nhắc nhở',
-                style: TextStyle(
-                  color: Color(0xFF0D7A68),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              onPressed: () {
-                setState(() => _showAll = true);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE7F0EC),
-                borderRadius: BorderRadius.circular(40),
-              ),
-              child: const Icon(
-                Icons.notifications_none_outlined,
-                size: 40,
-                color: Color(0xFF0D7A68),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'No reminders yet.',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF151D1B),
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Create a reminder to help your family stay organized and connected.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Color(0xFF6E7A75),
-              ),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0D7A68),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text(
-                'Create Reminder',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              onPressed: _openCreateReminder,
-            ),
-          ],
         ),
       ),
     );

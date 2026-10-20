@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../services/reminder_repository.dart';
+import '../widgets/camera_proof_dialog.dart';
 import '../widgets/family_progress_card.dart';
 import '../widgets/monthly_calendar_grid.dart';
 import '../widgets/reminder_card.dart';
@@ -56,15 +57,57 @@ class _CalendarPageState extends State<CalendarPage> {
 
   Future<void> _completeReminder(ReminderModel reminder) async {
     try {
+      String? proofUrl;
+      if (reminder.requiresProofImage) {
+        proofUrl = await CameraProofDialog.show(
+          context,
+          reminder: reminder,
+          currentUserName: widget.currentUserName,
+        );
+        if (proofUrl == null) {
+          return;
+        }
+      }
+
       await widget.repository.completeReminder(
         reminderId: reminder.id,
         currentUserId: widget.currentUserId,
+        proofImageUrl: proofUrl,
+      );
+      if (mounted) {
+        const successMsg = 'Đã hoàn thành công việc!';
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(successMsg),
+            backgroundColor: Color(0xFF005F50),
+          ),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _claimReminder(ReminderModel reminder) async {
+    try {
+      await widget.repository.claimOpenTask(
+        reminderId: reminder.id,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã hoàn thành nhắc nhở!'),
-            backgroundColor: Color(0xFF005F50),
+          SnackBar(
+            content: Text('🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!'),
+            backgroundColor: const Color(0xFF005F50),
           ),
         );
         setState(() {});
@@ -90,21 +133,21 @@ class _CalendarPageState extends State<CalendarPage> {
           borderRadius: BorderRadius.circular(16),
         ),
         title: const Text(
-          'Delete Reminder',
+          'Xóa lời nhắc',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text('Delete this reminder?'),
+        content: const Text('Bạn có chắc chắn muốn xóa lời nhắc này?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Hủy'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFBA1A1A),
             ),
             onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Xóa'),
           ),
         ],
       ),
@@ -142,6 +185,7 @@ class _CalendarPageState extends State<CalendarPage> {
       context,
       reminder: reminder,
       currentUserId: widget.currentUserId,
+      currentUserName: widget.currentUserName,
       repository: widget.repository,
       familyMembers: widget.familyMembers,
       onReminderUpdated: () => setState(() {}),
@@ -158,7 +202,7 @@ class _CalendarPageState extends State<CalendarPage> {
       backgroundColor: const Color(0xFFF3FBF8),
       appBar: AppBar(
         title: const Text(
-          'Lịch Gia Đình (Calendar)',
+          'Lịch Gia Đình',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -289,7 +333,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       // 1. OVERDUE
                       if (overdueList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'QUÁ HẠN (OVERDUE)',
+                          title: 'QUÁ HẠN',
                           count: overdueList.length,
                           color: const Color(0xFFBA1A1A),
                           icon: Icons.warning_amber_rounded,
@@ -305,6 +349,9 @@ class _CalendarPageState extends State<CalendarPage> {
                             onDelete: reminder.creatorId == widget.currentUserId
                                 ? () => _confirmAndDelete(reminder)
                                 : null,
+                            onClaim: reminder.isOpenTask
+                                ? () => _claimReminder(reminder)
+                                : null,
                           ),
                         ),
                       ],
@@ -312,7 +359,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       // 2. OPEN
                       if (openList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'ĐANG MỞ (OPEN)',
+                          title: 'VIỆC CHUNG CHƯA GÁN',
                           count: openList.length,
                           color: const Color(0xFF006A6A),
                           icon: Icons.lock_open_rounded,
@@ -328,6 +375,7 @@ class _CalendarPageState extends State<CalendarPage> {
                             onDelete: reminder.creatorId == widget.currentUserId
                                 ? () => _confirmAndDelete(reminder)
                                 : null,
+                            onClaim: () => _claimReminder(reminder),
                           ),
                         ),
                       ],
@@ -335,7 +383,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       // 3. PENDING
                       if (pendingList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'CHỜ XỬ LÝ (PENDING)',
+                          title: 'CHỜ THỰC HIỆN',
                           count: pendingList.length,
                           color: const Color(0xFF49454F),
                           icon: Icons.hourglass_top_rounded,
@@ -351,6 +399,9 @@ class _CalendarPageState extends State<CalendarPage> {
                             onDelete: reminder.creatorId == widget.currentUserId
                                 ? () => _confirmAndDelete(reminder)
                                 : null,
+                            onClaim: reminder.isOpenTask
+                                ? () => _claimReminder(reminder)
+                                : null,
                           ),
                         ),
                       ],
@@ -358,7 +409,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       // 4. COMPLETED
                       if (completedList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'ĐÃ HOÀN THÀNH (COMPLETED)',
+                          title: 'ĐÃ HOÀN THÀNH',
                           count: completedList.length,
                           color: const Color(0xFF005F50),
                           icon: Icons.check_circle_outline_rounded,
@@ -386,7 +437,7 @@ class _CalendarPageState extends State<CalendarPage> {
         backgroundColor: primaryColor,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(
-          'Tạo nhắc nhở',
+          'Tạo lời nhắc',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,

@@ -9,6 +9,7 @@ class ReminderCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onComplete;
   final VoidCallback? onDelete;
+  final VoidCallback? onClaim;
 
   const ReminderCard({
     super.key,
@@ -17,6 +18,7 @@ class ReminderCard extends StatelessWidget {
     required this.onTap,
     this.onComplete,
     this.onDelete,
+    this.onClaim,
   });
 
   IconData _getIconForTitle(String title) {
@@ -32,6 +34,9 @@ class ReminderCard extends StatelessWidget {
     }
     if (lower.contains('doctor') || lower.contains('khám')) {
       return Icons.local_hospital_outlined;
+    }
+    if (lower.contains('bát') || lower.contains('bếp') || lower.contains('phòng') || lower.contains('dọn')) {
+      return Icons.cleaning_services_outlined;
     }
     return Icons.task_alt_outlined;
   }
@@ -56,6 +61,7 @@ class ReminderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCompleted = reminder.isCompleted;
+    final isOpenTask = reminder.isOpenTask;
     final canComplete = !isCompleted && reminder.assignedTo == currentUserId;
     final canDelete = reminder.creatorId == currentUserId;
 
@@ -71,7 +77,9 @@ class ReminderCard extends StatelessWidget {
         border: Border.all(
           color: isCompleted
               ? const Color(0xFFE2EAE7)
-              : const Color(0x80BDC9C4),
+              : (reminder.isOverdue
+                  ? const Color(0xFFFFCDD2)
+                  : const Color(0x80BDC9C4)),
         ),
         boxShadow: const [
           BoxShadow(
@@ -92,6 +100,7 @@ class ReminderCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Icon avatar
                     Container(
@@ -100,7 +109,9 @@ class ReminderCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: isCompleted
                             ? const Color(0xFFE7F0EC)
-                            : const Color(0xFFF3FBF8),
+                            : (reminder.requiresProofImage
+                                ? const Color(0xFFE6F4F1)
+                                : const Color(0xFFF3FBF8)),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -113,7 +124,7 @@ class ReminderCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 14),
 
-                    // Title + For + Time
+                    // Title + For + Time + Badges
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,64 +170,102 @@ class ReminderCard extends StatelessWidget {
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Row(
+                          const SizedBox(height: 6),
+
+                          // Assignee pill + time
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: MemberColorHelper.getBackgroundColor(
-                                      reminder.assignedToName),
+                                  color: isOpenTask
+                                      ? const Color(0xFFE0F7FA)
+                                      : MemberColorHelper.getBackgroundColor(
+                                          reminder.assignedToName),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    CircleAvatar(
-                                      radius: 8,
-                                      backgroundColor:
-                                          MemberColorHelper.getPrimaryColor(
-                                              reminder.assignedToName),
-                                      child: Text(
-                                        reminder.assignedToName.isNotEmpty
-                                            ? reminder.assignedToName[0]
-                                            : '?',
-                                        style: const TextStyle(
-                                          fontSize: 9,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
+                                    if (isOpenTask)
+                                      const Icon(Icons.groups_rounded,
+                                          size: 14, color: Color(0xFF00796B))
+                                    else
+                                      CircleAvatar(
+                                        radius: 8,
+                                        backgroundColor:
+                                            MemberColorHelper.getPrimaryColor(
+                                                reminder.assignedToName),
+                                        child: Text(
+                                          reminder.assignedToName.isNotEmpty
+                                              ? reminder.assignedToName[0]
+                                              : '?',
+                                          style: const TextStyle(
+                                            fontSize: 9,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
-                                    ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      'For ${reminder.assignedToName}',
+                                      isOpenTask
+                                          ? '👨‍👩‍👧 Việc chung'
+                                          : reminder.assignedToName,
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
-                                        color: MemberColorHelper.getPrimaryColor(
-                                            reminder.assignedToName),
+                                        color: isOpenTask
+                                            ? const Color(0xFF00796B)
+                                            : MemberColorHelper.getPrimaryColor(
+                                                reminder.assignedToName),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 8),
                               const Text(
                                 '•',
                                 style: TextStyle(color: textMuted),
                               ),
-                              const SizedBox(width: 8),
                               Text(
                                 reminder.time,
                                 style: const TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                   color: primaryColor,
                                 ),
-                              if (reminder.isOverdue) ...[
-                                const SizedBox(width: 6),
+                              ),
+                              if (reminder.requiresProofImage && !isCompleted)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEDE7F6),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.camera_alt_outlined,
+                                          size: 11, color: Color(0xFF5E35B1)),
+                                      SizedBox(width: 2),
+                                      Text(
+                                        'Cần ảnh nghiệm thu',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF5E35B1),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              if (reminder.isOverdue)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 6, vertical: 1),
@@ -232,9 +281,8 @@ class ReminderCard extends StatelessWidget {
                                       color: Color(0xFFBA1A1A),
                                     ),
                                   ),
-                                ),
-                              ] else if (_getRelativeTime(reminder) != null) ...[
-                                const SizedBox(width: 6),
+                                )
+                              else if (_getRelativeTime(reminder) != null)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 6, vertical: 1),
@@ -251,9 +299,7 @@ class ReminderCard extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                              ],
-                              if (reminder.isRecurring) ...[
-                                const SizedBox(width: 6),
+                              if (reminder.isRecurring)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 6, vertical: 1),
@@ -272,7 +318,6 @@ class ReminderCard extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                              ],
                             ],
                           ),
                         ],
@@ -282,12 +327,16 @@ class ReminderCard extends StatelessWidget {
                     // Action buttons
                     if (canComplete && onComplete != null)
                       IconButton(
-                        icon: const Icon(
-                          Icons.check_circle_outline,
+                        icon: Icon(
+                          reminder.requiresProofImage
+                              ? Icons.camera_alt
+                              : Icons.check_circle_outline,
                           color: primaryColor,
                           size: 28,
                         ),
-                        tooltip: 'Complete Reminder',
+                        tooltip: reminder.requiresProofImage
+                            ? 'Chụp ảnh nghiệm thu & Hoàn thành'
+                            : 'Đánh dấu hoàn thành',
                         onPressed: onComplete,
                       )
                     else if (canDelete && onDelete != null)
@@ -297,7 +346,7 @@ class ReminderCard extends StatelessWidget {
                           color: Color(0xFFBA1A1A),
                           size: 22,
                         ),
-                        tooltip: 'Delete Reminder',
+                        tooltip: 'Xóa lời nhắc',
                         onPressed: onDelete,
                       )
                     else
@@ -307,6 +356,99 @@ class ReminderCard extends StatelessWidget {
                       ),
                   ],
                 ),
+
+                // Claim Open Task Button Banner (if task is OPEN)
+                if (isOpenTask && !isCompleted && onClaim != null) ...[
+                  const SizedBox(height: 10),
+                  InkWell(
+                    onTap: onClaim,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE0F2EC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF005F50)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.front_hand_rounded,
+                              size: 16, color: Color(0xFF005F50)),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Xung phong nhận việc này',
+                            style: TextStyle(
+                              color: Color(0xFF005F50),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+
+                // Proof image preview thumbnail (if completed and has proof)
+                if (isCompleted && reminder.hasProofImage) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F7F4),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFD0E6DE)),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(
+                            reminder.proofImageUrl!,
+                            width: 38,
+                            height: 38,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              width: 38,
+                              height: 38,
+                              color: const Color(0xFFE0F2EC),
+                              child: const Icon(Icons.image,
+                                  color: primaryColor, size: 20),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Đã có ảnh nghiệm thu 📸',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF005F50),
+                                ),
+                              ),
+                              Text(
+                                'Bấm vào thẻ để xem ảnh bằng chứng',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF6E7A75),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // Voice Note player if present
                 if (reminder.hasVoiceNote) ...[
                   const SizedBox(height: 6),
                   VoiceReminderPlayer(

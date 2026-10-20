@@ -1,0 +1,101 @@
+import 'package:flutter/material.dart';
+
+/// Thanh lựa chọn phạm vi xem: [👨‍👩‍👧 Cả nhà] hoặc [👤 Việc của tôi]
+class ReminderScopeFilterChips extends StatelessWidget {
+  final bool filterOnlyMine;
+  final ValueChanged<bool> onScopeChanged;
+
+  const ReminderScopeFilterChips({
+    super.key,
+    required this.filterOnlyMine,
+    required this.onScopeChanged,
+  });
+
+  static const Color primaryColor = Color(0xFF005F50);
+  static const Color selectedBgColor = Color(0xFFD4ECE5);
+  static const Color unselectedTextColor = Color(0xFF49454F);
+  static const Color borderColor = Color(0xFFC4C7C5);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFEDF5F2),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: ChoiceChip(
+              avatar: Icon(
+                Icons.groups_rounded,
+                size: 18,
+                color: !filterOnlyMine ? primaryColor : unselectedTextColor,
+              ),
+              label: const Center(
+                child: Text(
+                  '👨‍👩‍👧 Cả nhà',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              selected: !filterOnlyMine,
+              selectedColor: selectedBgColor,
+              backgroundColor: Colors.white,
+              labelStyle: TextStyle(
+                color: !filterOnlyMine ? primaryColor : unselectedTextColor,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: !filterOnlyMine ? primaryColor : borderColor,
+                ),
+              ),
+              onSelected: (selected) {
+                if (selected) {
+                  onScopeChanged(false);
+                }
+              },
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ChoiceChip(
+              avatar: Icon(
+                Icons.person_rounded,
+                size: 18,
+                color: filterOnlyMine ? primaryColor : unselectedTextColor,
+              ),
+              label: const Center(
+                child: Text(
+                  '👤 Việc của tôi',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              selected: filterOnlyMine,
+              selectedColor: selectedBgColor,
+              backgroundColor: Colors.white,
+              labelStyle: TextStyle(
+                color: filterOnlyMine ? primaryColor : unselectedTextColor,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: filterOnlyMine ? primaryColor : borderColor,
+                ),
+              ),
+              onSelected: (selected) {
+                if (selected) {
+                  onScopeChanged(true);
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
