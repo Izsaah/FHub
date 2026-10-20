@@ -54,6 +54,89 @@ class _CalendarPageState extends State<CalendarPage> {
     setState(() {});
   }
 
+  Future<void> _completeReminder(ReminderModel reminder) async {
+    try {
+      await widget.repository.completeReminder(
+        reminderId: reminder.id,
+        currentUserId: widget.currentUserId,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã hoàn thành nhắc nhở!'),
+            backgroundColor: Color(0xFF005F50),
+          ),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmAndDelete(ReminderModel reminder) async {
+    if (reminder.creatorId != widget.currentUserId) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          'Delete Reminder',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text('Delete this reminder?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFBA1A1A),
+            ),
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await widget.repository.deleteReminder(
+          reminderId: reminder.id,
+          currentUserId: widget.currentUserId,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã xóa "${reminder.title}".'),
+            ),
+          );
+          setState(() {});
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString()),
+              backgroundColor: const Color(0xFFBA1A1A),
+            ),
+          );
+        }
+      }
+    }
+  }
+
   void _showDetailBottomSheet(ReminderModel reminder) {
     ReminderDetailBottomSheet.show(
       context,
@@ -95,9 +178,20 @@ class _CalendarPageState extends State<CalendarPage> {
         builder: (context, snapshot) {
           final allReminders = snapshot.data ?? [];
           final dayReminders =
-              allReminders.where((r) => r.date == selectedDateStr).toList();
+              allReminders.where((r) => r.date == selectedDateStr && !r.isDeleted).toList();
 
-          final pendingList = dayReminders.where((r) => r.isPending).toList();
+          final overdueList = dayReminders
+              .where((r) => r.isOverdue && !r.isCompleted)
+              .toList();
+
+          final openList = dayReminders
+              .where((r) => r.isOpen && !r.isOverdue && !r.isCompleted)
+              .toList();
+
+          final pendingList = dayReminders
+              .where((r) => r.isPending && !r.isOverdue && !r.isOpen && !r.isCompleted)
+              .toList();
+
           final completedList =
               dayReminders.where((r) => r.isCompleted).toList();
 
@@ -192,29 +286,91 @@ class _CalendarPageState extends State<CalendarPage> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 90),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
+                      // 1. OVERDUE
+                      if (overdueList.isNotEmpty) ...[
+                        ReminderSectionHeader(
+                          title: 'QUÁ HẠN (OVERDUE)',
+                          count: overdueList.length,
+                          color: const Color(0xFFBA1A1A),
+                          icon: Icons.warning_amber_rounded,
+                        ),
+                        ...overdueList.map(
+                          (reminder) => ReminderCard(
+                            reminder: reminder,
+                            currentUserId: widget.currentUserId,
+                            onTap: () => _showDetailBottomSheet(reminder),
+                            onComplete: reminder.assignedTo == widget.currentUserId
+                                ? () => _completeReminder(reminder)
+                                : null,
+                            onDelete: reminder.creatorId == widget.currentUserId
+                                ? () => _confirmAndDelete(reminder)
+                                : null,
+                          ),
+                        ),
+                      ],
+
+                      // 2. OPEN
+                      if (openList.isNotEmpty) ...[
+                        ReminderSectionHeader(
+                          title: 'ĐANG MỞ (OPEN)',
+                          count: openList.length,
+                          color: const Color(0xFF006A6A),
+                          icon: Icons.lock_open_rounded,
+                        ),
+                        ...openList.map(
+                          (reminder) => ReminderCard(
+                            reminder: reminder,
+                            currentUserId: widget.currentUserId,
+                            onTap: () => _showDetailBottomSheet(reminder),
+                            onComplete: reminder.assignedTo == widget.currentUserId
+                                ? () => _completeReminder(reminder)
+                                : null,
+                            onDelete: reminder.creatorId == widget.currentUserId
+                                ? () => _confirmAndDelete(reminder)
+                                : null,
+                          ),
+                        ),
+                      ],
+
+                      // 3. PENDING
                       if (pendingList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'PENDING',
+                          title: 'CHỜ XỬ LÝ (PENDING)',
                           count: pendingList.length,
+                          color: const Color(0xFF49454F),
+                          icon: Icons.hourglass_top_rounded,
                         ),
                         ...pendingList.map(
                           (reminder) => ReminderCard(
                             reminder: reminder,
                             currentUserId: widget.currentUserId,
                             onTap: () => _showDetailBottomSheet(reminder),
+                            onComplete: reminder.assignedTo == widget.currentUserId
+                                ? () => _completeReminder(reminder)
+                                : null,
+                            onDelete: reminder.creatorId == widget.currentUserId
+                                ? () => _confirmAndDelete(reminder)
+                                : null,
                           ),
                         ),
                       ],
+
+                      // 4. COMPLETED
                       if (completedList.isNotEmpty) ...[
                         ReminderSectionHeader(
-                          title: 'COMPLETED',
+                          title: 'ĐÃ HOÀN THÀNH (COMPLETED)',
                           count: completedList.length,
+                          color: const Color(0xFF005F50),
+                          icon: Icons.check_circle_outline_rounded,
                         ),
                         ...completedList.map(
                           (reminder) => ReminderCard(
                             reminder: reminder,
                             currentUserId: widget.currentUserId,
                             onTap: () => _showDetailBottomSheet(reminder),
+                            onDelete: reminder.creatorId == widget.currentUserId
+                                ? () => _confirmAndDelete(reminder)
+                                : null,
                           ),
                         ),
                       ],

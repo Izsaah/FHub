@@ -214,7 +214,8 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
               final isSelected = !widget.showAll && _isSameDay(day, widget.selectedDate);
               final isToday = _isSameDay(day, today);
               final dayReminders = _getRemindersForDay(day);
-              final hasPending = dayReminders.any((r) => r.isPending);
+              final hasOverdue = dayReminders.any((r) => r.isOverdue && !r.isCompleted);
+              final hasPending = dayReminders.any((r) => (r.isPending || r.isOpen) && !r.isOverdue && !r.isCompleted);
               final hasCompleted = dayReminders.any((r) => r.isCompleted);
 
               return Expanded(
@@ -279,10 +280,21 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
+                              if (hasOverdue)
+                                Container(
+                                  width: 5,
+                                  height: 5,
+                                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFBA1A1A),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
                               if (hasPending)
                                 Container(
                                   width: 5,
                                   height: 5,
+                                  margin: const EdgeInsets.symmetric(horizontal: 1),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? const Color(0xFFF49D37)
@@ -290,12 +302,11 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
                                     shape: BoxShape.circle,
                                   ),
                                 ),
-                              if (hasPending && hasCompleted)
-                                const SizedBox(width: 2),
                               if (hasCompleted)
                                 Container(
                                   width: 5,
                                   height: 5,
+                                  margin: const EdgeInsets.symmetric(horizontal: 1),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? Colors.white60

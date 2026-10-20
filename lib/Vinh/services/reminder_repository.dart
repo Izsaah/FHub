@@ -61,7 +61,25 @@ class InMemoryReminderRepository implements ReminderRepository {
     final todayStr =
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
 
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayStr =
+        '${yesterday.day.toString().padLeft(2, '0')}/${yesterday.month.toString().padLeft(2, '0')}/${yesterday.year}';
+
     _reminders.addAll([
+      ReminderModel(
+        id: 'rem_overdue_1',
+        familyId: 'family_1',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Nộp tiền điện nước tháng này',
+        date: yesterdayStr,
+        time: '09:00',
+        status: ReminderStatus.overdue,
+        repeatRule: 'NONE',
+        createdAt: now.subtract(const Duration(days: 2)),
+      ),
       ReminderModel(
         id: 'rem_1',
         familyId: 'family_1',
@@ -69,10 +87,11 @@ class InMemoryReminderRepository implements ReminderRepository {
         creatorName: 'Minh',
         assignedTo: 'user_mom',
         assignedToName: 'Mom',
-        title: 'Take medicine',
+        title: 'Uống thuốc huyết áp buổi sáng',
         date: todayStr,
         time: '08:00',
-        status: ReminderStatus.pending,
+        status: ReminderStatus.open,
+        repeatRule: 'DAILY',
         createdAt: now.subtract(const Duration(hours: 3)),
       ),
       ReminderModel(
@@ -82,10 +101,11 @@ class InMemoryReminderRepository implements ReminderRepository {
         creatorName: 'Minh',
         assignedTo: 'user_dad',
         assignedToName: 'Dad',
-        title: 'Buy milk',
+        title: 'Mua sữa hạt và trái cây',
         date: todayStr,
         time: '18:00',
         status: ReminderStatus.pending,
+        repeatRule: 'WEEKLY',
         createdAt: now.subtract(const Duration(hours: 1)),
       ),
       ReminderModel(
@@ -95,10 +115,11 @@ class InMemoryReminderRepository implements ReminderRepository {
         creatorName: 'Dad',
         assignedTo: 'user_minh',
         assignedToName: 'Minh',
-        title: 'Buy vegetables',
+        title: 'Mua rau củ siêu thị',
         date: todayStr,
         time: '12:00',
         status: ReminderStatus.completed,
+        repeatRule: 'NONE',
         completedAt: now.subtract(const Duration(minutes: 30)),
         createdAt: now.subtract(const Duration(hours: 5)),
       ),
@@ -113,6 +134,7 @@ class InMemoryReminderRepository implements ReminderRepository {
         date: todayStr,
         time: '19:30',
         status: ReminderStatus.pending,
+        repeatRule: 'NONE',
         voiceNotePath: 'assets/audio/sample_voice_reminder.wav',
         voiceDurationSeconds: 3,
         voiceNoteDescription: 'Mẹ dặn nhớ uống 2 viên vitamin và ăn tối trước 8h nhé con!',
