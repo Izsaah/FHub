@@ -18,6 +18,9 @@ class ReminderModel {
   final String time; // HH:mm
   final String status; // OPEN, PENDING, OVERDUE, COMPLETED, DELETED
   final String? repeatRule; // NONE, DAILY, WEEKLY
+  final bool requiresProofImage; // Bắt buộc chụp ảnh nghiệm thu
+  final String? proofImageUrl; // URL hoặc đường dẫn ảnh chụp nghiệm thu
+  final int rewardStars; // Điểm thưởng sao dạy con (1, 2, 3, 5 sao)
   final String? voiceNotePath;
   final int? voiceDurationSeconds;
   final String? voiceNoteDescription;
@@ -36,6 +39,9 @@ class ReminderModel {
     required this.time,
     this.status = ReminderStatus.pending,
     this.repeatRule = 'NONE',
+    this.requiresProofImage = false,
+    this.proofImageUrl,
+    this.rewardStars = 0,
     this.voiceNotePath,
     this.voiceDurationSeconds,
     this.voiceNoteDescription,
@@ -44,12 +50,36 @@ class ReminderModel {
   });
 
   bool get hasVoiceNote => voiceNotePath != null && voiceNotePath!.isNotEmpty;
+  bool get hasProofImage => proofImageUrl != null && proofImageUrl!.isNotEmpty;
+  bool get hasRewardStars => rewardStars > 0;
 
   bool get isOpen => status == ReminderStatus.open;
   bool get isPending => status == ReminderStatus.pending;
   bool get isCompleted => status == ReminderStatus.completed;
   bool get isDeleted => status == ReminderStatus.deleted;
   bool get isRecurring => repeatRule != null && repeatRule != 'NONE';
+
+  String get statusDisplayName {
+    if (isDeleted) return 'Đã xóa';
+    if (isCompleted) return 'Đã xong';
+    if (isOverdue) return 'Quá hạn';
+    if (isOpen) return 'Đang mở';
+    return 'Chờ xử lý';
+  }
+
+  String get voiceDurationFormatted {
+    final sec = voiceDurationSeconds ?? 0;
+    final m = (sec ~/ 60).toString();
+    final s = (sec % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  /// Kiểm tra nếu đây là việc chung của gia đình (Open Task chưa gán cụ thể)
+  bool get isOpenTask =>
+      status == ReminderStatus.open ||
+      assignedTo.isEmpty ||
+      assignedTo == 'OPEN' ||
+      assignedTo == 'ALL';
 
   bool get isOverdue {
     if (isCompleted || isDeleted) return false;
@@ -78,7 +108,7 @@ class ReminderModel {
           day = int.parse(dateParts[2]);
         }
       }
-      
+
       int hour = 0, minute = 0;
       final timeParts = time.split(':');
       if (timeParts.isNotEmpty) {
@@ -127,6 +157,9 @@ class ReminderModel {
     String? time,
     String? status,
     String? repeatRule,
+    bool? requiresProofImage,
+    String? proofImageUrl,
+    int? rewardStars,
     String? voiceNotePath,
     int? voiceDurationSeconds,
     String? voiceNoteDescription,
@@ -145,6 +178,9 @@ class ReminderModel {
       time: time ?? this.time,
       status: status ?? this.status,
       repeatRule: repeatRule ?? this.repeatRule,
+      requiresProofImage: requiresProofImage ?? this.requiresProofImage,
+      proofImageUrl: proofImageUrl ?? this.proofImageUrl,
+      rewardStars: rewardStars ?? this.rewardStars,
       voiceNotePath: voiceNotePath ?? this.voiceNotePath,
       voiceDurationSeconds: voiceDurationSeconds ?? this.voiceDurationSeconds,
       voiceNoteDescription: voiceNoteDescription ?? this.voiceNoteDescription,
@@ -180,6 +216,15 @@ class ReminderModel {
       time: rawTime,
       status: json['status'] as String? ?? ReminderStatus.pending,
       repeatRule: (json['repeat_rule'] ?? json['repeatRule'] ?? 'NONE').toString(),
+      requiresProofImage: json['requires_proof_image'] == true ||
+          json['requiresProofImage'] == true,
+      proofImageUrl: json['proof_image_url'] as String? ??
+          json['proofImageUrl'] as String?,
+      rewardStars: json['reward_stars'] is int
+          ? json['reward_stars'] as int
+          : (json['rewardStars'] is int
+              ? json['rewardStars'] as int
+              : (int.tryParse((json['reward_stars'] ?? json['rewardStars'] ?? 0).toString()) ?? 0)),
       voiceNotePath: json['voice_note_path'] as String? ?? json['voiceNotePath'] as String?,
       voiceDurationSeconds: json['voice_duration_seconds'] is int
           ? json['voice_duration_seconds'] as int
@@ -207,20 +252,45 @@ class ReminderModel {
     return {
       'id': id,
       'familyId': familyId,
+      'family_id': familyId,
       'creatorId': creatorId,
+      'creator_id': creatorId,
       'creatorName': creatorName,
+      'creator_name': creatorName,
       'assignedTo': assignedTo,
+      'assigned_to': assignedTo,
       'assignedToName': assignedToName,
+      'assigned_to_name': assignedToName,
       'title': title,
       'date': date,
       'time': time,
       'status': status,
       'repeatRule': repeatRule ?? 'NONE',
-      if (voiceNotePath != null) 'voiceNotePath': voiceNotePath,
-      if (voiceDurationSeconds != null) 'voiceDurationSeconds': voiceDurationSeconds,
-      if (voiceNoteDescription != null) 'voiceNoteDescription': voiceNoteDescription,
+      'repeat_rule': repeatRule ?? 'NONE',
+      'requiresProofImage': requiresProofImage,
+      'requires_proof_image': requiresProofImage,
+      if (proofImageUrl != null) ...{
+        'proofImageUrl': proofImageUrl,
+        'proof_image_url': proofImageUrl,
+      },
+      'rewardStars': rewardStars,
+      'reward_stars': rewardStars,
+      if (voiceNotePath != null) ...{
+        'voiceNotePath': voiceNotePath,
+        'voice_note_path': voiceNotePath,
+      },
+      if (voiceDurationSeconds != null) ...{
+        'voiceDurationSeconds': voiceDurationSeconds,
+        'voice_duration_seconds': voiceDurationSeconds,
+      },
+      if (voiceNoteDescription != null) ...{
+        'voiceNoteDescription': voiceNoteDescription,
+        'voice_note_description': voiceNoteDescription,
+      },
       'completedAt': completedAt?.toIso8601String(),
+      'completed_at': completedAt?.toIso8601String(),
       'createdAt': createdAt?.toIso8601String(),
+      'created_at': createdAt?.toIso8601String(),
     };
   }
 
@@ -238,6 +308,9 @@ class ReminderModel {
       'time': time,
       'status': status,
       'repeat_rule': repeatRule ?? 'NONE',
+      'requires_proof_image': requiresProofImage,
+      if (proofImageUrl != null) 'proof_image_url': proofImageUrl,
+      'reward_stars': rewardStars,
       if (voiceNotePath != null) 'voice_note_path': voiceNotePath,
       if (voiceDurationSeconds != null)
         'voice_duration_seconds': voiceDurationSeconds,
@@ -257,6 +330,9 @@ class ReminderModel {
           familyId == other.familyId &&
           status == other.status &&
           title == other.title &&
+          proofImageUrl == other.proofImageUrl &&
+          requiresProofImage == other.requiresProofImage &&
+          rewardStars == other.rewardStars &&
           voiceNotePath == other.voiceNotePath;
 
   @override
@@ -265,5 +341,8 @@ class ReminderModel {
       familyId.hashCode ^
       status.hashCode ^
       title.hashCode ^
+      proofImageUrl.hashCode ^
+      requiresProofImage.hashCode ^
+      rewardStars.hashCode ^
       voiceNotePath.hashCode;
 }

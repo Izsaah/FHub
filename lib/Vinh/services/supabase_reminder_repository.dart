@@ -93,7 +93,11 @@ class SupabaseReminderRepository implements ReminderRepository {
       throw ReminderValidationException(titleError);
     }
 
-    if (familyMembers != null && familyMembers.isNotEmpty) {
+    if (familyMembers != null &&
+        familyMembers.isNotEmpty &&
+        reminder.assignedTo != 'OPEN' &&
+        reminder.assignedTo != 'ALL' &&
+        reminder.assignedTo.isNotEmpty) {
       final memberError = ReminderValidator.validateAssignedMember(
         reminder.assignedTo,
         familyMembers,
@@ -172,8 +176,7 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .eq('id', reminder.id)
           .single();
-      final existing =
-          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+      final existing = ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
       if (existing.creatorId != currentUserId) {
         throw ReminderPermissionException(
@@ -187,7 +190,11 @@ class SupabaseReminderRepository implements ReminderRepository {
         throw ReminderValidationException(titleError);
       }
 
-      if (familyMembers != null && familyMembers.isNotEmpty) {
+      if (familyMembers != null &&
+          familyMembers.isNotEmpty &&
+          reminder.assignedTo != 'OPEN' &&
+          reminder.assignedTo != 'ALL' &&
+          reminder.assignedTo.isNotEmpty) {
         final memberError = ReminderValidator.validateAssignedMember(
           reminder.assignedTo,
           familyMembers,
@@ -211,6 +218,10 @@ class SupabaseReminderRepository implements ReminderRepository {
         'assigned_to': reminder.assignedTo,
         'date': reminder.date,
         'time': reminder.time,
+        'repeat_rule': reminder.repeatRule ?? 'NONE',
+        'requires_proof_image': reminder.requiresProofImage,
+        'proof_image_url': reminder.proofImageUrl,
+        'reward_stars': reminder.rewardStars,
         'voice_note_path': reminder.voiceNotePath,
         'voice_duration_seconds': reminder.voiceDurationSeconds,
         'voice_note_description': reminder.voiceNoteDescription,
@@ -239,15 +250,54 @@ class SupabaseReminderRepository implements ReminderRepository {
   }
 
   @override
+  Future<ReminderModel> claimOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+  }) async {
+    final client = _client;
+    if (client == null) {
+      return _fallbackRepository.claimOpenTask(
+        reminderId: reminderId,
+        currentUserId: currentUserId,
+        currentUserName: currentUserName,
+      );
+    }
+
+    try {
+      final updateRes = await client
+          .from('reminders')
+          .update({
+            'assigned_to': currentUserId,
+            'assigned_to_name': currentUserName,
+            'status': ReminderStatus.pending,
+          })
+          .eq('id', reminderId)
+          .select()
+          .single();
+
+      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+    } catch (_) {
+      return _fallbackRepository.claimOpenTask(
+        reminderId: reminderId,
+        currentUserId: currentUserId,
+        currentUserName: currentUserName,
+      );
+    }
+  }
+
+  @override
   Future<ReminderModel> completeReminder({
     required String reminderId,
     required String currentUserId,
+    String? proofImageUrl,
   }) async {
     final client = _client;
     if (client == null) {
       return _fallbackRepository.completeReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        proofImageUrl: proofImageUrl,
       );
     }
 
@@ -265,11 +315,20 @@ class SupabaseReminderRepository implements ReminderRepository {
         );
       }
 
+      final effectiveProof = proofImageUrl ?? existing.proofImageUrl;
+      if (existing.requiresProofImage &&
+          (effectiveProof == null || effectiveProof.isEmpty)) {
+        throw ReminderValidationException(
+          'Công việc này bắt buộc phải có ảnh nghiệm thu trước khi hoàn thành!',
+        );
+      }
+
       final updateRes = await client
           .from('reminders')
           .update({
             'status': ReminderStatus.completed,
             'completed_at': DateTime.now().toIso8601String(),
+            'proof_image_url': ?effectiveProof,
           })
           .eq('id', reminderId)
           .select()
@@ -277,10 +336,14 @@ class SupabaseReminderRepository implements ReminderRepository {
 
       return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
     } catch (e) {
-      if (e is ReminderPermissionException) rethrow;
+      if (e is ReminderPermissionException ||
+          e is ReminderValidationException) {
+        rethrow;
+      }
       return _fallbackRepository.completeReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        proofImageUrl: proofImageUrl,
       );
     }
   }

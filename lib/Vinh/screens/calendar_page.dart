@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../services/reminder_repository.dart';
+import '../widgets/camera_proof_dialog.dart';
 import '../widgets/family_progress_card.dart';
 import '../widgets/monthly_calendar_grid.dart';
 import '../widgets/reminder_card.dart';
@@ -56,15 +57,59 @@ class _CalendarPageState extends State<CalendarPage> {
 
   Future<void> _completeReminder(ReminderModel reminder) async {
     try {
+      String? proofUrl;
+      if (reminder.requiresProofImage) {
+        proofUrl = await CameraProofDialog.show(
+          context,
+          reminder: reminder,
+          currentUserName: widget.currentUserName,
+        );
+        if (proofUrl == null) {
+          return;
+        }
+      }
+
       await widget.repository.completeReminder(
         reminderId: reminder.id,
         currentUserId: widget.currentUserId,
+        proofImageUrl: proofUrl,
+      );
+      if (mounted) {
+        final successMsg = reminder.hasRewardStars
+            ? '🎉 Hoàn thành xuất sắc! Bạn nhận được +${reminder.rewardStars} ⭐ sao thưởng!'
+            : 'Đã hoàn thành nhắc nhở!';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(successMsg),
+            backgroundColor: const Color(0xFF005F50),
+          ),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _claimReminder(ReminderModel reminder) async {
+    try {
+      await widget.repository.claimOpenTask(
+        reminderId: reminder.id,
+        currentUserId: widget.currentUserId,
+        currentUserName: widget.currentUserName,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã hoàn thành nhắc nhở!'),
-            backgroundColor: Color(0xFF005F50),
+          SnackBar(
+            content: Text('🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!'),
+            backgroundColor: const Color(0xFF005F50),
           ),
         );
         setState(() {});
@@ -142,6 +187,7 @@ class _CalendarPageState extends State<CalendarPage> {
       context,
       reminder: reminder,
       currentUserId: widget.currentUserId,
+      currentUserName: widget.currentUserName,
       repository: widget.repository,
       familyMembers: widget.familyMembers,
       onReminderUpdated: () => setState(() {}),
@@ -305,6 +351,9 @@ class _CalendarPageState extends State<CalendarPage> {
                             onDelete: reminder.creatorId == widget.currentUserId
                                 ? () => _confirmAndDelete(reminder)
                                 : null,
+                            onClaim: reminder.isOpenTask
+                                ? () => _claimReminder(reminder)
+                                : null,
                           ),
                         ),
                       ],
@@ -328,6 +377,7 @@ class _CalendarPageState extends State<CalendarPage> {
                             onDelete: reminder.creatorId == widget.currentUserId
                                 ? () => _confirmAndDelete(reminder)
                                 : null,
+                            onClaim: () => _claimReminder(reminder),
                           ),
                         ),
                       ],
@@ -350,6 +400,9 @@ class _CalendarPageState extends State<CalendarPage> {
                                 : null,
                             onDelete: reminder.creatorId == widget.currentUserId
                                 ? () => _confirmAndDelete(reminder)
+                                : null,
+                            onClaim: reminder.isOpenTask
+                                ? () => _claimReminder(reminder)
                                 : null,
                           ),
                         ),
