@@ -390,6 +390,11 @@ class InMemoryReminderRepository implements ReminderRepository {
     if (existing.isCompleted) {
       throw ReminderValidationException('Công việc này đã hoàn thành!');
     }
+    if (!existing.isOpenTask && existing.assignedTo != currentUserId) {
+      throw ReminderValidationException(
+        'Công việc này đã được ${existing.assignedToName.isNotEmpty ? existing.assignedToName : 'thành viên khác'} nhận trước đó!',
+      );
+    }
 
     final updated = existing.copyWith(
       assignedTo: currentUserId,

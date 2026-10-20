@@ -1116,5 +1116,39 @@ void main() {
       // Child user should NOT see camera proof switch card
       expect(find.byType(ChoreRewardCard), findsNothing);
     });
+
+    test('Cannot claim an open task if already claimed by another user', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'open_claim_race',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Việc đã được Minh nhận',
+          date: '25/10/2026',
+          time: '14:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      // Minh claims his own task -> succeeds
+      final claimedByMinh = await repo.claimOpenTask(
+        reminderId: 'open_claim_race',
+        currentUserId: 'user_minh',
+        currentUserName: 'Minh',
+      );
+      expect(claimedByMinh.assignedTo, 'user_minh');
+
+      // Dad tries to claim Minh's task -> throws validation error
+      expect(
+        () => repo.claimOpenTask(
+          reminderId: 'open_claim_race',
+          currentUserId: 'user_dad',
+          currentUserName: 'Dad',
+        ),
+        throwsA(isA<ReminderValidationException>()),
+      );
+    });
   });
 }

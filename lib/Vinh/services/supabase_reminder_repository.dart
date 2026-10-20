@@ -270,6 +270,23 @@ class SupabaseReminderRepository implements ReminderRepository {
     }
 
     try {
+      final existingRes = await client
+          .from('reminders')
+          .select()
+          .eq('id', reminderId)
+          .single();
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+
+      if (existing.isCompleted) {
+        throw ReminderValidationException('Công việc này đã hoàn thành!');
+      }
+      if (!existing.isOpenTask && existing.assignedTo != currentUserId) {
+        throw ReminderValidationException(
+          'Công việc này đã được ${existing.assignedToName.isNotEmpty ? existing.assignedToName : 'thành viên khác'} nhận trước đó!',
+        );
+      }
+
       final updateRes = await client
           .from('reminders')
           .update({
@@ -282,7 +299,8 @@ class SupabaseReminderRepository implements ReminderRepository {
           .single();
 
       return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
-    } catch (_) {
+    } catch (e) {
+      if (e is ReminderValidationException) rethrow;
       return _fallbackRepository.claimOpenTask(
         reminderId: reminderId,
         currentUserId: currentUserId,
