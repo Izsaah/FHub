@@ -111,7 +111,9 @@ class MultiTierEscalationService {
       }));
     }
 
-    _activeTimers[reminder.id] = timers;
+    if (timers.isNotEmpty) {
+      _activeTimers[reminder.id] = timers;
+    }
   }
 
   /// Tự động hủy toàn bộ các mốc hẹn giờ rung (+6h và +12h) khi bấm Complete

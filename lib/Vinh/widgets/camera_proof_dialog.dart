@@ -71,7 +71,9 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
   }
 
   void _capturePhoto() {
-    HapticFeedback.heavyImpact();
+    try {
+      HapticFeedback.heavyImpact();
+    } catch (_) {}
     setState(() {
       _capturedImageUrl = _sampleProofs[_selectedPresetIndex]['url'];
     });

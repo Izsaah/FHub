@@ -341,12 +341,11 @@ class SupabaseReminderRepository implements ReminderRepository {
       final day = int.parse(parts[0]);
       final month = int.parse(parts[1]);
       final year = int.parse(parts[2]);
-      final cur = DateTime(year, month, day);
 
       if (repeatRule == 'DAILY') {
-        return cur.add(const Duration(days: 1));
+        return DateTime(year, month, day + 1);
       } else if (repeatRule == 'WEEKLY') {
-        return cur.add(const Duration(days: 7));
+        return DateTime(year, month, day + 7);
       }
     } catch (_) {}
     return null;
