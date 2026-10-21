@@ -6,11 +6,13 @@ import '../services/reminder_repository.dart';
 import '../services/supabase_config.dart';
 import '../widgets/camera_proof_dialog.dart';
 import '../widgets/family_progress_card.dart';
+import '../widgets/multi_tier_simulation_dialog.dart';
 import '../widgets/reminder_detail_bottom_sheet.dart';
 import '../widgets/reminder_scope_filter_chips.dart';
 import '../widgets/weekly_calendar_strip.dart';
 import 'calendar_page.dart';
 import 'create_reminder_screen.dart';
+import 'family_ai_chat_screen.dart';
 import 'views/reminder_calendar_view.dart';
 import 'views/reminder_list_view.dart';
 
@@ -437,6 +439,52 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     }
   }
 
+  Future<void> _openDemoSimulation() async {
+    final list = await _repository.getReminders(familyId: _familyId);
+    final target = list.firstWhere(
+      (r) => !r.isCompleted && !r.isDeleted,
+      orElse: () => list.isNotEmpty
+          ? list.first
+          : ReminderModel(
+              id: 'demo_simulation_task',
+              familyId: _familyId,
+              creatorId: _currentUserId,
+              creatorName: _currentUserName,
+              assignedTo: _currentUserId,
+              assignedToName: _currentUserName,
+              title: 'Tập thể dục & Uống nước buổi sáng',
+              date: _formatDate(DateTime.now()),
+              time: '08:00',
+              status: ReminderStatus.pending,
+              createdAt: DateTime.now(),
+            ),
+    );
+
+    if (mounted) {
+      MultiTierSimulationDialog.show(
+        context,
+        reminder: target,
+        repository: _repository,
+        currentUserId: _currentUserId,
+        onReminderCompleted: () => setState(() {}),
+      );
+    }
+  }
+
+  void _openAiAssistant() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => FamilyAiChatScreen(
+          familyId: _familyId,
+          currentUserId: _currentUserId,
+          currentUserName: _currentUserName,
+          familyMembers: _familyMembers,
+          repository: _repository,
+        ),
+      ),
+    );
+  }
+
   void _showDetailBottomSheet(ReminderModel reminder) {
     ReminderDetailBottomSheet.show(
       context,
@@ -593,6 +641,15 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               );
             }).toList(),
           ),
+          // Nút mở Trợ lý AI Gia đình (Module 7)
+          IconButton(
+            icon: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Color(0xFF0D7A68),
+            ),
+            tooltip: 'Trợ lý AI Gia đình',
+            onPressed: _openAiAssistant,
+          ),
           // Chuyển đổi qua lại giữa List View và Calendar View
           IconButton(
             icon: Icon(
@@ -627,9 +684,35 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                     ),
                   ),
                 );
+              } else if (val == 'demo_simulation') {
+                _openDemoSimulation();
+              } else if (val == 'ai_assistant') {
+                _openAiAssistant();
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'ai_assistant',
+                child: Row(
+                  children: [
+                    Icon(Icons.auto_awesome_rounded,
+                        size: 18, color: Color(0xFF0D7A68)),
+                    SizedBox(width: 8),
+                    Text('Trợ lý AI Gia đình (Gemini)'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'demo_simulation',
+                child: Row(
+                  children: [
+                    Icon(Icons.science_rounded,
+                        size: 18, color: Color(0xFFE65100)),
+                    SizedBox(width: 8),
+                    Text('🧪 Thử nghiệm Nhắc đa tầng (10s)'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'full_calendar',
                 child: Row(
@@ -771,18 +854,44 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreateReminder,
-        backgroundColor: primaryColor,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          'Tạo lời nhắc',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'fab_ai_assistant',
+            onPressed: _openAiAssistant,
+            backgroundColor: const Color(0xFF004D40),
+            icon: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.amberAccent,
+              size: 20,
+            ),
+            label: const Text(
+              'Trợ lý AI',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
           ),
-        ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'fab_create_reminder',
+            onPressed: _openCreateReminder,
+            backgroundColor: primaryColor,
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              'Tạo lời nhắc',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

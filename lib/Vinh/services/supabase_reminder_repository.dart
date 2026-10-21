@@ -142,7 +142,9 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .single();
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(res));
+      final model = ReminderModel.fromJson(Map<String, dynamic>.from(res));
+      MultiTierEscalationService.instance.scheduleMultiTierEscalation(model);
+      return model;
     } catch (_) {
       return _fallbackRepository.createReminder(
         reminder: sanitizedReminder,
@@ -239,7 +241,9 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .single();
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      final model = ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance.scheduleMultiTierEscalation(model);
+      return model;
     } catch (e) {
       if (e is ReminderPermissionException ||
           e is ReminderValidationException) {
@@ -270,6 +274,23 @@ class SupabaseReminderRepository implements ReminderRepository {
     }
 
     try {
+      final existingRes = await client
+          .from('reminders')
+          .select()
+          .eq('id', reminderId)
+          .single();
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+
+      if (existing.isCompleted) {
+        throw ReminderValidationException('Công việc này đã hoàn thành!');
+      }
+      if (!existing.isOpenTask && existing.assignedTo != currentUserId) {
+        throw ReminderValidationException(
+          'Công việc này đã được ${existing.assignedToName.isNotEmpty ? existing.assignedToName : 'thành viên khác'} nhận trước đó!',
+        );
+      }
+
       final updateRes = await client
           .from('reminders')
           .update({
@@ -281,8 +302,11 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .single();
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
-    } catch (_) {
+      final claimedModel = ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance.scheduleMultiTierEscalation(claimedModel);
+      return claimedModel;
+    } catch (e) {
+      if (e is ReminderValidationException) rethrow;
       return _fallbackRepository.claimOpenTask(
         reminderId: reminderId,
         currentUserId: currentUserId,
@@ -317,12 +341,11 @@ class SupabaseReminderRepository implements ReminderRepository {
       final day = int.parse(parts[0]);
       final month = int.parse(parts[1]);
       final year = int.parse(parts[2]);
-      final cur = DateTime(year, month, day);
 
       if (repeatRule == 'DAILY') {
-        return cur.add(const Duration(days: 1));
+        return DateTime(year, month, day + 1);
       } else if (repeatRule == 'WEEKLY') {
-        return cur.add(const Duration(days: 7));
+        return DateTime(year, month, day + 7);
       }
     } catch (_) {}
     return null;
@@ -404,7 +427,9 @@ class SupabaseReminderRepository implements ReminderRepository {
         }
       }
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      final completed = ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance.cancelEscalation(reminderId);
+      return completed;
     } catch (e) {
       if (e is ReminderPermissionException ||
           e is ReminderValidationException) {
@@ -463,6 +488,7 @@ class SupabaseReminderRepository implements ReminderRepository {
           .update({'status': ReminderStatus.deleted})
           .eq('id', reminderId);
 
+      MultiTierEscalationService.instance.cancelEscalation(reminderId);
       return true;
     } catch (e) {
       if (e is ReminderPermissionException) rethrow;

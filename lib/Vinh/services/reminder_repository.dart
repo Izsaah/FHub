@@ -1,10 +1,12 @@
 import 'dart:async';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
+import 'multi_tier_escalation_service.dart';
 import 'reminder_exceptions.dart';
 import 'reminder_validator.dart';
 
 // Re-export core exceptions for seamless encapsulation
+export 'multi_tier_escalation_service.dart';
 export 'reminder_exceptions.dart';
 export 'supabase_reminder_repository.dart';
 
@@ -294,6 +296,7 @@ class InMemoryReminderRepository implements ReminderRepository {
     );
 
     _reminders.add(newReminder);
+    MultiTierEscalationService.instance.scheduleMultiTierEscalation(newReminder);
     _notify(newReminder.familyId);
     return newReminder;
   }
@@ -371,6 +374,7 @@ class InMemoryReminderRepository implements ReminderRepository {
     );
 
     _reminders[index] = updated;
+    MultiTierEscalationService.instance.scheduleMultiTierEscalation(updated);
     _notify(existing.familyId);
     return updated;
   }
@@ -390,6 +394,11 @@ class InMemoryReminderRepository implements ReminderRepository {
     if (existing.isCompleted) {
       throw ReminderValidationException('Công việc này đã hoàn thành!');
     }
+    if (!existing.isOpenTask && existing.assignedTo != currentUserId) {
+      throw ReminderValidationException(
+        'Công việc này đã được ${existing.assignedToName.isNotEmpty ? existing.assignedToName : 'thành viên khác'} nhận trước đó!',
+      );
+    }
 
     final updated = existing.copyWith(
       assignedTo: currentUserId,
@@ -398,6 +407,7 @@ class InMemoryReminderRepository implements ReminderRepository {
     );
 
     _reminders[index] = updated;
+    MultiTierEscalationService.instance.scheduleMultiTierEscalation(updated);
     _notify(existing.familyId);
     return updated;
   }
@@ -428,12 +438,11 @@ class InMemoryReminderRepository implements ReminderRepository {
       final day = int.parse(parts[0]);
       final month = int.parse(parts[1]);
       final year = int.parse(parts[2]);
-      final cur = DateTime(year, month, day);
 
       if (repeatRule == 'DAILY') {
-        return cur.add(const Duration(days: 1));
+        return DateTime(year, month, day + 1);
       } else if (repeatRule == 'WEEKLY') {
-        return cur.add(const Duration(days: 7));
+        return DateTime(year, month, day + 7);
       }
     } catch (_) {}
     return null;
@@ -502,9 +511,11 @@ class InMemoryReminderRepository implements ReminderRepository {
           createdAt: DateTime.now(),
         );
         _reminders.add(nextReminder);
+        MultiTierEscalationService.instance.scheduleMultiTierEscalation(nextReminder);
       }
     }
 
+    MultiTierEscalationService.instance.cancelEscalation(reminderId);
     _notify(existing.familyId);
     return updated;
   }
@@ -544,6 +555,7 @@ class InMemoryReminderRepository implements ReminderRepository {
     );
 
     _reminders[index] = updated;
+    MultiTierEscalationService.instance.cancelEscalation(reminderId);
     _notify(existing.familyId);
     return true;
   }

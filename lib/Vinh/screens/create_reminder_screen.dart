@@ -281,6 +281,16 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       final effectiveProofRequired = _canAssignChores && _requiresProofImage;
 
       if (widget.isEditing) {
+        // Cập nhật trạng thái phù hợp khi đổi giữa Cả nhà (OPEN) và Cá nhân (PENDING)
+        String updatedStatus;
+        if (isNowOpenTask) {
+          updatedStatus = ReminderStatus.open;
+        } else if (widget.existingReminder!.isOpen) {
+          updatedStatus = ReminderStatus.pending;
+        } else {
+          updatedStatus = widget.existingReminder!.status;
+        }
+
         final updated = widget.existingReminder!.copyWith(
           title: _titleController.text.trim(),
           assignedTo: isNowOpenTask ? '' : _selectedMember!.id,
@@ -293,7 +303,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           voiceNoteDescription: _voiceNoteDescription,
           requiresProofImage: effectiveProofRequired,
           rewardStars: 0,
-          status: isNowOpenTask ? ReminderStatus.open : null,
+          status: updatedStatus,
         );
 
         await widget.repository.updateReminder(

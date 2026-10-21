@@ -7,15 +7,18 @@ import 'package:fhub/Vinh/services/reminder_validator.dart';
 import 'package:fhub/Vinh/screens/reminder_list_screen.dart';
 import 'package:fhub/Vinh/screens/create_reminder_screen.dart';
 import 'package:fhub/Vinh/screens/calendar_page.dart';
+import 'package:fhub/Vinh/screens/family_ai_chat_screen.dart';
 import 'package:fhub/Vinh/screens/views/reminder_list_view.dart';
-import 'package:fhub/Vinh/screens/views/reminder_calendar_view.dart';
+import 'package:fhub/Vinh/services/family_ai_assistant_service.dart';
+import 'package:fhub/Vinh/services/family_memory_service.dart';
 import 'package:fhub/Vinh/widgets/chore_reward_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_scope_filter_chips.dart';
+import 'package:fhub/Vinh/widgets/task_mini_card.dart';
 import 'package:fhub/Vinh/widgets/weekly_calendar_strip.dart';
 import 'package:fhub/Vinh/widgets/family_progress_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_detail_bottom_sheet.dart';
-import 'package:fhub/Vinh/widgets/voice_recorder_widget.dart';
+import 'package:fhub/Vinh/widgets/multi_tier_simulation_dialog.dart';
 import 'package:fhub/Vinh/widgets/voice_reminder_player.dart';
 
 void main() {
@@ -1115,6 +1118,599 @@ void main() {
 
       // Child user should NOT see camera proof switch card
       expect(find.byType(ChoreRewardCard), findsNothing);
+    });
+
+    test('Cannot claim an open task if already claimed by another user', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'open_claim_race',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Việc đã được Minh nhận',
+          date: '25/10/2026',
+          time: '14:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      // Minh claims his own task -> succeeds
+      final claimedByMinh = await repo.claimOpenTask(
+        reminderId: 'open_claim_race',
+        currentUserId: 'user_minh',
+        currentUserName: 'Minh',
+      );
+      expect(claimedByMinh.assignedTo, 'user_minh');
+
+      // Dad tries to claim Minh's task -> throws validation error
+      expect(
+        () => repo.claimOpenTask(
+          reminderId: 'open_claim_race',
+          currentUserId: 'user_dad',
+          currentUserName: 'Dad',
+        ),
+        throwsA(isA<ReminderValidationException>()),
+      );
+    });
+  });
+
+  group('Mục 3: Multi-Tier Escalation & 10s Demo Tests', () {
+    final futureDt = DateTime.now().add(const Duration(days: 2));
+    final futureDateStr =
+        '${futureDt.day.toString().padLeft(2, '0')}/${futureDt.month.toString().padLeft(2, '0')}/${futureDt.year}';
+
+    test('MultiTierEscalationService schedules 3 tiers and cancelEscalation clears timers', () {
+      final reminder = ReminderModel(
+        id: 'escalation_test_1',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Làm bài tập Lý',
+        date: futureDateStr,
+        time: '18:00',
+        status: ReminderStatus.pending,
+      );
+
+      final service = MultiTierEscalationService.instance;
+      service.cancelAll();
+      expect(service.hasActiveEscalation(reminder.id), isFalse);
+
+      service.scheduleMultiTierEscalation(reminder);
+      expect(service.hasActiveEscalation(reminder.id), isTrue);
+
+      service.cancelEscalation(reminder.id);
+      expect(service.hasActiveEscalation(reminder.id), isFalse);
+    });
+
+    test('Completing or deleting reminder automatically cancels multi-tier escalation', () async {
+      final service = MultiTierEscalationService.instance;
+      service.cancelAll();
+      final repo = InMemoryReminderRepository();
+
+      final created = await repo.createReminder(
+        reminder: ReminderModel(
+          id: 'auto_cancel_test',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_dad',
+          assignedToName: 'Dad',
+          title: 'Đi siêu thị',
+          date: futureDateStr,
+          time: '20:00',
+          status: ReminderStatus.pending,
+        ),
+        currentUserId: 'user_dad',
+      );
+
+      expect(service.hasActiveEscalation(created.id), isTrue);
+
+      // Complete reminder -> auto cancels escalation
+      await repo.completeReminder(
+        reminderId: created.id,
+        currentUserId: 'user_dad',
+      );
+      expect(service.hasActiveEscalation(created.id), isFalse);
+
+      // Create another one and delete it -> auto cancels escalation
+      final created2 = await repo.createReminder(
+        reminder: ReminderModel(
+          id: 'auto_cancel_del_test',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_dad',
+          assignedToName: 'Dad',
+          title: 'Tưới cây cảnh',
+          date: futureDateStr,
+          time: '21:00',
+          status: ReminderStatus.pending,
+        ),
+        currentUserId: 'user_dad',
+      );
+      expect(service.hasActiveEscalation(created2.id), isTrue);
+
+      await repo.deleteReminder(
+        reminderId: created2.id,
+        currentUserId: 'user_dad',
+      );
+      expect(service.hasActiveEscalation(created2.id), isFalse);
+    });
+
+    test('10-second demo stream emits Tier 1 immediately and cleans up on stopDemo', () async {
+      final service = MultiTierEscalationService.instance;
+      final reminder = ReminderModel(
+        id: 'demo_test_stream',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        creatorName: 'Bố',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Nộp báo cáo đồ án',
+        date: futureDateStr,
+        time: '10:00',
+        status: ReminderStatus.pending,
+      );
+
+      final stream = service.start10SecondDemo(reminder);
+      final firstAlert = await stream.first;
+
+      expect(firstAlert.tier, EscalationTier.tier1Due);
+      expect(firstAlert.simulatedSeconds, 0);
+      expect(firstAlert.reminderTitle, 'Nộp báo cáo đồ án');
+      expect(firstAlert.message, contains('Đến giờ hẹn thực hiện'));
+      expect(firstAlert.tierDisplayName, contains('Mốc 1'));
+
+      service.stopDemo();
+    });
+
+    testWidgets('MultiTierSimulationDialog widget renders countdown, timeline steps, and buttons',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final repo = InMemoryReminderRepository();
+      final reminder = ReminderModel(
+        id: 'dialog_sim_test',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        creatorName: 'Bố',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Rửa chén & Lau bếp',
+        date: futureDateStr,
+        time: '19:00',
+        status: ReminderStatus.pending,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MultiTierSimulationDialog(
+              reminder: reminder,
+              repository: repo,
+              currentUserId: 'user_minh',
+            ),
+          ),
+        ),
+      );
+
+      // Verify header and title
+      expect(find.text('Mô phỏng Nhắc lịch Đa tầng'), findsOneWidget);
+      expect(find.text('Rửa chén & Lau bếp'), findsOneWidget);
+
+      // Verify 3 timeline steps
+      expect(find.text('Mốc 1 (0s ↔ Đúng giờ hẹn 0h)'), findsOneWidget);
+      expect(find.text('Mốc 2 (5s ↔ Trễ hạn +6 tiếng)'), findsOneWidget);
+      expect(find.text('Mốc 3 (10s ↔ Trễ hạn +12 tiếng)'), findsOneWidget);
+
+      // Verify Complete Early button
+      final completeButton = find.text('✓ Hoàn thành ngay (Dừng rung)');
+      expect(completeButton, findsOneWidget);
+
+      // Tap Complete Early
+      await tester.ensureVisible(completeButton);
+      await tester.tap(completeButton);
+      await tester.pump();
+
+      expect(find.text('Đã hủy toàn bộ cảnh báo rung!'), findsOneWidget);
+
+      // Clean up timer and animation
+      MultiTierEscalationService.instance.stopDemo();
+    });
+
+    testWidgets('ReminderDetailBottomSheet renders Demo button and opens MultiTierSimulationDialog',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final repo = InMemoryReminderRepository();
+      final reminder = ReminderModel(
+        id: 'bottom_sheet_demo_btn_test',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        creatorName: 'Bố',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Dọn dẹp phòng khách',
+        date: futureDateStr,
+        time: '09:00',
+        status: ReminderStatus.pending,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReminderDetailBottomSheet(
+              reminder: reminder,
+              currentUserId: 'user_minh',
+              repository: repo,
+            ),
+          ),
+        ),
+      );
+
+      // Verify Demo button is rendered
+      final demoBtn = find.text('🧪 Thử nghiệm Nhắc đa tầng (Demo 10s)');
+      expect(demoBtn, findsOneWidget);
+
+      // Tap Demo button to open dialog
+      await tester.ensureVisible(demoBtn);
+      await tester.tap(demoBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(MultiTierSimulationDialog), findsOneWidget);
+
+      // Clean up
+      MultiTierEscalationService.instance.stopDemo();
+    });
+  });
+
+  group('Mục 4: Family AI Assistant (Module 7 EPIC) Tests', () {
+    const aiFamilyMembers = [
+      FamilyMember(
+        id: 'user_mom',
+        name: 'Mẹ',
+        role: FamilyMember.roleParent,
+        familyId: 'f1',
+      ),
+      FamilyMember(
+        id: 'user_dad',
+        name: 'Bố',
+        role: FamilyMember.roleParent,
+        familyId: 'f1',
+      ),
+      FamilyMember(
+        id: 'user_minh',
+        name: 'Minh',
+        role: FamilyMember.roleChild,
+        familyId: 'f1',
+      ),
+    ];
+
+    setUp(() {
+      FamilyMemoryService.instance.clearAll();
+      FamilyAiAssistantService.instance.reset('f1');
+      MultiTierEscalationService.instance.cancelAll();
+    });
+
+    tearDown(() {
+      MultiTierEscalationService.instance.cancelAll();
+    });
+
+    test('AC1: Open Task creation from household chores intent', () async {
+      final repo = InMemoryReminderRepository();
+      final ai = FamilyAiAssistantService.instance;
+
+      final res = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'user_mom',
+        currentUserName: 'Mẹ',
+        familyMembers: aiFamilyMembers,
+        repository: repo,
+        userMessage: 'Hôm nay mẹ muốn làm việc nhà, có đứa nào phụ không?',
+      );
+
+      expect(res.attachedReminder, isNotNull);
+      final task = res.attachedReminder!;
+      expect(task.isOpenTask, isTrue);
+      expect(task.assignedTo, 'OPEN');
+      expect(task.title, contains('Phụ mẹ làm việc nhà'));
+      expect(res.text, contains('Công việc chung (Open Task)'));
+
+      // Check persisted in repo
+      final all = await repo.getReminders(familyId: 'f1');
+      expect(all.any((r) => r.id == task.id && r.isOpenTask), isTrue);
+    });
+
+    test('AC2: Personalization Memory - Asks on 1st turn, learns and auto-fills on 2nd turn', () async {
+      final repo = InMemoryReminderRepository();
+      final ai = FamilyAiAssistantService.instance;
+
+      // Turn 1: Mom asks to remind Dad to buy milk (first time - no memory)
+      final turn1 = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'user_mom',
+        currentUserName: 'Mẹ',
+        familyMembers: aiFamilyMembers,
+        repository: repo,
+        userMessage: 'Giao mua sữa cho Bố',
+      );
+
+      expect(turn1.attachedReminder, isNull);
+      expect(turn1.text, contains('mẹ muốn mua sữa gì ạ?'));
+
+      // Turn 2: Mom clarifies "Vinamilk"
+      final turn2 = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'user_mom',
+        currentUserName: 'Mẹ',
+        familyMembers: aiFamilyMembers,
+        repository: repo,
+        userMessage: 'Vinamilk',
+      );
+
+      expect(turn2.attachedReminder, isNotNull);
+      expect(turn2.attachedReminder!.title, 'Mua sữa (Vinamilk)');
+      expect(turn2.attachedReminder!.assignedTo, 'user_dad');
+      expect(turn2.text, contains('đã ghi nhớ thói quen mua sữa "Vinamilk"'));
+
+      // Verify memory service has recorded it
+      expect(
+        FamilyMemoryService.instance.getPreference(familyId: 'f1', keyword: 'sữa'),
+        'Vinamilk',
+      );
+
+      // Turn 3: Later, someone simply says "Nhắc bố mua sữa"
+      final turn3 = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'user_mom',
+        currentUserName: 'Mẹ',
+        familyMembers: aiFamilyMembers,
+        repository: repo,
+        userMessage: 'Nhắc bố mua sữa',
+      );
+
+      // Should automatically use learned "Vinamilk" without asking again!
+      expect(turn3.attachedReminder, isNotNull);
+      expect(turn3.attachedReminder!.title, 'Mua sữa (Vinamilk)');
+      expect(turn3.text, contains('Em nhớ thói quen nhà mình'));
+    });
+
+    test('AC3: Quick Daily Briefing accurately reflects family tasks status', () async {
+      final now = DateTime.now();
+      final todayStr =
+          '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+
+      final repo = InMemoryReminderRepository(initialReminders: [
+        ReminderModel(
+          id: 'brief_1',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Quét sân trước',
+          date: todayStr,
+          time: '07:00',
+          status: ReminderStatus.completed,
+        ),
+        ReminderModel(
+          id: 'brief_2',
+          familyId: 'f1',
+          creatorId: 'user_mom',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Học bài tiếng Anh',
+          date: todayStr,
+          time: '19:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      final ai = FamilyAiAssistantService.instance;
+
+      final res = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'user_mom',
+        currentUserName: 'Mẹ',
+        familyMembers: aiFamilyMembers,
+        repository: repo,
+        userMessage: 'Tình hình ở nhà hôm nay sao rồi?',
+      );
+
+      expect(res.text, contains('BÁO CÁO TIẾN ĐỘ GIA ĐÌNH HÔM NAY'));
+      expect(res.text, contains('Tổng số công việc: 2 việc'));
+      expect(res.text, contains('Đã hoàn thành: 1 việc'));
+      expect(res.text, contains('Đang chờ thực hiện: 1 việc'));
+    });
+
+    testWidgets('FamilyAiChatScreen renders UI, handles quick chips, and claims task via TaskMiniCard',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final repo = InMemoryReminderRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FamilyAiChatScreen(
+            familyId: 'f1',
+            currentUserId: 'user_minh',
+            currentUserName: 'Minh',
+            familyMembers: aiFamilyMembers,
+            repository: repo,
+          ),
+        ),
+      );
+
+      // Verify app bar title
+      expect(find.text('Trợ lý AI Gia đình'), findsOneWidget);
+      expect(find.text('Gemini 2.5 Flash • Trực tuyến'), findsOneWidget);
+
+      // Verify 3 Quick reply chips exist
+      expect(find.text('📊 Báo cáo hôm nay'), findsOneWidget);
+      expect(find.text('🙋‍♂️ Tìm người phụ việc nhà'), findsOneWidget);
+      expect(find.text('🥛 Nhắc mua sữa'), findsOneWidget);
+
+      // Tap on quick chip "🙋‍♂️ Tìm người phụ việc nhà"
+      final quickChip = find.text('🙋‍♂️ Tìm người phụ việc nhà');
+      await tester.tap(quickChip);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Verify TaskMiniCard appears
+      expect(find.byType(TaskMiniCard), findsOneWidget);
+      expect(find.text('Nhận việc ngay'), findsOneWidget);
+
+      // Tap "Nhận việc ngay"
+      await tester.tap(find.text('Nhận việc ngay'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      MultiTierEscalationService.instance.cancelAll();
+
+      // Verify task claimed in repo
+      final all = await repo.getReminders(familyId: 'f1');
+      expect(all.first.assignedTo, 'user_minh');
+    });
+  });
+
+  group('Force Majeure & Edge Cases Across Levels 1-4', () {
+    setUp(() {
+      FamilyMemoryService.instance.clearAll();
+      FamilyAiAssistantService.instance.reset('f1');
+      MultiTierEscalationService.instance.cancelAll();
+    });
+
+    tearDown(() {
+      MultiTierEscalationService.instance.cancelAll();
+    });
+
+    test('Edge Case: User cancels during multi-turn AI clarification', () async {
+      final repo = InMemoryReminderRepository();
+      final ai = FamilyAiAssistantService.instance;
+      const members = [
+        FamilyMember(id: 'm1', name: 'Mẹ', role: 'Parent', familyId: 'f1'),
+        FamilyMember(id: 'd1', name: 'Bố', role: 'Parent', familyId: 'f1'),
+      ];
+
+      // Turn 1: Triggers clarification
+      final t1 = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'm1',
+        currentUserName: 'Mẹ',
+        familyMembers: members,
+        repository: repo,
+        userMessage: 'Giao mua sữa cho Bố',
+      );
+      expect(t1.text, contains('mẹ muốn mua sữa gì ạ?'));
+
+      // Turn 2: User says "thôi không mua nữa"
+      final t2 = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'm1',
+        currentUserName: 'Mẹ',
+        familyMembers: members,
+        repository: repo,
+        userMessage: 'thôi không mua nữa',
+      );
+
+      expect(t2.attachedReminder, isNull);
+      expect(t2.text, contains('đã hủy'));
+      expect(FamilyMemoryService.instance.getPreference(familyId: 'f1', keyword: 'sữa'), isNull);
+    });
+
+    test('Edge Case: AI resolves custom UUID family members without validation error', () async {
+      final repo = InMemoryReminderRepository();
+      final ai = FamilyAiAssistantService.instance;
+      const customMembers = [
+        FamilyMember(id: 'uuid_parent_mom', name: 'Mẹ Lan', role: 'Parent', familyId: 'f1'),
+        FamilyMember(id: 'uuid_parent_dad', name: 'Bố Hùng', role: 'Parent', familyId: 'f1'),
+      ];
+
+      // Pre-save preference
+      await FamilyMemoryService.instance.savePreference(
+        familyId: 'f1',
+        keyword: 'sữa',
+        preference: 'Vinamilk',
+      );
+
+      final res = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'uuid_parent_mom',
+        currentUserName: 'Mẹ Lan',
+        familyMembers: customMembers,
+        repository: repo,
+        userMessage: 'Nhắc bố mua sữa',
+      );
+
+      expect(res.attachedReminder, isNotNull);
+      expect(res.attachedReminder!.assignedTo, 'uuid_parent_dad');
+      expect(res.attachedReminder!.title, 'Mua sữa (Vinamilk)');
+    });
+
+    test('Edge Case: Recurring daily reminder spawns and schedules multi-tier timers', () async {
+      final repo = InMemoryReminderRepository();
+      final service = MultiTierEscalationService.instance;
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      final tomorrowStr =
+          '${tomorrow.day.toString().padLeft(2, '0')}/${tomorrow.month.toString().padLeft(2, '0')}/${tomorrow.year}';
+
+      final recurring = await repo.createReminder(
+        reminder: ReminderModel(
+          id: 'recurring_edge_task',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_dad',
+          assignedToName: 'Dad',
+          title: 'Uống vitamin',
+          date: tomorrowStr,
+          time: '08:00',
+          repeatRule: 'DAILY',
+          status: ReminderStatus.pending,
+        ),
+        currentUserId: 'user_dad',
+      );
+
+      expect(service.hasActiveEscalation(recurring.id), isTrue);
+
+      // Complete current occurrence
+      await repo.completeReminder(
+        reminderId: recurring.id,
+        currentUserId: 'user_dad',
+      );
+
+      // Old occurrence canceled
+      expect(service.hasActiveEscalation(recurring.id), isFalse);
+
+      // Next occurrence spawned and has active escalation
+      final all = await repo.getReminders(familyId: 'f1');
+      final next = all.firstWhere((r) => r.id != recurring.id && !r.isCompleted);
+      expect(next.title, 'Uống vitamin');
+      expect(service.hasActiveEscalation(next.id), isTrue);
+    });
+
+    test('Edge Case: Multi-tier escalation ignores already-expired tasks', () {
+      final service = MultiTierEscalationService.instance;
+      final pastReminder = ReminderModel(
+        id: 'expired_task_test',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_dad',
+        assignedToName: 'Dad',
+        title: 'Việc cũ từ tuần trước',
+        date: '01/01/2026',
+        time: '08:00',
+        status: ReminderStatus.pending,
+      );
+
+      service.scheduleMultiTierEscalation(pastReminder);
+      // Since all 3 tiers (+0h, +6h, +12h) are past, no active timers created
+      expect(service.hasActiveEscalation(pastReminder.id), isFalse);
     });
   });
 }
