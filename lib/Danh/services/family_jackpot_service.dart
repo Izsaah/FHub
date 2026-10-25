@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
-import '../../Long/services/supabase_service.dart';
+import '../../Long/services/family_data_service.dart';
 import '../models/family_jackpot_model.dart';
 import '../models/user_bank_info.dart';
 import 'jackpot_algorithm.dart';
@@ -46,7 +46,7 @@ class FamilyJackpotService extends ChangeNotifier {
 
   FamilyJackpotModel get jackpot => _jackpot;
   int get myShakeCount => _localMyShakeCount;
-  String get currentUserId => _auth.currentUser?.uid ?? SupabaseService().currentUserId;
+  String get currentUserId => _auth.currentUser?.uid ?? FamilyDataService().currentUserId;
   String get currentUserName {
     if (_resolvedUserName != null && _resolvedUserName!.trim().isNotEmpty) {
       return _resolvedUserName!.trim();
@@ -184,7 +184,7 @@ class FamilyJackpotService extends ChangeNotifier {
 
       // Lấy tên thật của user hiện tại từ hồ sơ
       try {
-        final me = await SupabaseService().getCurrentUser();
+        final me = await FamilyDataService().getCurrentUser();
         if (me.name.trim().isNotEmpty && me.name != 'Người dùng') {
           _resolvedUserName = me.name.trim();
         }
@@ -207,9 +207,9 @@ class FamilyJackpotService extends ChangeNotifier {
         }
       }
 
-      // 2. Đồng bộ thêm danh sách thành viên từ SupabaseService (hiển thị ở tab Gia đình)
+      // 2. Đồng bộ thêm danh sách thành viên từ FamilyDataService (hiển thị ở tab Gia đình)
       try {
-        final serviceMembers = await SupabaseService().getFamilyMembers();
+        final serviceMembers = await FamilyDataService().getFamilyMembers();
         for (final m in serviceMembers) {
           final uid = m.user.id;
           final name = m.user.name.trim();

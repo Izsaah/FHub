@@ -23,11 +23,7 @@ class _AuthScreenState extends State<AuthScreen> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                AppColors.brand50,
-                Color(0xFFF7FAF8),
-                Colors.white,
-              ],
+              colors: [AppColors.brand50, Color(0xFFF7FAF8), Colors.white],
             ),
           ),
           child: SafeArea(
@@ -114,9 +110,9 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
           Row(
             children: [
-              _buildLangButton('VI', false),
-              const SizedBox(width: 6),
-              _buildLangButton('EN', true),
+              // _buildLangButton('VI', false),
+              // const SizedBox(width: 6),
+              // _buildLangButton('EN', true),
             ],
           ),
         ],
@@ -205,7 +201,11 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.home_filled, color: Colors.white, size: 12),
+                      const Icon(
+                        Icons.home_filled,
+                        color: Colors.white,
+                        size: 12,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         AppLanguage.text(
@@ -261,8 +261,11 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.shield_outlined,
-                  color: AppColors.brand600, size: 16),
+              const Icon(
+                Icons.shield_outlined,
+                color: AppColors.brand600,
+                size: 16,
+              ),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
@@ -290,7 +293,10 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text('•', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              child: Text(
+                '•',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
             ),
             Text(
               AppLanguage.text('Điều khoản dịch vụ', 'Terms of Service'),
@@ -298,13 +304,13 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text('•', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              child: Text(
+                '•',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
             ),
             Text(
-              AppLanguage.text(
-                '© Tổ Ấm Yêu Thương 2026',
-                '© Family Hub 2026',
-              ),
+              AppLanguage.text('© Tổ Ấm Yêu Thương 2026', '© Family Hub 2026'),
               style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
           ],

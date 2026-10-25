@@ -18,13 +18,6 @@ Future<void> main() async {
     debugPrint('Firebase initialization error: $e');
   }
 
-  // Khởi tạo Supabase qua SupabaseConfig (dùng fallback nếu module khác cần)
-  try {
-    await SupabaseConfig.initialize();
-  } catch (e) {
-    debugPrint('Supabase init skipped/error: $e');
-  }
-
   runApp(const FamilyHubApp());
 }
 

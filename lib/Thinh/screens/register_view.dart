@@ -264,10 +264,12 @@ class _RegisterViewState extends State<RegisterView> {
                               ),
                             ],
                           ),
-                          child: const Icon(
-                            Icons.check_circle,
-                            size: 20,
-                            color: Colors.green,
+                          child: Image.asset(
+                            'assets/images/google-logo.webp',
+                            width: 18,
+                            height: 18,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(Icons.check_circle, size: 18, color: Colors.green),
                           ),
                         ),
                       ],
@@ -283,16 +285,29 @@ class _RegisterViewState extends State<RegisterView> {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: AppColors.brand200),
                       ),
-                      child: Text(
-                        _t(
-                          'Tài khoản Google đã kết nối',
-                          'Google Account Connected',
-                        ),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.brand800,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset(
+                            'assets/images/google-logo.webp',
+                            width: 14,
+                            height: 14,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const SizedBox.shrink(),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _t(
+                              'Tài khoản Google đã kết nối',
+                              'Google Account Connected',
+                            ),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.brand800,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

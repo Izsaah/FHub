@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../services/supabase_service.dart';
+import '../../services/family_data_service.dart';
 import '../../models/user_model.dart';
 import '../../models/family_model.dart';
 import '../../models/family_member_model.dart';
@@ -17,8 +17,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _supabaseService = SupabaseService();
-  
+  final _familydataService = FamilyDataService();
+
   late Future<Map<String, dynamic>> _homeDataFuture;
 
   @override
@@ -32,11 +32,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<Map<String, dynamic>> _fetchHomeData() async {
-    final user = await _supabaseService.getCurrentUser();
-    final family = await _supabaseService.getCurrentFamily();
-    final members = await _supabaseService.getFamilyMembers();
-    final reminders = await _supabaseService.getMyPendingReminders();
-    
+    final user = await _familydataService.getCurrentUser();
+    final family = await _familydataService.getCurrentFamily();
+    final members = await _familydataService.getFamilyMembers();
+    final reminders = await _familydataService.getMyPendingReminders();
+
     return {
       'user': user,
       'family': family,
@@ -47,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _handleCheckIn() async {
     try {
-      await _supabaseService.checkIn(_supabaseService.currentUserId);
+      await _familydataService.checkIn(_familydataService.currentUserId);
       setState(() {
         _loadData();
       });
@@ -58,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _handleCompleteReminder(String reminderId) async {
     try {
-      await _supabaseService.completeReminder(reminderId);
+      await _familydataService.completeReminder(reminderId);
       setState(() {
         _loadData();
       });
@@ -93,120 +93,146 @@ class _HomeScreenState extends State<HomeScreen> {
         final List<ReminderModel> myReminders = data['reminders'];
 
         // Determine check-in status
-        final currentMember = members.where((m) => m.user.id == user.id).firstOrNull;
+        final currentMember = members
+            .where((m) => m.user.id == user.id)
+            .firstOrNull;
         final isCheckedIn = currentMember?.isCheckedInToday ?? false;
 
         return Scaffold(
           backgroundColor: Colors.white,
-          appBar: CustomAppBar(
-            title: 'Good morning, ${user.name}',
-          ),
+          appBar: CustomAppBar(title: 'Good morning, ${user.name}'),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
-            child: family == null 
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 60),
-                    const Icon(Icons.family_restroom, size: 80, color: Colors.grey),
-                    const SizedBox(height: 24),
-                    const Text(
-                      "You haven't joined a family yet.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      "Ask your family owner for an invitation code, or create a new family.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton(
-                      onPressed: () {
-                        // Navigate to family setup in the future
-                        // For now we can navigate to Family tab or show a message
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please go to Family tab to join/create a family.')),
-                        );
-                      },
-                      child: const Text('Join / Create Family'),
-                    ),
-                  ],
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      family.name,
-                      style: const TextStyle(
-                        fontSize: 18,
+            child: family == null
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 60),
+                      const Icon(
+                        Icons.family_restroom,
+                        size: 80,
                         color: Colors.grey,
-                        fontWeight: FontWeight.w500,
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    CheckInButton(isCheckedIn: isCheckedIn, onPressed: _handleCheckIn),
-                    const SizedBox(height: 32),
-                    const Text(
-                      'Family Today',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    ...members.map(
-                      (member) => FamilyMemberTile(member: member),
-                    ),
-                    const SizedBox(height: 32),
-                    const Text(
-                      'My Reminders',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    if (myReminders.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Text(
-                          'No pending reminders.',
-                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                      const SizedBox(height: 24),
+                      const Text(
+                        "You haven't joined a family yet.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
                         ),
-                      )
-                    else
-                      ...myReminders.map((reminder) {
-                        final timeString =
-                            '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}';
-                        return Card(
-                          elevation: 0,
-                          color: Colors.blue[50],
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: const Icon(Icons.medication, color: Colors.blue),
-                            title: Text(
-                              '${reminder.title} · $timeString',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "Ask your family owner for an invitation code, or create a new family.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 32),
+                      ElevatedButton(
+                        onPressed: () {
+                          // Navigate to family setup in the future
+                          // For now we can navigate to Family tab or show a message
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Please go to Family tab to join/create a family.',
+                              ),
                             ),
-                            trailing: IconButton(
-                              icon: const Icon(
-                                Icons.check_circle_outline,
+                          );
+                        },
+                        child: const Text('Join / Create Family'),
+                      ),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        family.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      CheckInButton(
+                        isCheckedIn: isCheckedIn,
+                        onPressed: _handleCheckIn,
+                      ),
+                      const SizedBox(height: 32),
+                      const Text(
+                        'Family Today',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ...members.map(
+                        (member) => FamilyMemberTile(member: member),
+                      ),
+                      const SizedBox(height: 32),
+                      const Text(
+                        'My Reminders',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      if (myReminders.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text(
+                            'No pending reminders.',
+                            style: TextStyle(color: Colors.grey, fontSize: 16),
+                          ),
+                        )
+                      else
+                        ...myReminders.map((reminder) {
+                          final timeString =
+                              '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}';
+                          return Card(
+                            elevation: 0,
+                            color: Colors.blue[50],
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: const Icon(
+                                Icons.medication,
                                 color: Colors.blue,
                               ),
-                              onPressed: () => _handleCompleteReminder(reminder.id),
+                              title: Text(
+                                '${reminder.title} · $timeString',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.check_circle_outline,
+                                  color: Colors.blue,
+                                ),
+                                onPressed: () =>
+                                    _handleCompleteReminder(reminder.id),
+                              ),
                             ),
-                          ),
-                        );
-                      }),
-                    if (myReminders.isNotEmpty)
-                      TextButton(
-                        onPressed: () {
-                          // Navigate to Reminders tab
-                        },
-                        child: const Text('View all reminders'),
-                      ),
-                  ],
-                ),
+                          );
+                        }),
+                      if (myReminders.isNotEmpty)
+                        TextButton(
+                          onPressed: () {
+                            // Navigate to Reminders tab
+                          },
+                          child: const Text('View all reminders'),
+                        ),
+                    ],
+                  ),
           ),
         );
       },

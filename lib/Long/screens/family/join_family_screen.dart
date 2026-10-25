@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/custom_app_bar.dart';
 import '../../../Danh/danh_payment_entry.dart';
+import '../../../Khoa/services/family_service.dart';
+import '../../../Thinh/services/auth_service.dart';
 
 class JoinFamilyScreen extends StatefulWidget {
   const JoinFamilyScreen({super.key});
@@ -12,6 +14,8 @@ class JoinFamilyScreen extends StatefulWidget {
 
 class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
   final _codeController = TextEditingController();
+  final _familyService = FamilyService();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -19,7 +23,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
     super.dispose();
   }
 
-  void _handleJoin() {
+  Future<void> _handleJoin() async {
     final code = _codeController.text.trim();
     if (code.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -28,47 +32,97 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
       return;
     }
 
-    // Giả lập kiểm tra số lượng thành viên hiện tại của gia đình cần gia nhập
-    // Ví dụ gia đình đang có 4/4 người (Gói Free)
-    const mockTargetFamilyMemberCount = 3; // Ví dụ gia đình đang có 3 người
-    if (!DanhPaymentEntry.canAddMember(mockTargetFamilyMemberCount)) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Gia Đình Đã Đầy'),
-          content: Text(
-            DanhPaymentEntry.getMemberLimitMessage(mockTargetFamilyMemberCount),
+    setState(() => _isLoading = true);
+
+    try {
+      // First check if the family exists
+      final family = await _familyService.findFamilyByJoinCode(code);
+      if (family == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không tìm thấy gia đình với mã "$code".'),
+            backgroundColor: Colors.red,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Đóng'),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Check member limit via DanhPaymentEntry
+      final existingMembers = await _familyService.getFamilyMembers(family.id);
+      final activeMemberCount =
+          existingMembers.where((m) => m.isActive).length;
+
+      if (!DanhPaymentEntry.canAddMember(activeMemberCount)) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Gia Đình Đã Đầy'),
+            content: Text(
+              DanhPaymentEntry.getMemberLimitMessage(activeMemberCount),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF005F50),
-                foregroundColor: Colors.white,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Đóng'),
               ),
-              onPressed: () {
-                Navigator.pop(ctx);
-                DanhPaymentEntry.openPremiumPlans(context);
-              },
-              child: const Text('Nâng cấp Premium'),
-            ),
-          ],
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF005F50),
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  DanhPaymentEntry.openPremiumPlans(context);
+                },
+                child: const Text('Nâng cấp Premium'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      // Actually join the family in Firestore
+      final joinedFamily = await _familyService.joinFamily(
+        joinCode: code,
+        role: 'PARENT',
+      );
+
+      DanhPaymentEntry.onFamilyCreatedOrJoined(joinedFamily.id);
+
+      // Update user's familyId in Firestore
+      try {
+        await AuthService().updateLazyOnboardingInfo(
+          role: 'PARENT',
+          familyId: joinedFamily.id,
+        );
+      } catch (e) {
+        debugPrint('Update lazy onboarding error: $e');
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context, true); // Return true to signal refresh
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gia nhập "${joinedFamily.name}" thành công!'),
+          backgroundColor: const Color(0xFF005F50),
         ),
       );
-      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-
-    DanhPaymentEntry.onFamilyCreatedOrJoined('f_joined');
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Gia nhập tổ ấm thành công!'),
-        backgroundColor: Color(0xFF005F50),
-      ),
-    );
   }
 
   @override
@@ -89,8 +143,9 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
               controller: _codeController,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
-                hintText: 'Nhập mã 6 ký tự (VD: A8K29D)',
+                hintText: 'Nhập mã gia đình (VD: ABCD-1234)',
               ),
+              enabled: !_isLoading,
             ),
             const SizedBox(height: 24),
             ElevatedButton(
@@ -100,8 +155,17 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: _handleJoin,
-              child: const Text('Gia nhập', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              onPressed: _isLoading ? null : _handleJoin,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text('Gia nhập', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
           ],
         ),

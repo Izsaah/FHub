@@ -62,7 +62,10 @@ class _LoginFormViewState extends State<LoginFormView> {
         if (err.contains('user-not-found') ||
             err.contains('wrong-password') ||
             err.contains('invalid-credential')) {
-          msg = _t('Email hoặc mật khẩu không chính xác.', 'Incorrect email or password.');
+          msg = _t(
+            'Email hoặc mật khẩu không chính xác.',
+            'Incorrect email or password.',
+          );
         } else if (err.contains('operation-not-allowed')) {
           msg = _t(
             'Chưa bật Email/Password trong Firebase Console (Authentication > Sign-in method).',
@@ -137,7 +140,9 @@ class _LoginFormViewState extends State<LoginFormView> {
           'Chưa bật đăng nhập Google trong Firebase Console (Authentication > Sign-in method).',
           'Google sign-in is disabled in Firebase Console.',
         );
-      } else if (err.contains('api-key') || err.contains('api_key') || err.contains('bad request')) {
+      } else if (err.contains('api-key') ||
+          err.contains('api_key') ||
+          err.contains('bad request')) {
         message = _t(
           'Chưa cấu hình API Key Firebase thật trong firebase_options.dart.',
           'Missing real Firebase API key in firebase_options.dart.',
@@ -370,10 +375,34 @@ class _LoginFormViewState extends State<LoginFormView> {
   }
 
   Widget _buildGoogleButton() {
-    return OutlinedButton.icon(
-      onPressed: _isLoading ? null : _handleGoogleSignIn,
-      icon: const Icon(Icons.g_mobiledata),
-      label: Text(_t('Đăng nhập bằng Google', 'Continue with Google')),
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: _isLoading ? null : _handleGoogleSignIn,
+        icon: Image.asset(
+          'assets/images/google-logo.webp',
+          width: 100,
+          height: 100,
+          errorBuilder: (context, error, stackTrace) =>
+              const Icon(Icons.g_mobiledata, size: 24),
+        ),
+        label: Text(
+          _t('Đăng nhập bằng Google', 'Continue with Google'),
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: const Color(0xFFF5F5F5),
+          side: const BorderSide(color: Color(0xFFE5E7EB)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
     );
   }
 

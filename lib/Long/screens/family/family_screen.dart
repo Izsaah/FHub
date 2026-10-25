@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../services/supabase_service.dart';
+import '../../services/family_data_service.dart';
 import '../../models/family_model.dart';
 import '../../models/family_member_model.dart';
 import '../../models/user_model.dart';
@@ -19,7 +19,7 @@ class FamilyScreen extends StatefulWidget {
 }
 
 class _FamilyScreenState extends State<FamilyScreen> {
-  final _supabaseService = SupabaseService();
+  final _familyDataService = FamilyDataService();
 
   late Future<Map<String, dynamic>> _familyDataFuture;
 
@@ -34,8 +34,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<Map<String, dynamic>> _fetchFamilyData() async {
-    final family = await _supabaseService.getCurrentFamily();
-    final members = await _supabaseService.getFamilyMembers();
+    final family = await _familyDataService.getCurrentFamily();
+    final members = await _familyDataService.getFamilyMembers();
     if (family != null) {
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
     }
@@ -145,13 +145,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      final result = await Navigator.push<bool>(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const CreateFamilyScreen(),
                         ),
                       );
+                      if (result == true && mounted) {
+                        setState(() => _loadData());
+                      }
                     },
                     child: const Text(
                       'Create a Family',
@@ -171,13 +174,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      final result = await Navigator.push<bool>(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const JoinFamilyScreen(),
                         ),
                       );
+                      if (result == true && mounted) {
+                        setState(() => _loadData());
+                      }
                     },
                     child: const Text(
                       'Join a Family',
@@ -193,7 +199,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
           }
 
           final currentMember = members.firstWhere(
-            (m) => m.user.id == _supabaseService.currentUserId,
+            (m) => m.user.id == _familyDataService.currentUserId,
             orElse: () => FamilyMemberModel(
               familyId: family.id,
               user: members.isNotEmpty

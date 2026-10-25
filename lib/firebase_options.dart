@@ -8,10 +8,6 @@ class DefaultFirebaseOptions {
   static const String defaultAuthDomain = 'fhub-1c45b.firebaseapp.com';
   static const String defaultStorageBucket = 'fhub-1c45b.firebasestorage.app';
 
-  /// SePay Sandbox API Key for QR payment gateway
-  static const String sepayApiKey =
-      'ZMSQWHDK3RPRBDC08DX9FVJ8TG9UEJYYS2M5A4VGWH7EOLOE6BXPXL1QNWTVMNOK';
-
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
       return web;
@@ -30,24 +26,23 @@ class DefaultFirebaseOptions {
     apiKey: 'AIzaSyAvbv3nd6uMVxjgbGKj8fEDX6koS2GY7A8',
     appId: '1:698012966949:web:6dc9335202a239fae85fcc',
     messagingSenderId: '698012966949',
-    projectId: defaultProjectId,
-    authDomain: defaultAuthDomain,
-    storageBucket: defaultStorageBucket,
-    measurementId: 'G-0VSSJ5E3ZE',
+    projectId: 'fhub-1c45b',
+    authDomain: 'fhub-1c45b.firebaseapp.com',
+    storageBucket: 'fhub-1c45b.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAvbv3nd6uMVxjgbGKj8fEDX6koS2GY7A8',
     appId: '1:698012966949:web:6dc9335202a239fae85fcc',
     messagingSenderId: '698012966949',
-    projectId: defaultProjectId,
-    storageBucket: defaultStorageBucket,
+    projectId: 'fhub-1c45b',
+    storageBucket: 'fhub-1c45b.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAvbv3nd6uMVxjgbGKj8fEDX6koS2GY7A8',
-    appId: '1:698012966949:web:6dc9335202a239fae85fcc',
-    messagingSenderId: '698012966949',
+    apiKey: 'AIzaSyDummyIosKeyForFHubApp1234567890',
+    appId: '1:100000000000:ios:abcdef1234567890',
+    messagingSenderId: '100000000000',
     projectId: defaultProjectId,
     storageBucket: defaultStorageBucket,
     iosBundleId: 'com.example.fhub',

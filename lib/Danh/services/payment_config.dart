@@ -15,9 +15,13 @@ class PaymentConfig {
   // Số tiền gói Premium mặc định (Tháng)
   static const int defaultAmount = 49000;
 
+  //mock (tự xóa này nha Danh)
+  static String get apiKey => DefaultFirebaseOptions.defaultAuthDomain;
+
   // Cấu hình SePay Sandbox API
-  static String get apiKey => DefaultFirebaseOptions.sepayApiKey;
-  static const String sepaySandboxEndpoint = 'https://userapi-sandbox.sepay.vn/v2/transactions';
+  // static String get apiKey => DefaultFirebaseOptions.sepayApiKey;
+  static const String sepaySandboxEndpoint =
+      'https://userapi-sandbox.sepay.vn/v2/transactions';
 
   /// Sinh đường dẫn ảnh mã VietQR Napas chuẩn SePay (trả về ảnh PNG trực tiếp, không bị lỗi SVG hay CORS)
   static String buildVietQrUrl({
@@ -27,4 +31,3 @@ class PaymentConfig {
     return 'https://qr.sepay.vn/img?bank=$bankShortName&acc=$accountNo&amount=$amount&des=$orderCode&template=qronly';
   }
 }
-
