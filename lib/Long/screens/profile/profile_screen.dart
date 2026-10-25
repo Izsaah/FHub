@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../services/supabase_service.dart';
+import '../../services/family_data_service.dart';
 import '../../models/user_model.dart';
 import '../../models/family_model.dart';
 import '../../widgets/custom_app_bar.dart';
@@ -17,7 +17,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _supabaseService = SupabaseService();
+  final _familyDataService = FamilyDataService();
   late Future<Map<String, dynamic>> _profileDataFuture;
 
   @override
@@ -27,8 +27,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<Map<String, dynamic>> _fetchProfileData() async {
-    final user = await _supabaseService.getCurrentUser();
-    final family = await _supabaseService.getCurrentFamily();
+    final user = await _familyDataService.getCurrentUser();
+    final family = await _familyDataService.getCurrentFamily();
     if (family != null) {
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
     }
