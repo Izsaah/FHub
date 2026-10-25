@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/family_member.dart';
@@ -6,7 +9,6 @@ import '../services/member_color_helper.dart';
 import '../services/reminder_repository.dart';
 import '../screens/create_reminder_screen.dart';
 import 'camera_proof_dialog.dart';
-import 'multi_tier_simulation_dialog.dart';
 import 'voice_reminder_player.dart';
 
 /// Hộp thoại hiển thị chi tiết lời nhắc (Việt hóa 100%)
@@ -267,6 +269,81 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     }
   }
 
+  Widget _buildProofImage(
+    String imageUrl, {
+    double? width,
+    double? height,
+    BoxFit fit = BoxFit.cover,
+  }) {
+    if (imageUrl.startsWith('data:image/')) {
+      try {
+        final commaIdx = imageUrl.indexOf(',');
+        final b64 = commaIdx != -1 ? imageUrl.substring(commaIdx + 1) : imageUrl;
+        final bytes = base64Decode(b64);
+        return Image.memory(
+          bytes,
+          width: width,
+          height: height,
+          fit: fit,
+          errorBuilder: (context, error, stackTrace) => Container(
+            height: height ?? 120,
+            width: width,
+            color: const Color(0xFFE0F2EC),
+            alignment: Alignment.center,
+            child: const Text('Không thể tải ảnh nghiệm thu'),
+          ),
+        );
+      } catch (_) {}
+    }
+    if (imageUrl.startsWith('http://') ||
+        imageUrl.startsWith('https://') ||
+        imageUrl.startsWith('blob:')) {
+      return Image.network(
+        imageUrl,
+        height: height,
+        width: width,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: height ?? 120,
+          width: width,
+          color: const Color(0xFFE0F2EC),
+          alignment: Alignment.center,
+          child: const Text('Ảnh nghiệm thu đã lưu'),
+        ),
+      );
+    }
+    if (imageUrl.startsWith('assets/')) {
+      return Image.asset(
+        imageUrl,
+        height: height,
+        width: width,
+        fit: fit,
+      );
+    }
+    if (!kIsWeb) {
+      return Image.file(
+        File(imageUrl),
+        height: height,
+        width: width,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: height ?? 120,
+          width: width,
+          color: const Color(0xFFE0F2EC),
+          alignment: Alignment.center,
+          child: const Text('Ảnh nghiệm thu đã lưu'),
+        ),
+      );
+    }
+    return Container(
+      height: height ?? 120,
+      width: width,
+      color: const Color(0xFFE0F2EC),
+      alignment: Alignment.center,
+      child: const Text('Ảnh nghiệm thu đã lưu'),
+    );
+  }
+
   void _showProofPreview(BuildContext context, String imageUrl) {
     showDialog(
       context: context,
@@ -277,17 +354,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  height: 200,
-                  color: Colors.black54,
-                  alignment: Alignment.center,
-                  child: const Text('Không thể tải ảnh bằng chứng',
-                      style: TextStyle(color: Colors.white)),
-                ),
-              ),
+              _buildProofImage(imageUrl, fit: BoxFit.contain),
               Container(
                 color: const Color(0xFF1B2321),
                 padding:
@@ -528,17 +595,11 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                     child: Stack(
                       alignment: Alignment.bottomRight,
                       children: [
-                        Image.network(
+                        _buildProofImage(
                           reminder.proofImageUrl!,
                           height: 180,
                           width: double.infinity,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            height: 120,
-                            color: const Color(0xFFE0F2EC),
-                            alignment: Alignment.center,
-                            child: const Text('Ảnh nghiệm thu đã lưu'),
-                          ),
                         ),
                         Container(
                           margin: const EdgeInsets.all(10),
@@ -699,40 +760,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                     fontStyle: FontStyle.italic,
                   ),
                 ),
-              const SizedBox(height: 16),
-              // Nút Demo Nhắc lịch Đa tầng (10 Giây)
-              SizedBox(
-                height: 46,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFE65100),
-                    side: const BorderSide(color: Color(0xFFFFB74D), width: 1.5),
-                    backgroundColor: const Color(0xFFFFF8E1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  icon: const Icon(Icons.science_rounded, size: 20),
-                  label: const Text(
-                    '🧪 Thử nghiệm Nhắc đa tầng (Demo 10s)',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  onPressed: () {
-                    MultiTierSimulationDialog.show(
-                      context,
-                      reminder: reminder,
-                      repository: repository,
-                      currentUserId: currentUserId,
-                      onReminderCompleted: () {
-                        onReminderUpdated?.call();
-                      },
-                    );
-                  },
-                ),
-              ),
+
             ],
           ),
         ),

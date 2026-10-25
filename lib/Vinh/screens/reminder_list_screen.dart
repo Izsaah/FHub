@@ -1,12 +1,13 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../services/reminder_repository.dart';
-import '../services/supabase_config.dart';
 import '../widgets/camera_proof_dialog.dart';
 import '../widgets/family_progress_card.dart';
-import '../widgets/multi_tier_simulation_dialog.dart';
 import '../widgets/reminder_detail_bottom_sheet.dart';
 import '../widgets/reminder_scope_filter_chips.dart';
 import '../widgets/weekly_calendar_strip.dart';
@@ -47,6 +48,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   late List<FamilyMember> _familyMembers;
   late ReminderRepository _repository;
   bool _isLoading = true;
+  bool _hasFamily = false;
 
   bool _isCalendarView = false;
   DateTime _currentMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -73,13 +75,15 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   void initState() {
     super.initState();
     if (widget.familyId != null &&
+        widget.familyId!.isNotEmpty &&
         widget.currentUserId != null &&
         widget.familyMembers != null) {
+      _hasFamily = true;
       _familyId = widget.familyId!;
       _currentUserId = widget.currentUserId!;
       _currentUserName = widget.currentUserName ?? 'Minh';
       _familyMembers = widget.familyMembers!;
-      _repository = widget.repository ?? SupabaseReminderRepository();
+      _repository = widget.repository ?? FirebaseReminderRepository();
       _isLoading = false;
     } else {
       _resolveContext();
@@ -88,120 +92,142 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
   Future<void> _resolveContext() async {
     try {
-      final client = SupabaseConfig.client;
-      final currentUser = client?.auth.currentUser;
-      final userId = widget.currentUserId ?? currentUser?.id ?? 'user_minh';
-      final userName = widget.currentUserName ??
-          currentUser?.userMetadata?['name'] as String? ??
-          currentUser?.email?.split('@').first ??
-          'Minh';
+      String? userId = widget.currentUserId;
+      String? userName = widget.currentUserName;
+      String? resolvedFamilyId = widget.familyId;
+      List<FamilyMember> resolvedMembers = widget.familyMembers != null
+          ? List<FamilyMember>.from(widget.familyMembers!)
+          : [];
 
-      String resolvedFamilyId = widget.familyId ?? 'family_1';
-      List<FamilyMember> resolvedMembers = widget.familyMembers ?? [];
-
-      if (widget.familyMembers == null && client != null && currentUser != null) {
-        final membership = await client
-            .from('family_members')
-            .select('family_id')
-            .eq('user_id', userId)
-            .maybeSingle();
-
-        if (membership != null && membership['family_id'] != null) {
-          resolvedFamilyId = membership['family_id'].toString();
-
-          final membersRes = await client
-              .from('family_members')
-              .select('user_id, role, users(name)')
-              .eq('family_id', resolvedFamilyId);
-
-          if (membersRes.isNotEmpty) {
-            resolvedMembers = membersRes.map<FamilyMember>((json) {
-              final userMap = json['users'] as Map<String, dynamic>?;
-              final name = userMap?['name'] as String? ?? 'Member';
-              return FamilyMember(
-                id: (json['user_id'] ?? '').toString(),
-                name: name,
-                role: (json['role'] ?? 'Member').toString(),
-                familyId: resolvedFamilyId,
-              );
-            }).toList();
+      // 1. Resolve Current User from Firebase Auth
+      if (Firebase.apps.isNotEmpty) {
+        try {
+          final fbAuth = FirebaseAuth.instance;
+          final fbUser = fbAuth.currentUser;
+          if (fbUser != null) {
+            userId ??= fbUser.uid;
+            userName ??= (fbUser.displayName != null && fbUser.displayName!.isNotEmpty)
+                ? fbUser.displayName
+                : (fbUser.email?.split('@').first ?? 'Người dùng');
           }
+        } catch (_) {}
+      }
+
+      userId ??= 'current_user';
+      userName ??= 'Tôi';
+
+      // 2. Resolve Family ID and Members from Cloud Firestore
+      if (Firebase.apps.isNotEmpty && (resolvedFamilyId == null || resolvedMembers.isEmpty)) {
+        final firestore = FirebaseFirestore.instance;
+
+        // Try getting familyId from user doc
+        if (resolvedFamilyId == null) {
+          try {
+            final userDoc = await firestore.collection('users').doc(userId).get();
+            if (userDoc.exists && userDoc.data() != null) {
+              final fid = userDoc.data()!['familyId']?.toString();
+              if (fid != null && fid.isNotEmpty) {
+                resolvedFamilyId = fid;
+              }
+            }
+          } catch (_) {}
+        }
+
+        // Try getting familyId from family_members collection
+        if (resolvedFamilyId == null) {
+          try {
+            final memberDocs = await firestore
+                .collection('family_members')
+                .where('userId', isEqualTo: userId)
+                .where('status', isEqualTo: 'ACTIVE')
+                .limit(1)
+                .get();
+            if (memberDocs.docs.isNotEmpty) {
+              resolvedFamilyId = (memberDocs.docs.first.data()['familyId'] ??
+                      memberDocs.docs.first.data()['family_id'])
+                  ?.toString();
+            }
+          } catch (_) {}
+        }
+
+        // Load real members of this family from Firestore
+        if (resolvedFamilyId != null && resolvedMembers.isEmpty) {
+          try {
+            final membersSnap = await firestore
+                .collection('family_members')
+                .where('familyId', isEqualTo: resolvedFamilyId)
+                .get();
+
+            for (final mDoc in membersSnap.docs) {
+              final mData = mDoc.data();
+              final memberUid =
+                  (mData['userId'] ?? mData['user_id'] ?? '').toString();
+              final role = (mData['role'] ?? 'Member').toString();
+              String memberName =
+                  (mData['name'] ?? mData['userName'] ?? '').toString();
+              String? avatarType = mData['avatarType']?.toString();
+
+              if (memberName.isEmpty && memberUid.isNotEmpty) {
+                try {
+                  final uDoc =
+                      await firestore.collection('users').doc(memberUid).get();
+                  if (uDoc.exists && uDoc.data() != null) {
+                    memberName = uDoc.data()!['name']?.toString() ??
+                        uDoc.data()!['displayName']?.toString() ??
+                        '';
+                    avatarType ??= uDoc.data()!['avatar_type']?.toString();
+                  }
+                } catch (_) {}
+              }
+
+              if (memberName.isEmpty) {
+                memberName = memberUid == userId ? userName : 'Thành viên';
+              }
+
+              resolvedMembers.add(FamilyMember(
+                id: memberUid.isNotEmpty ? memberUid : mDoc.id,
+                name: memberName,
+                role: role,
+                avatarType: avatarType,
+                familyId: resolvedFamilyId,
+                rewardStarsTotal: (mData['rewardStarsTotal'] ??
+                        mData['reward_stars_total'] ??
+                        0) as int,
+              ));
+            }
+          } catch (_) {}
         }
       }
 
-      if (resolvedMembers.isEmpty) {
-        resolvedMembers = [
-          FamilyMember(
-            id: 'user_mom',
-            name: 'Mom',
-            role: FamilyMember.roleParent,
-            familyId: resolvedFamilyId,
-          ),
-          FamilyMember(
-            id: 'user_dad',
-            name: 'Dad',
-            role: FamilyMember.roleParent,
-            familyId: resolvedFamilyId,
-          ),
-          FamilyMember(
-            id: 'user_minh',
-            name: 'Minh',
-            role: FamilyMember.roleChild,
-            familyId: resolvedFamilyId,
-          ),
-          FamilyMember(
-            id: 'user_grandma',
-            name: 'Bà Ngoại',
-            role: FamilyMember.roleGrandparent,
-            familyId: resolvedFamilyId,
-          ),
-        ];
-      }
+      final bool hasFamily = resolvedFamilyId != null &&
+          resolvedFamilyId.isNotEmpty &&
+          !resolvedFamilyId.startsWith('family_current_user');
 
       if (mounted) {
         setState(() {
-          _familyId = resolvedFamilyId;
-          _currentUserId = userId;
-          _currentUserName = userName;
+          _hasFamily = hasFamily;
+          _familyId = resolvedFamilyId ?? '';
+          _currentUserId = userId!;
+          _currentUserName = userName!;
           _familyMembers = resolvedMembers;
-          _repository = widget.repository ?? SupabaseReminderRepository();
+          _repository = widget.repository ?? FirebaseReminderRepository();
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('ReminderListScreen _resolveContext error: $e');
+      final fallbackUserId = widget.currentUserId ?? 'current_user';
+      final fallbackUserName = widget.currentUserName ?? 'Tôi';
+      final hasFamily = widget.familyId != null && widget.familyId!.isNotEmpty;
+
       if (mounted) {
         setState(() {
-          _familyId = widget.familyId ?? 'family_1';
-          _currentUserId = widget.currentUserId ?? 'user_minh';
-          _currentUserName = widget.currentUserName ?? 'Minh';
-          _familyMembers = widget.familyMembers ??
-              const [
-                FamilyMember(
-                  id: 'user_mom',
-                  name: 'Mom',
-                  role: FamilyMember.roleParent,
-                  familyId: 'family_1',
-                ),
-                FamilyMember(
-                  id: 'user_dad',
-                  name: 'Dad',
-                  role: FamilyMember.roleParent,
-                  familyId: 'family_1',
-                ),
-                FamilyMember(
-                  id: 'user_minh',
-                  name: 'Minh',
-                  role: FamilyMember.roleChild,
-                  familyId: 'family_1',
-                ),
-                FamilyMember(
-                  id: 'user_grandma',
-                  name: 'Bà Ngoại',
-                  role: FamilyMember.roleGrandparent,
-                  familyId: 'family_1',
-                ),
-              ];
-          _repository = widget.repository ?? SupabaseReminderRepository();
+          _hasFamily = hasFamily;
+          _familyId = widget.familyId ?? '';
+          _currentUserId = fallbackUserId;
+          _currentUserName = fallbackUserName;
+          _familyMembers = widget.familyMembers ?? [];
+          _repository = widget.repository ?? FirebaseReminderRepository();
           _isLoading = false;
         });
       }
@@ -439,38 +465,6 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     }
   }
 
-  Future<void> _openDemoSimulation() async {
-    final list = await _repository.getReminders(familyId: _familyId);
-    final target = list.firstWhere(
-      (r) => !r.isCompleted && !r.isDeleted,
-      orElse: () => list.isNotEmpty
-          ? list.first
-          : ReminderModel(
-              id: 'demo_simulation_task',
-              familyId: _familyId,
-              creatorId: _currentUserId,
-              creatorName: _currentUserName,
-              assignedTo: _currentUserId,
-              assignedToName: _currentUserName,
-              title: 'Tập thể dục & Uống nước buổi sáng',
-              date: _formatDate(DateTime.now()),
-              time: '08:00',
-              status: ReminderStatus.pending,
-              createdAt: DateTime.now(),
-            ),
-    );
-
-    if (mounted) {
-      MultiTierSimulationDialog.show(
-        context,
-        reminder: target,
-        repository: _repository,
-        currentUserId: _currentUserId,
-        onReminderCompleted: () => setState(() {}),
-      );
-    }
-  }
-
   void _openAiAssistant() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -508,6 +502,85 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         body: Center(
           child: CircularProgressIndicator(
             color: primaryColor,
+          ),
+        ),
+      );
+    }
+
+    if (!_hasFamily) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF3FBF8),
+        appBar: AppBar(
+          title: const Text(
+            'Lời nhắc gia đình',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE0F2EC),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.family_restroom_rounded,
+                    size: 64,
+                    color: primaryColor,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Cần tham gia Gia đình để sử dụng',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF151D1B),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Tính năng Lời nhắc và Phân công việc nhà hoạt động dựa trên không gian gia đình chung. Bạn chưa tham gia gia đình nào trên hệ thống.\n\nVui lòng tạo gia đình mới hoặc tham gia bằng mã mời để bắt đầu quản lý lời nhắc cùng người thân!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF6E7A75),
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text(
+                    'Kiểm tra lại trạng thái gia đình',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onPressed: () {
+                    setState(() => _isLoading = true);
+                    _resolveContext();
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -641,14 +714,15 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               );
             }).toList(),
           ),
-          // Nút mở Trợ lý AI Gia đình (Module 7)
+          // Nút tạo lời nhắc nhanh trên thanh AppBar
           IconButton(
             icon: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Color(0xFF0D7A68),
+              Icons.add_circle_rounded,
+              color: primaryColor,
+              size: 26,
             ),
-            tooltip: 'Trợ lý AI Gia đình',
-            onPressed: _openAiAssistant,
+            tooltip: 'Tạo lời nhắc mới',
+            onPressed: _openCreateReminder,
           ),
           // Chuyển đổi qua lại giữa List View và Calendar View
           IconButton(
@@ -684,8 +758,6 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                     ),
                   ),
                 );
-              } else if (val == 'demo_simulation') {
-                _openDemoSimulation();
               } else if (val == 'ai_assistant') {
                 _openAiAssistant();
               }
@@ -699,17 +771,6 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                         size: 18, color: Color(0xFF0D7A68)),
                     SizedBox(width: 8),
                     Text('Trợ lý AI Gia đình (Gemini)'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'demo_simulation',
-                child: Row(
-                  children: [
-                    Icon(Icons.science_rounded,
-                        size: 18, color: Color(0xFFE65100)),
-                    SizedBox(width: 8),
-                    Text('🧪 Thử nghiệm Nhắc đa tầng (10s)'),
                   ],
                 ),
               ),
@@ -854,44 +915,21 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           );
         },
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton.extended(
-            heroTag: 'fab_ai_assistant',
-            onPressed: _openAiAssistant,
-            backgroundColor: const Color(0xFF004D40),
-            icon: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Colors.amberAccent,
-              size: 20,
-            ),
-            label: const Text(
-              'Trợ lý AI',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab_create_reminder',
+        onPressed: _openCreateReminder,
+        backgroundColor: primaryColor,
+        elevation: 4,
+        icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+        label: const Text(
+          'Tạo lời nhắc',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
           ),
-          const SizedBox(height: 10),
-          FloatingActionButton.extended(
-            heroTag: 'fab_create_reminder',
-            onPressed: _openCreateReminder,
-            backgroundColor: primaryColor,
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
-              'Tạo lời nhắc',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

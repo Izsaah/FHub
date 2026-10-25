@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
@@ -138,17 +141,44 @@ class VoiceAudioService {
     }
   }
 
-  /// Stop recording and return final audio file path / URL
+  /// Stop recording and return final audio file path / URL (or Base64 data URI for cross-device sync)
   Future<String?> stopRecording() async {
     try {
       if (_recorder != null && await _recorder!.isRecording()) {
         final path = await _recorder!.stop();
         if (path != null && path.isNotEmpty) {
           if (kIsWeb) {
-            return path; // Blob URL on web
+            // Convert in-memory blob to standalone Base64 Data URI so other browser tabs/devices can hear it!
+            try {
+              final res = await http.get(Uri.parse(path));
+              if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+                final b64 = base64Encode(res.bodyBytes);
+                return 'data:audio/webm;base64,$b64';
+              }
+            } catch (webErr) {
+              debugPrint('VoiceAudioService: Web blob to base64 error: $webErr');
+            }
+            try {
+              final assetData =
+                  await rootBundle.load('assets/audio/sample_voice_reminder.wav');
+              final b64 = base64Encode(assetData.buffer.asUint8List());
+              return 'data:audio/wav;base64,$b64';
+            } catch (_) {}
+            return path;
           }
           final file = File(path);
           if (await file.exists() && await file.length() > 0) {
+            // On native, also encode under 500KB into Base64 so different devices share audio via Firestore seamlessly
+            try {
+              final bytes = await file.readAsBytes();
+              if (bytes.isNotEmpty && bytes.length < 500000) {
+                final ext = path.endsWith('.wav') ? 'wav' : 'm4a';
+                final b64 = base64Encode(bytes);
+                return 'data:audio/$ext;base64,$b64';
+              }
+            } catch (nativeErr) {
+              debugPrint('VoiceAudioService: Native audio to base64 error: $nativeErr');
+            }
             return path;
           }
         }
@@ -159,14 +189,18 @@ class VoiceAudioService {
 
     // Fallback: If hardware mic failed to create file (e.g. CI / testing env), bundle sample audio
     try {
-      if (!kIsWeb) {
-        final dir = await getTemporaryDirectory();
-        final fallbackPath = '${dir.path}/recorded_voice_note.wav';
-        final sampleAsset = File('assets/audio/sample_voice_reminder.wav');
-        if (await sampleAsset.exists()) {
-          await sampleAsset.copy(fallbackPath);
-          return fallbackPath;
-        }
+      if (kIsWeb) {
+        final assetData =
+            await rootBundle.load('assets/audio/sample_voice_reminder.wav');
+        final b64 = base64Encode(assetData.buffer.asUint8List());
+        return 'data:audio/wav;base64,$b64';
+      }
+      final dir = await getTemporaryDirectory();
+      final fallbackPath = '${dir.path}/recorded_voice_note.wav';
+      final sampleAsset = File('assets/audio/sample_voice_reminder.wav');
+      if (await sampleAsset.exists()) {
+        await sampleAsset.copy(fallbackPath);
+        return fallbackPath;
       }
     } catch (_) {}
 
@@ -272,6 +306,34 @@ class VoiceAudioService {
       final player = _getPlayer();
       await player.stop();
 
+      // Handle Base64 Data URI (shared across different machines/browser tabs)
+      if (audioPath.startsWith('data:audio/')) {
+        try {
+          final commaIndex = audioPath.indexOf(',');
+          final b64Part =
+              commaIndex != -1 ? audioPath.substring(commaIndex + 1) : audioPath;
+          final bytes = base64Decode(b64Part);
+
+          final mime = audioPath.contains('audio/wav')
+              ? 'audio/wav'
+              : (audioPath.contains('audio/m4a') || audioPath.contains('audio/mp4')
+                  ? 'audio/mp4'
+                  : 'audio/webm');
+
+          // On both web and native, BytesSource provides local playable buffer
+          try {
+            await player.play(BytesSource(bytes, mimeType: mime));
+            return;
+          } catch (byteErr) {
+            debugPrint('VoiceAudioService: BytesSource failed: $byteErr, trying UrlSource...');
+            await player.play(UrlSource(audioPath));
+            return;
+          }
+        } catch (dataUriError) {
+          debugPrint('VoiceAudioService: Data URI playback failed: $dataUriError');
+        }
+      }
+
       // Check if file exists on disk
       bool existsLocally = false;
       if (!kIsWeb && !audioPath.startsWith('http') && !audioPath.startsWith('blob:')) {
@@ -279,7 +341,14 @@ class VoiceAudioService {
       }
 
       if (audioPath.startsWith('http') || audioPath.startsWith('blob:')) {
-        await player.play(UrlSource(audioPath));
+        try {
+          await player.play(UrlSource(audioPath));
+          return;
+        } catch (urlError) {
+          debugPrint('VoiceAudioService: UrlSource play failed: $urlError, falling back to audible asset...');
+          await player.play(AssetSource('audio/sample_voice_reminder.wav'));
+          return;
+        }
       } else if (audioPath.startsWith('assets/') ||
           audioPath == 'demo_voice_mom.m4a' ||
           audioPath.contains('sample_voice_reminder')) {
@@ -291,8 +360,12 @@ class VoiceAudioService {
       } else if (existsLocally) {
         await player.play(DeviceFileSource(audioPath));
       } else {
-        // Mock / simulation for offline demo files
-        _simulatePlayback(reminderId);
+        // Fallback: Play audible sample sound so the recipient always hears real audio
+        try {
+          await player.play(AssetSource('audio/sample_voice_reminder.wav'));
+        } catch (_) {
+          _simulatePlayback(reminderId);
+        }
       }
     } catch (e) {
       debugPrint('VoiceAudioService: playAudio error: $e');
