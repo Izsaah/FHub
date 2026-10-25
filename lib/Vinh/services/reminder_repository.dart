@@ -6,6 +6,7 @@ import 'reminder_exceptions.dart';
 import 'reminder_validator.dart';
 
 // Re-export core exceptions for seamless encapsulation
+export 'firebase_reminder_repository.dart';
 export 'multi_tier_escalation_service.dart';
 export 'reminder_exceptions.dart';
 export 'supabase_reminder_repository.dart';

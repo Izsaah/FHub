@@ -1243,7 +1243,7 @@ void main() {
         id: 'demo_test_stream',
         familyId: 'f1',
         creatorId: 'user_dad',
-        creatorName: 'Bố',
+        creatorName: 'Bo',
         assignedTo: 'user_minh',
         assignedToName: 'Minh',
         title: 'Nộp báo cáo đồ án',
@@ -1275,7 +1275,7 @@ void main() {
         id: 'dialog_sim_test',
         familyId: 'f1',
         creatorId: 'user_dad',
-        creatorName: 'Bố',
+        creatorName: 'Bo',
         assignedTo: 'user_minh',
         assignedToName: 'Minh',
         title: 'Rửa chén & Lau bếp',
@@ -1320,7 +1320,7 @@ void main() {
       MultiTierEscalationService.instance.stopDemo();
     });
 
-    testWidgets('ReminderDetailBottomSheet renders Demo button and opens MultiTierSimulationDialog',
+    testWidgets('ReminderDetailBottomSheet renders reminder details and does not show removed demo button',
         (tester) async {
       tester.view.physicalSize = const Size(800, 1200);
       tester.view.devicePixelRatio = 1.0;
@@ -1331,10 +1331,10 @@ void main() {
         id: 'bottom_sheet_demo_btn_test',
         familyId: 'f1',
         creatorId: 'user_dad',
-        creatorName: 'Bố',
+        creatorName: 'Bo',
         assignedTo: 'user_minh',
         assignedToName: 'Minh',
-        title: 'Dọn dẹp phòng khách',
+        title: 'Don dep phong khach',
         date: futureDateStr,
         time: '09:00',
         status: ReminderStatus.pending,
@@ -1352,20 +1352,12 @@ void main() {
         ),
       );
 
-      // Verify Demo button is rendered
-      final demoBtn = find.text('🧪 Thử nghiệm Nhắc đa tầng (Demo 10s)');
-      expect(demoBtn, findsOneWidget);
+      // Verify reminder title is rendered
+      expect(find.text('Don dep phong khach'), findsOneWidget);
 
-      // Tap Demo button to open dialog
-      await tester.ensureVisible(demoBtn);
-      await tester.tap(demoBtn);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      expect(find.byType(MultiTierSimulationDialog), findsOneWidget);
-
-      // Clean up
-      MultiTierEscalationService.instance.stopDemo();
+      // Verify demo button has been removed as requested
+      expect(find.textContaining('Demo 10s'), findsNothing);
+      // demo button removed
     });
   });
 

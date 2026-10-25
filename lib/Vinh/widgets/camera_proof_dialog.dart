@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+
 import '../models/reminder_model.dart';
 
 class CameraProofDialog extends StatefulWidget {
@@ -32,32 +37,18 @@ class CameraProofDialog extends StatefulWidget {
 }
 
 class _CameraProofDialogState extends State<CameraProofDialog> {
-  String? _capturedImageUrl;
-  bool _isFlashOn = false;
-  int _selectedPresetIndex = 0;
+  final ImagePicker _picker = ImagePicker();
+  final TextEditingController _noteController = TextEditingController();
 
-  final List<Map<String, String>> _sampleProofs = [
-    {
-      'title': 'Rửa bát sạch sẽ',
-      'url':
-          'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      'title': 'Bàn học ngăn nắp',
-      'url':
-          'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      'title': 'Quần áo gấp gọn',
-      'url':
-          'https://images.unsplash.com/photo-1540518614846-7ede433c4ef4?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      'title': 'Phòng khách sạch đẹp',
-      'url':
-          'https://images.unsplash.com/photo-1583847268964-b28dc8f51f92?auto=format&fit=crop&w=600&q=80',
-    },
-  ];
+  String? _capturedImagePath;
+  String? _noteError;
+  bool _isTakingPhoto = false;
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
+  }
 
   String _formatCurrentTimestamp() {
     final now = DateTime.now();
@@ -70,24 +61,135 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
     return '$d/$m/$y $h:$min:$s';
   }
 
-  void _capturePhoto() {
+  Future<void> _pickImage(ImageSource source) async {
+    setState(() => _isTakingPhoto = true);
     try {
-      HapticFeedback.heavyImpact();
-    } catch (_) {}
-    setState(() {
-      _capturedImageUrl = _sampleProofs[_selectedPresetIndex]['url'];
-    });
+      try {
+        HapticFeedback.mediumImpact();
+      } catch (_) {}
+
+      final XFile? file = await _picker.pickImage(
+        source: source,
+        imageQuality: 70,
+        maxWidth: 800,
+        maxHeight: 800,
+      );
+
+      if (file != null) {
+        final bytes = await file.readAsBytes();
+        final base64String = base64Encode(bytes);
+        final dataUri = 'data:image/jpeg;base64,$base64String';
+        setState(() {
+          _capturedImagePath = dataUri;
+        });
+      }
+    } catch (e) {
+      debugPrint('CameraProofDialog pickImage error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể mở máy ảnh: $e'),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTakingPhoto = false);
+      }
+    }
   }
 
   void _retakePhoto() {
     setState(() {
-      _capturedImageUrl = null;
+      _capturedImagePath = null;
     });
+  }
+
+  void _submitProof() {
+    final note = _noteController.text.trim();
+    if (note.isEmpty) {
+      setState(() {
+        _noteError = 'Vui lòng nhập ghi chú nghiệm thu công việc!';
+      });
+      return;
+    }
+
+    if (_capturedImagePath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng chụp ảnh bằng Camera của máy trước khi xác nhận!'),
+          backgroundColor: Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
+
+    try {
+      HapticFeedback.heavyImpact();
+    } catch (_) {}
+
+    Navigator.of(context).pop(_capturedImagePath);
+  }
+
+  Widget _buildImageWidget(String path) {
+    if (path.startsWith('data:image/')) {
+      try {
+        final commaIdx = path.indexOf(',');
+        final b64 = commaIdx != -1 ? path.substring(commaIdx + 1) : path;
+        final bytes = base64Decode(b64);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          errorBuilder: (ctx, err, stack) => _buildImagePlaceholder(),
+        );
+      } catch (_) {
+        return _buildImagePlaceholder();
+      }
+    }
+    if (path.startsWith('http') || path.startsWith('blob:')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (ctx, err, stack) => _buildImagePlaceholder(),
+      );
+    }
+    if (kIsWeb) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (ctx, err, stack) => _buildImagePlaceholder(),
+      );
+    }
+    return Image.file(
+      File(path),
+      fit: BoxFit.cover,
+      errorBuilder: (ctx, err, stack) => _buildImagePlaceholder(),
+    );
+  }
+
+  Widget _buildImagePlaceholder() {
+    return Container(
+      color: const Color(0xFF2C3835),
+      alignment: Alignment.center,
+      child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.photo_camera_rounded, color: Color(0xFF67DFCB), size: 48),
+          SizedBox(height: 8),
+          Text(
+            'Ảnh bằng chứng đã được lưu',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF0D7A68);
+    const tealAccent = Color(0xFF67DFCB);
     final timestamp = _formatCurrentTimestamp();
 
     return Dialog(
@@ -106,331 +208,346 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Top Header Bar
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Color(0xFF2C3835))),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.camera_alt_rounded,
-                      color: Color(0xFF67DFCB), size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Chụp ảnh nghiệm thu',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Top Header Bar
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Color(0xFF2C3835))),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.camera_alt_rounded,
+                        color: tealAccent, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Chụp ảnh nghiệm thu bằng máy',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        Text(
-                          widget.reminder.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF9AA7A2),
-                            fontSize: 12,
+                          Text(
+                            widget.reminder.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF9AA7A2),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white70),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => Navigator.of(context).pop(null),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Camera Viewfinder / Preview Area
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    height: 250,
+                    color: Colors.black,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (_capturedImagePath != null)
+                          _buildImageWidget(_capturedImagePath!)
+                        else
+                          // Camera viewfinder placeholder
+                          InkWell(
+                            onTap: _isTakingPhoto
+                                ? null
+                                : () => _pickImage(ImageSource.camera),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                gradient: RadialGradient(
+                                  center: Alignment.center,
+                                  radius: 1.0,
+                                  colors: [Color(0xFF23302C), Color(0xFF101715)],
+                                ),
+                              ),
+                              child: Center(
+                                child: _isTakingPhoto
+                                    ? const CircularProgressIndicator(
+                                        color: tealAccent)
+                                    : Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Container(
+                                            width: 72,
+                                            height: 72,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                  color: Colors.white24,
+                                                  width: 2),
+                                              color: const Color(0x3367DFCB),
+                                            ),
+                                            child: const Icon(
+                                              Icons.photo_camera_rounded,
+                                              size: 36,
+                                              color: tealAccent,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          const Text(
+                                            'Chạm vào đây để mở Camera máy',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          const Text(
+                                            'Chụp ảnh thực tế công việc đã hoàn thành',
+                                            style: TextStyle(
+                                              color: Color(0xFF9AA7A2),
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                          ),
+
+                        // Timestamp watermark
+                        Positioned(
+                          left: 10,
+                          right: 10,
+                          bottom: 10,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: tealAccent.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.verified,
+                                        color: tealAccent, size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      widget.currentUserName,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  timestamp,
+                                  style: const TextStyle(
+                                    color: Color(0xFF9AA7A2),
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white70),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => Navigator.of(context).pop(null),
-                  ),
-                ],
-              ),
-            ),
-
-            // Camera Viewfinder / Preview Area
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: Container(
-                  height: 280,
-                  color: Colors.black,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // Image Display
-                      if (_capturedImageUrl != null)
-                        Image.network(
-                          _capturedImageUrl!,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (ctx, child, progress) {
-                            if (progress == null) return child;
-                            return const Center(
-                              child: CircularProgressIndicator(
-                                  color: Color(0xFF67DFCB)),
-                            );
-                          },
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            color: const Color(0xFF2C3835),
-                            alignment: Alignment.center,
-                            child: const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.check_circle_rounded,
-                                    color: Color(0xFF67DFCB), size: 48),
-                                SizedBox(height: 8),
-                                Text(
-                                  'Đã chụp ảnh bằng chứng!',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      else
-                        // Live Viewfinder Simulation
-                        Container(
-                          decoration: const BoxDecoration(
-                            gradient: RadialGradient(
-                              center: Alignment.center,
-                              radius: 1.0,
-                              colors: [Color(0xFF23302C), Color(0xFF101715)],
-                            ),
-                          ),
-                          child: Stack(
-                            children: [
-                              // Grid lines simulation
-                              Center(
-                                child: Container(
-                                  width: 200,
-                                  height: 200,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: Colors.white24,
-                                      width: 1,
-                                    ),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: const Icon(
-                                    Icons.photo_camera_outlined,
-                                    size: 54,
-                                    color: Colors.white38,
-                                  ),
-                                ),
-                              ),
-                              // Live flash toggle button
-                              Positioned(
-                                top: 12,
-                                right: 12,
-                                child: IconButton(
-                                  icon: Icon(
-                                    _isFlashOn
-                                        ? Icons.flash_on
-                                        : Icons.flash_off,
-                                    color: _isFlashOn
-                                        ? const Color(0xFFFFB900)
-                                        : Colors.white70,
-                                    size: 20,
-                                  ),
-                                  onPressed: () {
-                                    setState(() => _isFlashOn = !_isFlashOn);
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      // Verification Watermark Overlay (Bottom of Camera View)
-                      Positioned(
-                        left: 10,
-                        right: 10,
-                        bottom: 10,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: const Color(0xFF67DFCB)
-                                    .withValues(alpha: 0.3)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.verified,
-                                      color: Color(0xFF67DFCB), size: 14),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    widget.currentUserName,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Text(
-                                timestamp,
-                                style: const TextStyle(
-                                  color: Color(0xFF9AA7A2),
-                                  fontSize: 11,
-                                  fontFamily: 'monospace',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
-            ),
 
-            // Scenario Preset Selector (when not captured yet)
-            if (_capturedImageUrl == null) ...[
+              // Ghi chú nghiệm thu (Bắt buộc người dùng tự ghi)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Chọn nội dung chụp nghiệm thu:',
-                      style: TextStyle(
-                        color: Color(0xFF9AA7A2),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: List.generate(_sampleProofs.length, (idx) {
-                        final isSel = _selectedPresetIndex == idx;
-                        return ChoiceChip(
-                          label: Text(_sampleProofs[idx]['title']!),
-                          selected: isSel,
-                          selectedColor: const Color(0xFF005F50),
-                          backgroundColor: const Color(0xFF26322F),
-                          labelStyle: TextStyle(
-                            color: isSel ? Colors.white : const Color(0xFF9AA7A2),
-                            fontSize: 12,
-                            fontWeight:
-                                isSel ? FontWeight.bold : FontWeight.normal,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(
-                              color: isSel
-                                  ? const Color(0xFF67DFCB)
-                                  : Colors.transparent,
-                            ),
-                          ),
-                          onSelected: (selected) {
-                            if (selected) {
-                              setState(() => _selectedPresetIndex = idx);
-                            }
-                          },
-                        );
-                      }),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 14),
-
-            // Shutter / Action Controls
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-              child: _capturedImageUrl == null
-                  ? Center(
-                      child: GestureDetector(
-                        onTap: _capturePhoto,
-                        child: Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 4),
-                            color: Colors.transparent,
-                          ),
-                          child: Center(
-                            child: Container(
-                              width: 54,
-                              height: 54,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Color(0xFF67DFCB),
-                              ),
-                              child: const Icon(Icons.camera_alt,
-                                  color: Color(0xFF00372E)),
-                            ),
-                          ),
-                        ),
-                      ),
-                    )
-                  : Row(
+                    const Row(
                       children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white70,
-                              side: const BorderSide(color: Color(0xFF3E4D49)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            icon: const Icon(Icons.refresh, size: 18),
-                            label: const Text('Chụp lại'),
-                            onPressed: _retakePhoto,
+                        Text(
+                          'Ghi chú nghiệm thu ',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 2,
-                          child: FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: primaryColor,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            icon: const Icon(Icons.check_circle, size: 20),
-                            label: const Text(
-                              'Xác nhận nộp ảnh',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                            onPressed: () {
-                              Navigator.of(context).pop(_capturedImageUrl);
-                            },
+                        Text(
+                          '* (Bắt buộc)',
+                          style: TextStyle(
+                            color: Color(0xFFFF8A80),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
                     ),
-            ),
-          ],
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _noteController,
+                      maxLines: 2,
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText:
+                            'Nhập mô tả việc bạn đã hoàn thành (VD: Đã rửa sạch chén dĩa và lau khô bàn bếp...)',
+                        hintStyle: const TextStyle(
+                            color: Color(0xFF70807A), fontSize: 12),
+                        filled: true,
+                        fillColor: const Color(0xFF26322F),
+                        errorText: _noteError,
+                        errorStyle: const TextStyle(
+                            color: Color(0xFFFF8A80), fontSize: 11),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide:
+                              const BorderSide(color: Color(0xFF374642)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: tealAccent),
+                        ),
+                      ),
+                      onChanged: (val) {
+                        if (_noteError != null && val.trim().isNotEmpty) {
+                          setState(() => _noteError = null);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Camera buttons & actions
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                child: Column(
+                  children: [
+                    if (_capturedImagePath == null)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF005F50),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              icon: const Icon(Icons.camera_alt_rounded),
+                              label: const Text(
+                                'Mở Camera Chụp',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              onPressed: _isTakingPhoto
+                                  ? null
+                                  : () => _pickImage(ImageSource.camera),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton.filledTonal(
+                            style: IconButton.styleFrom(
+                              backgroundColor: const Color(0xFF26322F),
+                              foregroundColor: tealAccent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            tooltip: 'Chọn ảnh từ thư viện',
+                            icon: const Icon(Icons.photo_library_outlined),
+                            onPressed: _isTakingPhoto
+                                ? null
+                                : () => _pickImage(ImageSource.gallery),
+                          ),
+                        ],
+                      )
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white70,
+                                side: const BorderSide(color: Color(0xFF3E4D49)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              icon: const Icon(Icons.refresh, size: 18),
+                              label: const Text('Chụp lại'),
+                              onPressed: _retakePhoto,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: primaryColor,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              icon: const Icon(Icons.check_circle_rounded,
+                                  size: 18),
+                              label: const Text(
+                                'Xác nhận hoàn thành',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              onPressed: _submitProof,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

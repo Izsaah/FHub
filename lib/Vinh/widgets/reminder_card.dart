@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/reminder_model.dart';
 import '../services/member_color_helper.dart';
@@ -453,19 +456,7 @@ class ReminderCard extends StatelessWidget {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: Image.network(
-                            reminder.proofImageUrl!,
-                            width: 38,
-                            height: 38,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              width: 38,
-                              height: 38,
-                              color: const Color(0xFFE0F2EC),
-                              child: const Icon(Icons.image,
-                                  color: primaryColor, size: 20),
-                            ),
-                          ),
+                          child: _buildProofThumbnail(reminder.proofImageUrl!, primaryColor),
                         ),
                         const SizedBox(width: 8),
                         const Expanded(
@@ -508,6 +499,64 @@ class ReminderCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildProofThumbnail(String imageUrl, Color primaryColor) {
+    if (imageUrl.startsWith('data:image/')) {
+      try {
+        final commaIdx = imageUrl.indexOf(',');
+        final b64 = commaIdx != -1 ? imageUrl.substring(commaIdx + 1) : imageUrl;
+        final bytes = base64Decode(b64);
+        return Image.memory(
+          bytes,
+          width: 38,
+          height: 38,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              _buildPlaceholderThumbnail(primaryColor),
+        );
+      } catch (_) {}
+    }
+    if (imageUrl.startsWith('http://') ||
+        imageUrl.startsWith('https://') ||
+        imageUrl.startsWith('blob:')) {
+      return Image.network(
+        imageUrl,
+        width: 38,
+        height: 38,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            _buildPlaceholderThumbnail(primaryColor),
+      );
+    }
+    if (imageUrl.startsWith('assets/')) {
+      return Image.asset(
+        imageUrl,
+        width: 38,
+        height: 38,
+        fit: BoxFit.cover,
+      );
+    }
+    if (!kIsWeb) {
+      return Image.file(
+        File(imageUrl),
+        width: 38,
+        height: 38,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            _buildPlaceholderThumbnail(primaryColor),
+      );
+    }
+    return _buildPlaceholderThumbnail(primaryColor);
+  }
+
+  Widget _buildPlaceholderThumbnail(Color primaryColor) {
+    return Container(
+      width: 38,
+      height: 38,
+      color: const Color(0xFFE0F2EC),
+      child: Icon(Icons.image, color: primaryColor, size: 20),
     );
   }
 }

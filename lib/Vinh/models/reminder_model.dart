@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class ReminderStatus {
   static const String open = 'OPEN';
   static const String pending = 'PENDING';
@@ -235,17 +237,17 @@ class ReminderModel {
                   : null)),
       voiceNoteDescription: json['voice_note_description'] as String? ??
           json['voiceNoteDescription'] as String?,
-      completedAt: json['completed_at'] != null
-          ? DateTime.tryParse(json['completed_at'].toString())
-          : (json['completedAt'] != null
-              ? DateTime.tryParse(json['completedAt'].toString())
-              : null),
-      createdAt: json['created_at'] != null
-          ? DateTime.tryParse(json['created_at'].toString())
-          : (json['createdAt'] != null
-              ? DateTime.tryParse(json['createdAt'].toString())
-              : null),
+      completedAt: _parseDateTime(json['completed_at'] ?? json['completedAt']),
+      createdAt: _parseDateTime(json['created_at'] ?? json['createdAt']),
     );
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    return DateTime.tryParse(value.toString());
   }
 
   Map<String, dynamic> toJson() {
@@ -318,6 +320,58 @@ class ReminderModel {
         'voice_note_description': voiceNoteDescription,
       if (completedAt != null) 'completed_at': completedAt?.toIso8601String(),
       if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
+    };
+  }
+
+  /// Maps directly to Cloud Firestore document format
+  Map<String, dynamic> toFirestoreMap() {
+    return {
+      'familyId': familyId,
+      'family_id': familyId,
+      'creatorId': creatorId,
+      'creator_id': creatorId,
+      if (creatorName != null) ...{
+        'creatorName': creatorName,
+        'creator_name': creatorName,
+      },
+      'assignedTo': assignedTo,
+      'assigned_to': assignedTo,
+      'assignedToName': assignedToName,
+      'assigned_to_name': assignedToName,
+      'title': title,
+      'date': date,
+      'time': time,
+      'status': status,
+      'repeatRule': repeatRule ?? 'NONE',
+      'repeat_rule': repeatRule ?? 'NONE',
+      'requiresProofImage': requiresProofImage,
+      'requires_proof_image': requiresProofImage,
+      'rewardStars': rewardStars,
+      'reward_stars': rewardStars,
+      if (proofImageUrl != null) ...{
+        'proofImageUrl': proofImageUrl,
+        'proof_image_url': proofImageUrl,
+      },
+      if (voiceNotePath != null) ...{
+        'voiceNotePath': voiceNotePath,
+        'voice_note_path': voiceNotePath,
+      },
+      if (voiceDurationSeconds != null) ...{
+        'voiceDurationSeconds': voiceDurationSeconds,
+        'voice_duration_seconds': voiceDurationSeconds,
+      },
+      if (voiceNoteDescription != null) ...{
+        'voiceNoteDescription': voiceNoteDescription,
+        'voice_note_description': voiceNoteDescription,
+      },
+      if (completedAt != null) ...{
+        'completedAt': Timestamp.fromDate(completedAt!),
+        'completed_at': Timestamp.fromDate(completedAt!),
+      },
+      if (createdAt != null) ...{
+        'createdAt': Timestamp.fromDate(createdAt!),
+        'created_at': Timestamp.fromDate(createdAt!),
+      },
     };
   }
 
