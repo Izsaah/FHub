@@ -278,26 +278,32 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.mic_rounded,
-                    color: _recordState == VoiceRecordState.recording
-                        ? const Color(0xFFBA1A1A)
-                        : primaryColor,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Ghi âm giọng nói (Micro)',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF151D1B),
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.mic_rounded,
+                      color: _recordState == VoiceRecordState.recording
+                          ? const Color(0xFFBA1A1A)
+                          : primaryColor,
+                      size: 20,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    const Flexible(
+                      child: Text(
+                        'Ghi âm giọng nói (Micro)',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF151D1B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -463,14 +469,18 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                _isSoundDetected
-                    ? '🟢 Đang nhận giọng nói: ${_currentDb > -100 ? '${_currentDb.toStringAsFixed(1)} dB' : ''} 🎙️'
-                    : '🎙️ Đang lắng nghe âm thanh Micro... (Hãy nói)',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: activeColor,
+              Flexible(
+                child: Text(
+                  _isSoundDetected
+                      ? '🟢 Đang nhận giọng nói: ${_currentDb > -100 ? '${_currentDb.toStringAsFixed(1)} dB' : ''} 🎙️'
+                      : '🎙️ Đang lắng nghe âm thanh Micro... (Hãy nói)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: activeColor,
+                  ),
                 ),
               ),
             ],
@@ -513,20 +523,25 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
 
         // 4. Timer & Progress Bar (Max 30s)
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Thời lượng: ${_formatTime(_recordSeconds)} / 00:30',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: activeColor,
+                  Flexible(
+                    child: Text(
+                      'Thời lượng: ${_formatTime(_recordSeconds)} / 00:30',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: activeColor,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Text(
                     'Còn lại ${30 - _recordSeconds}s',
                     style: const TextStyle(
@@ -556,31 +571,41 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            OutlinedButton.icon(
-              icon: const Icon(Icons.close, size: 18),
-              label: const Text('Hủy bản thu'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFBA1A1A),
-                side: const BorderSide(color: Color(0xFFBA1A1A)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            Flexible(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.close, size: 18),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Hủy bản thu', maxLines: 1),
                 ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFBA1A1A),
+                  side: const BorderSide(color: Color(0xFFBA1A1A)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _cancelRecording,
               ),
-              onPressed: _cancelRecording,
             ),
-            const SizedBox(width: 14),
-            FilledButton.icon(
-              icon: const Icon(Icons.check_circle_outline, size: 20),
-              label: const Text('Xong & Nghe lại'),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0D7A68),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            const SizedBox(width: 10),
+            Flexible(
+              child: FilledButton.icon(
+                icon: const Icon(Icons.check_circle_outline, size: 20),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Xong & Nghe lại', maxLines: 1),
                 ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0D7A68),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _stopRecording,
               ),
-              onPressed: _stopRecording,
             ),
           ],
         ),
@@ -594,7 +619,7 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
       children: [
         // Audio preview bar (Speaker)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           decoration: BoxDecoration(
             color: const Color(0xFFEAF5F1),
             borderRadius: BorderRadius.circular(12),
@@ -603,6 +628,8 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
           child: Row(
             children: [
               IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 icon: Icon(
                   _isPreviewPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
                   size: 36,
@@ -619,6 +646,8 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
                       _isPreviewPlaying
                           ? 'Đang phát qua Loa: ${_formatTime(_previewPositionSec)} / ${_formatTime(_recordSeconds)}'
                           : 'Đã ghi âm: ${_formatTime(_recordSeconds)}s',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
@@ -639,11 +668,15 @@ class _VoiceRecorderWidgetState extends State<VoiceRecorderWidget>
                 ),
               ),
               IconButton(
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 icon: const Icon(Icons.refresh, size: 20, color: Color(0xFF6E7A75)),
                 tooltip: 'Ghi âm lại',
                 onPressed: _startRecording,
               ),
               IconButton(
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 icon: const Icon(Icons.delete_outline, size: 20, color: Color(0xFFBA1A1A)),
                 tooltip: 'Xóa ghi âm',
                 onPressed: _removeRecording,

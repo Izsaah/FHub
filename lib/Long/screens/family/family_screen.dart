@@ -7,8 +7,8 @@ import '../../models/family_member_model.dart';
 import '../../models/user_model.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/family_member_tile.dart';
-import 'create_family_screen.dart';
-import 'join_family_screen.dart';
+import '../../../Khoa/screens/create_family_screen.dart';
+import '../../../Khoa/screens/join_family_screen.dart';
 import '../../../Danh/danh_payment_entry.dart';
 
 class FamilyScreen extends StatefulWidget {
@@ -146,13 +146,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                     ),
                     onPressed: () async {
-                      final result = await Navigator.push<bool>(
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const CreateFamilyScreen(),
                         ),
                       );
-                      if (result == true && mounted) {
+                      if (result != null && mounted) {
+                        _familyDataService.clearCache();
                         setState(() => _loadData());
                       }
                     },
@@ -175,13 +176,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                     ),
                     onPressed: () async {
-                      final result = await Navigator.push<bool>(
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const JoinFamilyScreen(),
                         ),
                       );
-                      if (result == true && mounted) {
+                      if (result != null && mounted) {
+                        _familyDataService.clearCache();
                         setState(() => _loadData());
                       }
                     },

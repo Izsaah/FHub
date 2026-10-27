@@ -193,6 +193,8 @@ class ReminderCard extends StatelessWidget {
                                           reminder.assignedToName),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
+                                constraints:
+                                    const BoxConstraints(maxWidth: 140),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -217,17 +219,21 @@ class ReminderCard extends StatelessWidget {
                                         ),
                                       ),
                                     const SizedBox(width: 4),
-                                    Text(
-                                      isOpenTask
-                                          ? '👨‍👩‍👧 Việc chung'
-                                          : reminder.assignedToName,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: isOpenTask
-                                            ? const Color(0xFF00796B)
-                                            : MemberColorHelper.getPrimaryColor(
-                                                reminder.assignedToName),
+                                    Flexible(
+                                      child: Text(
+                                        isOpenTask
+                                            ? '👨‍👩‍👧 Việc chung'
+                                            : reminder.assignedToName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: isOpenTask
+                                              ? const Color(0xFF00796B)
+                                              : MemberColorHelper.getPrimaryColor(
+                                                  reminder.assignedToName),
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -253,18 +259,24 @@ class ReminderCard extends StatelessWidget {
                                     color: const Color(0xFFEDE7F6),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 140),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(Icons.camera_alt_outlined,
                                           size: 11, color: Color(0xFF5E35B1)),
                                       SizedBox(width: 2),
-                                      Text(
-                                        'Cần ảnh nghiệm thu',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF5E35B1),
+                                      Flexible(
+                                        child: Text(
+                                          'Cần ảnh nghiệm thu',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF5E35B1),
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -373,7 +385,8 @@ class ReminderCard extends StatelessWidget {
                             onTap: onClaim,
                             borderRadius: BorderRadius.circular(10),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 8),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFE0F2EC),
                                 borderRadius: BorderRadius.circular(10),
@@ -385,12 +398,16 @@ class ReminderCard extends StatelessWidget {
                                   Icon(Icons.front_hand_rounded,
                                       size: 15, color: Color(0xFF005F50)),
                                   SizedBox(width: 4),
-                                  Text(
-                                    'Xung phong nhận việc',
-                                    style: TextStyle(
-                                      color: Color(0xFF005F50),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
+                                  Flexible(
+                                    child: Text(
+                                      'Xung phong nhận việc',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Color(0xFF005F50),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -406,7 +423,8 @@ class ReminderCard extends StatelessWidget {
                             onTap: onClaimAndComplete,
                             borderRadius: BorderRadius.circular(10),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 8),
                               decoration: BoxDecoration(
                                 color: const Color(0xFF005F50),
                                 borderRadius: BorderRadius.circular(10),
@@ -422,14 +440,18 @@ class ReminderCard extends StatelessWidget {
                                     color: Colors.white,
                                   ),
                                   const SizedBox(width: 4),
-                                  Text(
-                                    reminder.requiresProofImage
-                                        ? 'Làm & Chụp ảnh'
-                                        : 'Làm ngay & Xong',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
+                                  Flexible(
+                                    child: Text(
+                                      reminder.requiresProofImage
+                                          ? 'Làm & Chụp ảnh'
+                                          : 'Làm ngay & Xong',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -465,6 +487,8 @@ class ReminderCard extends StatelessWidget {
                             children: [
                               Text(
                                 'Đã có ảnh nghiệm thu 📸',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -473,6 +497,8 @@ class ReminderCard extends StatelessWidget {
                               ),
                               Text(
                                 'Bấm vào thẻ để xem ảnh bằng chứng',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: Color(0xFF6E7A75),

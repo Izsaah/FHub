@@ -19,6 +19,13 @@ class FamilyDataService {
   final _firestore = FirebaseFirestore.instance;
   final _firebaseAuth = FirebaseAuth.instance;
   final _mock = MockDataService();
+  String? _cachedFamilyId;
+  String? _cachedFamilyIdUserId;
+
+  void clearCache() {
+    _cachedFamilyId = null;
+    _cachedFamilyIdUserId = null;
+  }
 
   /// Returns the current user ID from Firebase Auth first, then Supabase, then mock.
   String get currentUserId {
@@ -46,6 +53,9 @@ class FamilyDataService {
 
   Future<String?> _getCurrentFamilyId() async {
     if (!_isAuthenticated) return _mock.currentFamily.id;
+    if (_cachedFamilyIdUserId == currentUserId && _cachedFamilyId != null) {
+      return _cachedFamilyId;
+    }
 
     try {
       // 1. Check Firestore user document for familyId
@@ -55,7 +65,7 @@ class FamilyDataService {
           .get();
       if (userDoc.exists && userDoc.data() != null) {
         final familyId = userDoc.data()!['familyId']?.toString();
-        if (familyId != null && familyId.isNotEmpty) return familyId;
+        if (familyId != null && familyId.isNotEmpty) { _cachedFamilyIdUserId = currentUserId; _cachedFamilyId = familyId; return familyId; }
       }
 
       // 2. Check Firestore family_members collection
@@ -64,13 +74,14 @@ class FamilyDataService {
           .where('userId', isEqualTo: currentUserId)
           .where('status', isEqualTo: 'ACTIVE')
           .limit(1)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 3));
       if (memberDocs.docs.isNotEmpty) {
         final familyId =
             (memberDocs.docs.first.data()['familyId'] ??
                     memberDocs.docs.first.data()['family_id'])
                 ?.toString();
-        if (familyId != null && familyId.isNotEmpty) return familyId;
+        if (familyId != null && familyId.isNotEmpty) { _cachedFamilyIdUserId = currentUserId; _cachedFamilyId = familyId; return familyId; }
       }
 
       // 3. Supabase fallback
@@ -83,7 +94,7 @@ class FamilyDataService {
               .eq('user_id', currentUserId)
               .maybeSingle();
           final familyId = response?['family_id'] as String?;
-          if (familyId != null && familyId.isNotEmpty) return familyId;
+          if (familyId != null && familyId.isNotEmpty) { _cachedFamilyIdUserId = currentUserId; _cachedFamilyId = familyId; return familyId; }
         }
       } catch (_) {}
 
@@ -108,7 +119,7 @@ class FamilyDataService {
     final fbUser = _firebaseAuth.currentUser;
     if (fbUser != null) {
       try {
-        final doc = await _firestore.collection('users').doc(fbUser.uid).get();
+        final doc = await _firestore.collection('users').doc(fbUser.uid).get().timeout(const Duration(seconds: 3));
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
           return UserModel(
@@ -168,7 +179,7 @@ class FamilyDataService {
 
     // 1. Try Firestore
     try {
-      final doc = await _firestore.collection('families').doc(familyId).get();
+      final doc = await _firestore.collection('families').doc(familyId).get().timeout(const Duration(seconds: 3));
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         return FamilyModel(

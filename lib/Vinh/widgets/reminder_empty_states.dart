@@ -12,8 +12,8 @@ class ReminderEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -33,6 +33,7 @@ class ReminderEmptyState extends StatelessWidget {
             const SizedBox(height: 20),
             const Text(
               'Chưa có lời nhắc nào.',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -61,6 +62,8 @@ class ReminderEmptyState extends StatelessWidget {
               icon: const Icon(Icons.add),
               label: const Text(
                 'Tạo lời nhắc mới',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               onPressed: onCreatePressed,
@@ -86,8 +89,8 @@ class ReminderDayEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -107,6 +110,7 @@ class ReminderDayEmptyState extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               'Chưa có việc cho ngày $dateStr',
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -127,6 +131,8 @@ class ReminderDayEmptyState extends StatelessWidget {
               icon: const Icon(Icons.list_alt, color: Color(0xFF0D7A68)),
               label: const Text(
                 'Xem tất cả nhắc nhở',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: Color(0xFF0D7A68),
                   fontWeight: FontWeight.bold,

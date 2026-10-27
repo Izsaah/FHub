@@ -46,7 +46,9 @@ class TaskMiniCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: isOpen ? const Color(0xFFE0F2EC) : const Color(0xFFFFF3E0),
+                  color: isOpen
+                      ? const Color(0xFFE0F2EC)
+                      : const Color(0xFFFFF3E0),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -59,6 +61,8 @@ class TaskMiniCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   isOpen ? 'CÔNG VIỆC CHUNG GIA ĐÌNH' : 'LỜI NHẮC MỚI ĐƯỢC TẠO',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -67,10 +71,13 @@ class TaskMiniCard extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(width: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: isOpen ? const Color(0xFFE0F2EC) : const Color(0xFFFFF3E0),
+                  color: isOpen
+                      ? const Color(0xFFE0F2EC)
+                      : const Color(0xFFFFF3E0),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -89,6 +96,8 @@ class TaskMiniCard extends StatelessWidget {
           // Tiêu đề công việc
           Text(
             reminder.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.bold,
@@ -100,30 +109,40 @@ class TaskMiniCard extends StatelessWidget {
           // Thông tin người nhận & Thời gian
           Row(
             children: [
-              Icon(Icons.person_outline_rounded, size: 14, color: Colors.grey.shade600),
+              Icon(Icons.person_outline_rounded,
+                  size: 14, color: Colors.grey.shade600),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   isOpen
                       ? '👨‍👩‍👧 Cả nhà (Việc chung)'
                       : 'Giao cho: ${reminder.assignedToName}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: isOpen
                         ? const Color(0xFF00796B)
-                        : MemberColorHelper.getPrimaryColor(reminder.assignedToName),
+                        : MemberColorHelper.getPrimaryColor(
+                            reminder.assignedToName),
                   ),
                 ),
               ),
-              Icon(Icons.access_time_rounded, size: 14, color: Colors.grey.shade600),
+              const SizedBox(width: 6),
+              Icon(Icons.access_time_rounded,
+                  size: 14, color: Colors.grey.shade600),
               const SizedBox(width: 4),
-              Text(
-                '${reminder.time}  ${reminder.date}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade700,
-                  fontWeight: FontWeight.w500,
+              Flexible(
+                child: Text(
+                  '${reminder.time}  ${reminder.date}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
@@ -140,7 +159,7 @@ class TaskMiniCard extends StatelessWidget {
                     child: FilledButton.icon(
                       style: FilledButton.styleFrom(
                         backgroundColor: primaryColor,
-                        padding: EdgeInsets.zero,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -148,7 +167,10 @@ class TaskMiniCard extends StatelessWidget {
                       icon: const Icon(Icons.touch_app_rounded, size: 16),
                       label: const Text(
                         'Nhận việc ngay',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                       onPressed: onClaim,
                     ),
@@ -163,7 +185,7 @@ class TaskMiniCard extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF151D1B),
                       side: BorderSide(color: Colors.grey.shade300),
-                      padding: EdgeInsets.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -171,7 +193,10 @@ class TaskMiniCard extends StatelessWidget {
                     onPressed: onTap,
                     child: const Text(
                       'Xem chi tiết',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),

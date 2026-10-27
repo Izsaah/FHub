@@ -165,6 +165,7 @@ class ReminderModel {
     String? voiceNotePath,
     int? voiceDurationSeconds,
     String? voiceNoteDescription,
+    bool clearVoiceNote = false,
     DateTime? completedAt,
     DateTime? createdAt,
   }) {
@@ -183,9 +184,14 @@ class ReminderModel {
       requiresProofImage: requiresProofImage ?? this.requiresProofImage,
       proofImageUrl: proofImageUrl ?? this.proofImageUrl,
       rewardStars: rewardStars ?? this.rewardStars,
-      voiceNotePath: voiceNotePath ?? this.voiceNotePath,
-      voiceDurationSeconds: voiceDurationSeconds ?? this.voiceDurationSeconds,
-      voiceNoteDescription: voiceNoteDescription ?? this.voiceNoteDescription,
+      voiceNotePath:
+          clearVoiceNote ? null : (voiceNotePath ?? this.voiceNotePath),
+      voiceDurationSeconds: clearVoiceNote
+          ? null
+          : (voiceDurationSeconds ?? this.voiceDurationSeconds),
+      voiceNoteDescription: clearVoiceNote
+          ? null
+          : (voiceNoteDescription ?? this.voiceNoteDescription),
       completedAt: completedAt ?? this.completedAt,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -352,18 +358,12 @@ class ReminderModel {
         'proofImageUrl': proofImageUrl,
         'proof_image_url': proofImageUrl,
       },
-      if (voiceNotePath != null) ...{
-        'voiceNotePath': voiceNotePath,
-        'voice_note_path': voiceNotePath,
-      },
-      if (voiceDurationSeconds != null) ...{
-        'voiceDurationSeconds': voiceDurationSeconds,
-        'voice_duration_seconds': voiceDurationSeconds,
-      },
-      if (voiceNoteDescription != null) ...{
-        'voiceNoteDescription': voiceNoteDescription,
-        'voice_note_description': voiceNoteDescription,
-      },
+      'voiceNotePath': voiceNotePath,
+      'voice_note_path': voiceNotePath,
+      'voiceDurationSeconds': voiceDurationSeconds,
+      'voice_duration_seconds': voiceDurationSeconds,
+      'voiceNoteDescription': voiceNoteDescription,
+      'voice_note_description': voiceNoteDescription,
       if (completedAt != null) ...{
         'completedAt': Timestamp.fromDate(completedAt!),
         'completed_at': Timestamp.fromDate(completedAt!),

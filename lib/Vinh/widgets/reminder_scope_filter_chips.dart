@@ -31,11 +31,15 @@ class ReminderScopeFilterChips extends StatelessWidget {
                 color: !filterOnlyMine ? primaryColor : unselectedTextColor,
               ),
               label: const Center(
-                child: Text(
-                  '👨‍👩‍👧 Cả nhà',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '👨‍👩‍👧 Cả nhà',
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ),
@@ -67,11 +71,15 @@ class ReminderScopeFilterChips extends StatelessWidget {
                 color: filterOnlyMine ? primaryColor : unselectedTextColor,
               ),
               label: const Center(
-                child: Text(
-                  '👤 Việc của tôi',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '👤 Việc của tôi',
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ),

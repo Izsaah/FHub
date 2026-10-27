@@ -18,6 +18,14 @@ Future<void> main() async {
     debugPrint('Firebase initialization error: $e');
   }
 
+  // Khởi tạo Supabase
+  try {
+    await SupabaseConfig.initialize();
+    debugPrint('Supabase initialized successfully.');
+  } catch (e) {
+    debugPrint('Supabase initialization error: $e');
+  }
+
   runApp(const FamilyHubApp());
 }
 

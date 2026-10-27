@@ -1705,4 +1705,330 @@ void main() {
       expect(service.hasActiveEscalation(pastReminder.id), isFalse);
     });
   });
+
+  group('Phân quyền Cha Mẹ & Người tạo + Màn hình 6.8 inch Tests', () {
+    test('Parent role CAN update a reminder created by child', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'child_rem_edit',
+          familyId: 'f1',
+          creatorId: 'user_child',
+          creatorName: 'Bé Linh',
+          assignedTo: 'user_child',
+          assignedToName: 'Bé Linh',
+          title: 'Học bài và làm toán',
+          date: '28/09/2026',
+          time: '19:00',
+        ),
+      ]);
+
+      final members = [
+        const FamilyMember(id: 'user_child', name: 'Bé Linh', role: 'Child', familyId: 'f1'),
+        const FamilyMember(id: 'user_dad', name: 'Bố Tuấn', role: 'PARENT', familyId: 'f1'),
+        const FamilyMember(id: 'user_other_child', name: 'Minh', role: 'Child', familyId: 'f1'),
+      ];
+
+      // Other child cannot edit
+      expect(
+        () => repo.updateReminder(
+          reminder: const ReminderModel(
+            id: 'child_rem_edit',
+            familyId: 'f1',
+            creatorId: 'user_child',
+            assignedTo: 'user_child',
+            assignedToName: 'Bé Linh',
+            title: 'Sửa bậy',
+            date: '28/09/2026',
+            time: '19:00',
+          ),
+          currentUserId: 'user_other_child',
+          familyMembers: members,
+          now: DateTime(2026, 9, 27),
+        ),
+        throwsA(isA<ReminderPermissionException>()),
+      );
+
+      // Parent (Dad) CAN edit reminder created by child
+      final updated = await repo.updateReminder(
+        reminder: const ReminderModel(
+          id: 'child_rem_edit',
+          familyId: 'f1',
+          creatorId: 'user_child',
+          assignedTo: 'user_child',
+          assignedToName: 'Bé Linh',
+          title: 'Học bài và làm toán (Bố đã duyệt)',
+          date: '28/09/2026',
+          time: '19:30',
+        ),
+        currentUserId: 'user_dad',
+        familyMembers: members,
+        now: DateTime(2026, 9, 27),
+      );
+
+      expect(updated.title, 'Học bài và làm toán (Bố đã duyệt)');
+      expect(updated.time, '19:30');
+    });
+
+    testWidgets('ReminderDetailBottomSheet shows edit button for Parent even if not creator', (tester) async {
+      final repo = InMemoryReminderRepository();
+      const reminder = ReminderModel(
+        id: 'child_task_1',
+        familyId: 'f1',
+        creatorId: 'user_child',
+        assignedTo: 'user_child',
+        assignedToName: 'Bé Linh',
+        title: 'Làm bài tập tiếng Anh',
+        date: '28/09/2026',
+        time: '20:00',
+      );
+
+      final members = [
+        const FamilyMember(id: 'user_child', name: 'Bé Linh', role: 'Child', familyId: 'f1'),
+        const FamilyMember(id: 'user_mom', name: 'Mẹ Lan', role: 'PARENT', familyId: 'f1'),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReminderDetailBottomSheet(
+              reminder: reminder,
+              currentUserId: 'user_mom',
+              familyMembers: members,
+              repository: repo,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+    });
+
+    testWidgets('WeeklyCalendarStrip and ReminderListScreen render without overflow on 360px screen with long member names', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'rem_long_1',
+          familyId: 'f1',
+          creatorId: 'user_vinh',
+          assignedTo: 'user_vinh',
+          assignedToName: 'Lương Diệu Vinh',
+          title: '123qweasdzxc',
+          date: '27/10/2026',
+          time: '09:00',
+          requiresProofImage: true,
+          status: ReminderStatus.overdue,
+          repeatRule: 'DAILY',
+        ),
+      ]);
+
+      final members = [
+        const FamilyMember(id: 'user_vinh', name: 'Lương Diệu Vinh', role: 'PARENT', familyId: 'f1'),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReminderListScreen(
+            familyId: 'f1',
+            currentUserId: 'user_vinh',
+            currentUserName: 'Lương Diệu Vinh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Nhắc việc gia đình'), findsOneWidget);
+      expect(find.text('Lương Diệu Vinh'), findsAtLeastNWidgets(1));
+      expect(find.byType(WeeklyCalendarStrip), findsOneWidget);
+      expect(find.text('123qweasdzxc'), findsOneWidget);
+      expect(find.text('Tạo lời nhắc'), findsOneWidget);
+      expect(find.text('Trợ lý AI'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        'ReminderDetailBottomSheet with requiresProofImage=true and long names does NOT overflow on 320px and 360px screens',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final repo = InMemoryReminderRepository();
+      const reminder = ReminderModel(
+        id: 'rem_overflow_regression',
+        familyId: 'f1',
+        creatorId: 'user_vinh',
+        creatorName: 'Lương Diệu Vinh',
+        assignedTo: 'user_vinh',
+        assignedToName: 'Lương Diệu Vinh',
+        title: '123',
+        date: '27/10/2026',
+        time: '15:18',
+        repeatRule: 'DAILY',
+        requiresProofImage: true,
+        rewardStars: 3,
+        voiceNotePath: 'assets/audio/sample_voice_reminder.wav',
+        voiceDurationSeconds: 5,
+        voiceNoteDescription: 'Nhớ chụp ảnh nghiệm thu rõ nét nhé',
+        status: ReminderStatus.pending,
+      );
+
+      const members = [
+        FamilyMember(
+          id: 'user_vinh',
+          name: 'Lương Diệu Vinh',
+          role: 'PARENT',
+          familyId: 'f1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReminderDetailBottomSheet(
+              reminder: reminder,
+              currentUserId: 'user_vinh',
+              currentUserName: 'Lương Diệu Vinh',
+              familyMembers: members,
+              repository: repo,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('📸 Bắt buộc chụp ảnh hoàn thành'), findsOneWidget);
+      expect(find.text('Lương Diệu Vinh'), findsAtLeastNWidgets(1));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        'CreateReminderScreen, CalendarPage, and FamilyAiChatScreen render without overflow on narrow 320px screen',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final repo = InMemoryReminderRepository();
+      const members = [
+        FamilyMember(
+          id: 'user_vinh',
+          name: 'Lương Diệu Vinh Nguyễn Hoàng',
+          role: 'PARENT',
+          familyId: 'f1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateReminderScreen(
+            familyId: 'f1',
+            currentUserId: 'user_vinh',
+            currentUserName: 'Lương Diệu Vinh Nguyễn Hoàng',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarPage(
+            familyId: 'f1',
+            currentUserId: 'user_vinh',
+            currentUserName: 'Lương Diệu Vinh Nguyễn Hoàng',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FamilyAiChatScreen(
+            familyId: 'f1',
+            currentUserId: 'user_vinh',
+            currentUserName: 'Lương Diệu Vinh Nguyễn Hoàng',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    test('Parent can restore a deleted child reminder and clearVoiceNote works on update',
+        () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'open_restore_1',
+          familyId: 'f1',
+          creatorId: 'user_child',
+          assignedTo: 'OPEN',
+          assignedToName: 'Cả nhà',
+          title: 'Quét sân chung',
+          date: '28/10/2026',
+          time: '16:00',
+          status: ReminderStatus.open,
+          voiceNotePath: '/mock/voice.m4a',
+          voiceDurationSeconds: 10,
+          voiceNoteDescription: 'Quét sạch lá cây',
+        ),
+      ]);
+
+      const members = [
+        FamilyMember(
+            id: 'user_child', name: 'Bé Bi', role: 'Child', familyId: 'f1'),
+        FamilyMember(
+            id: 'user_dad', name: 'Bố', role: 'PARENT', familyId: 'f1'),
+      ];
+
+      // Parent deletes child's open task
+      await repo.deleteReminder(
+        reminderId: 'open_restore_1',
+        currentUserId: 'user_dad',
+        familyMembers: members,
+      );
+      expect((await repo.getReminders(familyId: 'f1')).isEmpty, isTrue);
+
+      // Parent restores child's open task -> status returns to OPEN
+      await repo.restoreReminder(
+        reminderId: 'open_restore_1',
+        currentUserId: 'user_dad',
+        familyMembers: members,
+      );
+      final restored = (await repo.getReminders(familyId: 'f1')).first;
+      expect(restored.status, ReminderStatus.open);
+
+      // Clear voice note on update
+      final updated = await repo.updateReminder(
+        reminder: restored.copyWith(clearVoiceNote: true),
+        currentUserId: 'user_dad',
+        familyMembers: members,
+        now: DateTime(2026, 10, 27),
+      );
+      expect(updated.hasVoiceNote, isFalse);
+      expect(updated.voiceNotePath, isNull);
+      expect(updated.voiceDurationSeconds, isNull);
+      expect(updated.voiceNoteDescription, isNull);
+    });
+  });
 }
