@@ -27,6 +27,7 @@ class MemberPickerBottomSheet extends StatelessWidget {
     return showModalBottomSheet<FamilyMember>(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -39,129 +40,153 @@ class MemberPickerBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Chọn người nhận việc',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: textPrimary,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 20),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: Color(0xFFE2EAE7)),
-
-            // 1. Tùy chọn đặc biệt: Cả nhà (Việc chung chưa gán)
-            ListTile(
-              leading: const CircleAvatar(
-                radius: 18,
-                backgroundColor: Color(0xFFE0F7FA),
-                child: Icon(
-                  Icons.groups_rounded,
-                  color: Color(0xFF00796B),
-                  size: 20,
-                ),
-              ),
-              title: const Text(
-                '👨‍👩‍👧 Cả nhà (Việc chung chưa gán)',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF005F50),
-                ),
-              ),
-              subtitle: const Text(
-                'Chưa giao cho ai, các thành viên có thể xung phong nhận làm',
-                style: TextStyle(fontSize: 12, color: textMuted),
-              ),
-              trailing: selectedMember?.id == 'OPEN'
-                  ? const Icon(Icons.check_circle, color: primaryColor)
-                  : null,
-              tileColor: selectedMember?.id == 'OPEN'
-                  ? const Color(0xFFE7F5F2)
-                  : Colors.transparent,
-              onTap: () {
-                Navigator.of(context).pop(
-                  const FamilyMember(
-                    id: 'OPEN',
-                    name: 'Cả nhà',
-                    role: 'Việc chung',
-                    familyId: '',
-                  ),
-                );
-              },
-            ),
-            const Divider(height: 1, color: Color(0xFFE2EAE7)),
-
-            // 2. Danh sách từng thành viên gia đình
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: familyMembers.length,
-                itemBuilder: (ctx, index) {
-                  final member = familyMembers[index];
-                  final isSelected = member.id == selectedMember?.id;
-                  final primary = MemberColorHelper.getPrimaryColor(member.name);
-                  final bg = MemberColorHelper.getBackgroundColor(member.name);
-
-                  return ListTile(
-                    leading: CircleAvatar(
-                      radius: 18,
-                      backgroundColor: bg,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 600,
+          maxHeight: screenHeight * 0.85,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
                       child: Text(
-                        member.name.isNotEmpty
-                            ? member.name[0].toUpperCase()
-                            : '?',
+                        'Chọn người nhận việc',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: primary,
+                          color: textPrimary,
                         ),
                       ),
                     ),
-                    title: Text(
-                      member.name,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: textPrimary,
-                      ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
-                    subtitle: Text(
-                      member.roleDisplayName,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: textMuted,
-                      ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: Color(0xFFE2EAE7)),
+
+              // 1. Tùy chọn đặc biệt: Cả nhà (Việc chung chưa gán)
+              ListTile(
+                leading: const CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Color(0xFFE0F7FA),
+                  child: Icon(
+                    Icons.groups_rounded,
+                    color: Color(0xFF00796B),
+                    size: 20,
+                  ),
+                ),
+                title: const Text(
+                  '👨‍👩‍👧 Cả nhà (Việc chung chưa gán)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF005F50),
+                  ),
+                ),
+                subtitle: const Text(
+                  'Chưa giao cho ai, các thành viên có thể xung phong nhận làm',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: textMuted),
+                ),
+                trailing: selectedMember?.id == 'OPEN'
+                    ? const Icon(Icons.check_circle, color: primaryColor)
+                    : null,
+                tileColor: selectedMember?.id == 'OPEN'
+                    ? const Color(0xFFE7F5F2)
+                    : Colors.transparent,
+                onTap: () {
+                  Navigator.of(context).pop(
+                    const FamilyMember(
+                      id: 'OPEN',
+                      name: 'Cả nhà',
+                      role: 'Việc chung',
+                      familyId: '',
                     ),
-                    trailing: isSelected
-                        ? const Icon(Icons.check_circle, color: primaryColor)
-                        : null,
-                    tileColor:
-                        isSelected ? const Color(0xFFE7F5F2) : Colors.transparent,
-                    onTap: () => Navigator.of(context).pop(member),
                   );
                 },
               ),
-            ),
-          ],
+              const Divider(height: 1, color: Color(0xFFE2EAE7)),
+
+              // 2. Danh sách từng thành viên gia đình
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: familyMembers.length,
+                  itemBuilder: (ctx, index) {
+                    final member = familyMembers[index];
+                    final isSelected = member.id == selectedMember?.id;
+                    final primary =
+                        MemberColorHelper.getPrimaryColor(member.name);
+                    final bg =
+                        MemberColorHelper.getBackgroundColor(member.name);
+
+                    return ListTile(
+                      leading: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: bg,
+                        child: Text(
+                          member.name.isNotEmpty
+                              ? member.name[0].toUpperCase()
+                              : '?',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: primary,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        member.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: textPrimary,
+                        ),
+                      ),
+                      subtitle: Text(
+                        member.roleDisplayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: textMuted,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? const Icon(Icons.check_circle, color: primaryColor)
+                          : null,
+                      tileColor: isSelected
+                          ? const Color(0xFFE7F5F2)
+                          : Colors.transparent,
+                      onTap: () => Navigator.of(context).pop(member),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

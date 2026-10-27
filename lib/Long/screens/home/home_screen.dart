@@ -8,6 +8,8 @@ import '../../models/reminder_model.dart';
 import '../../widgets/check_in_button.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/family_member_tile.dart';
+import '../../../Khoa/screens/family_setup_screen.dart';
+import '../../../Vinh/screens/reminder_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -130,32 +132,77 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                       const SizedBox(height: 32),
-                      ElevatedButton(
-                        onPressed: () {
-                          // Navigate to family setup in the future
-                          // For now we can navigate to Family tab or show a message
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Please go to Family tab to join/create a family.',
-                              ),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF005F50),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: const Icon(Icons.family_restroom),
+                        label: const Text(
+                          'Join / Create Family',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        onPressed: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const FamilySetupScreen(),
                             ),
                           );
+                          if (mounted) {
+                            _familydataService.clearCache();
+                            setState(() {
+                              _loadData();
+                            });
+                          }
                         },
-                        child: const Text('Join / Create Family'),
                       ),
                     ],
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        family.name,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            family.name,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          TextButton.icon(
+                            icon: const Icon(Icons.settings_outlined,
+                                size: 16, color: Color(0xFF005F50)),
+                            label: const Text(
+                              'Gia đình',
+                              style: TextStyle(
+                                  color: Color(0xFF005F50), fontSize: 13),
+                            ),
+                            onPressed: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const FamilySetupScreen(),
+                                ),
+                              );
+                              if (mounted) {
+                                _familydataService.clearCache();
+                                setState(() {
+                                  _loadData();
+                                });
+                              }
+                            },
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 24),
                       CheckInButton(
@@ -227,7 +274,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (myReminders.isNotEmpty)
                         TextButton(
                           onPressed: () {
-                            // Navigate to Reminders tab
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const ReminderListScreen(),
+                              ),
+                            );
                           },
                           child: const Text('View all reminders'),
                         ),

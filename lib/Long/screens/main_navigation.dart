@@ -27,24 +27,26 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _screens),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'family_ai_assistant_fab',
-        backgroundColor: const Color(0xFF005F50),
-        foregroundColor: Colors.white,
-        elevation: 4,
-        icon: const Icon(Icons.auto_awesome, size: 20),
-        label: const Text(
-          'Trợ lý AI',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-        ),
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const AiChatScreen(),
+      floatingActionButton: _currentIndex == 1
+          ? null
+          : FloatingActionButton.extended(
+              heroTag: 'family_ai_assistant_fab',
+              backgroundColor: const Color(0xFF005F50),
+              foregroundColor: Colors.white,
+              elevation: 4,
+              icon: const Icon(Icons.auto_awesome, size: 20),
+              label: const Text(
+                'Trợ lý AI',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const AiChatScreen(),
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {

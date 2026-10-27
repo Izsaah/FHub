@@ -170,10 +170,10 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
           children: [
             Stack(
               children: [
-                CircleAvatar(
+                const CircleAvatar(
                   radius: 20,
-                  backgroundColor: const Color(0xFFE0F2EC),
-                  child: const Icon(
+                  backgroundColor: Color(0xFFE0F2EC),
+                  child: Icon(
                     Icons.auto_awesome_rounded,
                     color: primaryColor,
                     size: 22,
@@ -201,6 +201,8 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                 children: [
                   Text(
                     'Trợ lý AI Gia đình',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -209,6 +211,8 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                   ),
                   Text(
                     'Gemini 2.5 Flash • Trực tuyến',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 11,
                       color: Color(0xFF0D7A68),
@@ -240,26 +244,38 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                 });
               }
             },
-            itemBuilder: (ctx) => [
-              const PopupMenuItem(
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(
                 value: 'clear_memory',
                 child: Row(
                   children: [
                     Icon(Icons.restart_alt_rounded,
                         size: 18, color: Colors.orange),
                     SizedBox(width: 8),
-                    Text('Xóa bộ nhớ thói quen'),
+                    Flexible(
+                      child: Text(
+                        'Xóa bộ nhớ thói quen',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'clear_chat',
                 child: Row(
                   children: [
                     Icon(Icons.cleaning_services_rounded,
                         size: 18, color: Colors.grey),
                     SizedBox(width: 8),
-                    Text('Làm mới cuộc trò chuyện'),
+                    Flexible(
+                      child: Text(
+                        'Làm mới cuộc trò chuyện',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -269,56 +285,68 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         ],
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            // Danh sách tin nhắn chat
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                itemCount: _messages.length,
-                itemBuilder: (context, index) {
-                  final msg = _messages[index];
-                  return _buildMessageItem(msg);
-                },
-              ),
-            ),
-
-            // Hiệu ứng "AI đang soạn tin..."
-            if (_isThinking)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Trợ lý AI đang suy nghĩ...',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: Column(
+              children: [
+                // Danh sách tin nhắn chat
+                Expanded(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final msg = _messages[index];
+                      return _buildMessageItem(msg);
+                    },
+                  ),
                 ),
-              ),
 
-            // Thanh gợi ý câu hỏi nhanh (Quick Replies)
-            _buildQuickRepliesBar(),
+                // Hiệu ứng "AI đang soạn tin..."
+                if (_isThinking)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(primaryColor),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Trợ lý AI đang suy nghĩ...',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
-            // Khung nhập câu lệnh
-            _buildInputBar(),
-          ],
+                // Thanh gợi ý câu hỏi nhanh (Quick Replies)
+                _buildQuickRepliesBar(),
+
+                // Khung nhập câu lệnh
+                _buildInputBar(),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -326,6 +354,8 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
 
   Widget _buildMessageItem(AiChatMessage msg) {
     const primaryColor = Color(0xFF0D7A68);
+    final effectiveWidth =
+        MediaQuery.sizeOf(context).width.clamp(240.0, 680.0);
 
     if (msg.isUser) {
       return Padding(
@@ -336,7 +366,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
           children: [
             ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.76,
+                maxWidth: effectiveWidth * 0.76,
               ),
               child: Container(
                 padding:
@@ -369,70 +399,73 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
+            const CircleAvatar(
               radius: 16,
-              backgroundColor: const Color(0xFFE0F2EC),
-              child: const Icon(Icons.auto_awesome_rounded,
+              backgroundColor: Color(0xFFE0F2EC),
+              child: Icon(Icons.auto_awesome_rounded,
                   size: 16, color: primaryColor),
             ),
             const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.80,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(4),
-                        topRight: Radius.circular(18),
-                        bottomLeft: Radius.circular(18),
-                        bottomRight: Radius.circular(18),
-                      ),
-                      border: Border.all(color: const Color(0xFFE2EBE7)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: effectiveWidth * 0.80,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(4),
+                          topRight: Radius.circular(18),
+                          bottomLeft: Radius.circular(18),
+                          bottomRight: Radius.circular(18),
                         ),
-                      ],
-                    ),
-                    child: Text(
-                      msg.text,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        height: 1.4,
-                        color: Color(0xFF151D1B),
+                        border: Border.all(color: const Color(0xFFE2EBE7)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        msg.text,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: Color(0xFF151D1B),
+                        ),
                       ),
                     ),
-                  ),
-                  if (msg.attachedReminder != null)
-                    TaskMiniCard(
-                      reminder: msg.attachedReminder!,
-                      onTap: () {
-                        ReminderDetailBottomSheet.show(
-                          context,
-                          reminder: msg.attachedReminder!,
-                          currentUserId: widget.currentUserId,
-                          currentUserName: widget.currentUserName,
-                          repository: widget.repository,
-                          familyMembers: widget.familyMembers,
-                        );
-                      },
-                      onClaim: msg.attachedReminder!.isOpenTask
-                          ? () => _handleClaimTask(
-                                msg.attachedReminder!.id,
-                                msg.attachedReminder!.title,
-                              )
-                          : null,
-                    ),
-                ],
+                    if (msg.attachedReminder != null)
+                      TaskMiniCard(
+                        reminder: msg.attachedReminder!,
+                        onTap: () {
+                          ReminderDetailBottomSheet.show(
+                            context,
+                            reminder: msg.attachedReminder!,
+                            currentUserId: widget.currentUserId,
+                            currentUserName: widget.currentUserName,
+                            repository: widget.repository,
+                            familyMembers: widget.familyMembers,
+                            onReminderUpdated: () => setState(() {}),
+                          );
+                        },
+                        onClaim: msg.attachedReminder!.isOpenTask
+                            ? () => _handleClaimTask(
+                                  msg.attachedReminder!.id,
+                                  msg.attachedReminder!.title,
+                                )
+                            : null,
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -541,7 +574,8 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
           const SizedBox(width: 6),
           IconButton.filled(
             style: IconButton.styleFrom(backgroundColor: primaryColor),
-            icon: const Icon(Icons.send_rounded, size: 18, color: Colors.white),
+            icon:
+                const Icon(Icons.send_rounded, size: 18, color: Colors.white),
             onPressed: () => _handleSendMessage(),
           ),
         ],

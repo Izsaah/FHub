@@ -46,23 +46,29 @@ class ReminderCalendarView extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.filter_alt_outlined,
-                      size: 16,
-                      color: primaryColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Đang lọc theo ngày: $selectedDateFormatted',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.filter_alt_outlined,
+                        size: 16,
                         color: primaryColor,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'Đang lọc theo ngày: $selectedDateFormatted',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: primaryColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 TextButton(
                   onPressed: onShowAllPressed,

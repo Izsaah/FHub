@@ -59,6 +59,7 @@ abstract class ReminderRepository {
   Future<bool> restoreReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   });
 }
 
@@ -198,7 +199,8 @@ class InMemoryReminderRepository implements ReminderRepository {
         repeatRule: 'NONE',
         voiceNotePath: 'assets/audio/sample_voice_reminder.wav',
         voiceDurationSeconds: 3,
-        voiceNoteDescription: 'Mẹ dặn nhớ uống 2 viên vitamin và ăn tối trước 8h nhé con!',
+        voiceNoteDescription:
+            'Mẹ dặn nhớ uống 2 viên vitamin và ăn tối trước 8h nhé con!',
         createdAt: now.subtract(const Duration(minutes: 40)),
       ),
     ]);
@@ -222,7 +224,8 @@ class InMemoryReminderRepository implements ReminderRepository {
   Stream<List<ReminderModel>> watchReminders({required String familyId}) async* {
     yield await getReminders(familyId: familyId);
     yield* _controller.stream.map(
-      (list) => list.where((r) => r.familyId == familyId && !r.isDeleted).toList(),
+      (list) =>
+          list.where((r) => r.familyId == familyId && !r.isDeleted).toList(),
     );
   }
 
@@ -309,17 +312,32 @@ class InMemoryReminderRepository implements ReminderRepository {
     List<FamilyMember>? familyMembers,
     DateTime? now,
   }) async {
-    final index = _reminders.indexWhere((r) => r.id == reminder.id && !r.isDeleted);
+    final index =
+        _reminders.indexWhere((r) => r.id == reminder.id && !r.isDeleted);
     if (index == -1) {
       throw ReminderNotFoundException();
     }
 
     final existing = _reminders[index];
 
-    // Rule: Chỉ người tạo (Creator) mới có quyền chỉnh sửa reminder.
-    if (existing.creatorId != currentUserId) {
-      throw ReminderPermissionException(
-        'Only the creator can edit this reminder',
+    // Rule: Chỉ người tạo (Creator) HOẶC Cha Mẹ/Chủ nhà mới có quyền chỉnh sửa reminder.
+    final isCreator = existing.creatorId == currentUserId;
+    bool isParentOrOwner = false;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      final currentMember = familyMembers.firstWhere(
+        (m) => m.id == currentUserId,
+        orElse: () =>
+            const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      );
+      final roleUpper = currentMember.role.toUpperCase();
+      isParentOrOwner = roleUpper.contains('PARENT') ||
+          roleUpper.contains('OWNER') ||
+          roleUpper.contains('GRANDPARENT');
+    }
+
+    if (!isCreator && !isParentOrOwner) {
+      throw const ReminderPermissionException(
+        'Only the creator or a parent/owner can edit this reminder',
       );
     }
 
@@ -372,6 +390,8 @@ class InMemoryReminderRepository implements ReminderRepository {
       voiceNotePath: reminder.voiceNotePath,
       voiceDurationSeconds: reminder.voiceDurationSeconds,
       voiceNoteDescription: reminder.voiceNoteDescription,
+      clearVoiceNote: reminder.voiceNotePath == null,
+      status: reminder.status,
     );
 
     _reminders[index] = updated;
@@ -386,7 +406,8 @@ class InMemoryReminderRepository implements ReminderRepository {
     required String currentUserId,
     required String currentUserName,
   }) async {
-    final index = _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
+    final index =
+        _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
     if (index == -1) {
       throw ReminderNotFoundException();
     }
@@ -455,7 +476,8 @@ class InMemoryReminderRepository implements ReminderRepository {
     required String currentUserId,
     String? proofImageUrl,
   }) async {
-    final index = _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
+    final index =
+        _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
     if (index == -1) {
       throw ReminderNotFoundException();
     }
@@ -471,7 +493,8 @@ class InMemoryReminderRepository implements ReminderRepository {
 
     // Rule AC3: Bắt buộc đính kèm ảnh nếu requiresProofImage == true
     final effectiveProof = proofImageUrl ?? existing.proofImageUrl;
-    if (existing.requiresProofImage && (effectiveProof == null || effectiveProof.isEmpty)) {
+    if (existing.requiresProofImage &&
+        (effectiveProof == null || effectiveProof.isEmpty)) {
       throw ReminderValidationException(
         'Công việc này bắt buộc phải có ảnh nghiệm thu trước khi hoàn thành!',
       );
@@ -503,7 +526,8 @@ class InMemoryReminderRepository implements ReminderRepository {
           date: nextDateStr,
           time: existing.time,
           repeatRule: existing.repeatRule,
-          status: existing.isOpenTask ? ReminderStatus.open : ReminderStatus.pending,
+          status:
+              existing.isOpenTask ? ReminderStatus.open : ReminderStatus.pending,
           requiresProofImage: existing.requiresProofImage,
           rewardStars: 0,
           voiceNotePath: existing.voiceNotePath,
@@ -512,7 +536,8 @@ class InMemoryReminderRepository implements ReminderRepository {
           createdAt: DateTime.now(),
         );
         _reminders.add(nextReminder);
-        MultiTierEscalationService.instance.scheduleMultiTierEscalation(nextReminder);
+        MultiTierEscalationService.instance
+            .scheduleMultiTierEscalation(nextReminder);
       }
     }
 
@@ -527,7 +552,8 @@ class InMemoryReminderRepository implements ReminderRepository {
     required String currentUserId,
     List<FamilyMember>? familyMembers,
   }) async {
-    final index = _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
+    final index =
+        _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
     if (index == -1) {
       throw ReminderNotFoundException();
     }
@@ -540,9 +566,13 @@ class InMemoryReminderRepository implements ReminderRepository {
     if (familyMembers != null && familyMembers.isNotEmpty) {
       final currentMember = familyMembers.firstWhere(
         (m) => m.id == currentUserId,
-        orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+        orElse: () =>
+            const FamilyMember(id: '', name: '', role: '', familyId: ''),
       );
-      isParentOrOwner = currentMember.isParent || currentMember.isGrandparent;
+      final roleUpper = currentMember.role.toUpperCase();
+      isParentOrOwner = roleUpper.contains('PARENT') ||
+          roleUpper.contains('OWNER') ||
+          roleUpper.contains('GRANDPARENT');
     }
 
     if (!isCreator && !isParentOrOwner) {
@@ -565,6 +595,7 @@ class InMemoryReminderRepository implements ReminderRepository {
   Future<bool> restoreReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   }) async {
     final index =
         _reminders.indexWhere((r) => r.id == reminderId && r.isDeleted);
@@ -573,14 +604,37 @@ class InMemoryReminderRepository implements ReminderRepository {
     }
 
     final existing = _reminders[index];
-    if (existing.creatorId != currentUserId) {
+    final isCreator = existing.creatorId == currentUserId;
+    bool isParentOrOwner = false;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      final currentMember = familyMembers.firstWhere(
+        (m) => m.id == currentUserId,
+        orElse: () =>
+            const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      );
+      final roleUpper = currentMember.role.toUpperCase();
+      isParentOrOwner = roleUpper.contains('PARENT') ||
+          roleUpper.contains('OWNER') ||
+          roleUpper.contains('GRANDPARENT');
+    }
+
+    if (!isCreator && !isParentOrOwner) {
       throw ReminderPermissionException(
-        'Only creator can restore this reminder',
+        'Only creator or parent/owner can restore this reminder',
       );
     }
 
+    final isOpenTarget = existing.assignedTo == 'OPEN' ||
+        existing.assignedTo == 'ALL' ||
+        existing.assignedTo.isEmpty;
+    final restoredStatus = isOpenTarget
+        ? ReminderStatus.open
+        : (existing.completedAt != null
+            ? ReminderStatus.completed
+            : ReminderStatus.pending);
+
     final updated = existing.copyWith(
-      status: ReminderStatus.pending,
+      status: restoredStatus,
     );
 
     _reminders[index] = updated;

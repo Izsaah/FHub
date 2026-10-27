@@ -41,12 +41,14 @@ class _MonthlyCalendarGridState extends State<MonthlyCalendarGrid> {
   }
 
   void _prevMonth() {
-    final prev = DateTime(widget.currentMonth.year, widget.currentMonth.month - 1, 1);
+    final prev =
+        DateTime(widget.currentMonth.year, widget.currentMonth.month - 1, 1);
     widget.onMonthChanged(prev);
   }
 
   void _nextMonth() {
-    final next = DateTime(widget.currentMonth.year, widget.currentMonth.month + 1, 1);
+    final next =
+        DateTime(widget.currentMonth.year, widget.currentMonth.month + 1, 1);
     widget.onMonthChanged(next);
   }
 
@@ -57,7 +59,9 @@ class _MonthlyCalendarGridState extends State<MonthlyCalendarGrid> {
   List<ReminderModel> _getRemindersForDay(DateTime day) {
     final dayStr =
         '${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}/${day.year}';
-    return widget.reminders.where((r) => r.date == dayStr).toList();
+    return widget.reminders
+        .where((r) => !r.isDeleted && r.date == dayStr)
+        .toList();
   }
 
   @override
@@ -70,7 +74,8 @@ class _MonthlyCalendarGridState extends State<MonthlyCalendarGrid> {
     final firstDayOfMonth =
         DateTime(widget.currentMonth.year, widget.currentMonth.month, 1);
     final daysInMonth =
-        DateTime(widget.currentMonth.year, widget.currentMonth.month + 1, 0).day;
+        DateTime(widget.currentMonth.year, widget.currentMonth.month + 1, 0)
+            .day;
     // Weekday: Monday is 1, Sunday is 7
     final firstWeekday = firstDayOfMonth.weekday; // 1 to 7
 
@@ -97,15 +102,20 @@ class _MonthlyCalendarGridState extends State<MonthlyCalendarGrid> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '${_getMonthName(widget.currentMonth.month)} ${widget.currentMonth.year}',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: textPrimary,
+              Flexible(
+                child: Text(
+                  '${_getMonthName(widget.currentMonth.month)} ${widget.currentMonth.year}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: textPrimary,
+                  ),
                 ),
               ),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.chevron_left, size: 22),
@@ -180,8 +190,10 @@ class _MonthlyCalendarGridState extends State<MonthlyCalendarGrid> {
               final isToday = _isSameDay(dayDate, today);
 
               final dayReminders = _getRemindersForDay(dayDate);
-              final hasOverdue = dayReminders.any((r) => r.isOverdue && !r.isCompleted);
-              final hasPending = dayReminders.any((r) => (r.isPending || r.isOpen) && !r.isOverdue && !r.isCompleted);
+              final hasOverdue =
+                  dayReminders.any((r) => r.isOverdue && !r.isCompleted);
+              final hasPending = dayReminders.any(
+                  (r) => (r.isPending || r.isOpen) && !r.isOverdue && !r.isCompleted);
               final hasCompleted = dayReminders.any((r) => r.isCompleted);
 
               return InkWell(
@@ -189,10 +201,13 @@ class _MonthlyCalendarGridState extends State<MonthlyCalendarGrid> {
                 borderRadius: BorderRadius.circular(12),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? primaryColor
-                        : (isToday ? const Color(0xFFE7F5F2) : Colors.transparent),
+                        : (isToday
+                            ? const Color(0xFFE7F5F2)
+                            : Colors.transparent),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: isSelected
@@ -201,64 +216,71 @@ class _MonthlyCalendarGridState extends State<MonthlyCalendarGrid> {
                       width: isToday && !isSelected ? 1.5 : 1,
                     ),
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        '$dayNum',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: isSelected || isToday
-                              ? FontWeight.bold
-                              : FontWeight.w500,
-                          color: isSelected
-                              ? Colors.white
-                              : (isToday ? primaryColor : textPrimary),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '$dayNum',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: isSelected || isToday
+                                ? FontWeight.bold
+                                : FontWeight.w500,
+                            color: isSelected
+                                ? Colors.white
+                                : (isToday ? primaryColor : textPrimary),
+                          ),
                         ),
-                      ),
-                      if (dayReminders.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (hasOverdue)
-                              Container(
-                                width: 5,
-                                height: 5,
-                                margin: const EdgeInsets.symmetric(horizontal: 1),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFBA1A1A),
-                                  shape: BoxShape.circle,
+                        if (dayReminders.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (hasOverdue)
+                                Container(
+                                  width: 5,
+                                  height: 5,
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 1),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFBA1A1A),
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
-                              ),
-                            if (hasPending)
-                              Container(
-                                width: 5,
-                                height: 5,
-                                margin: const EdgeInsets.symmetric(horizontal: 1),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? const Color(0xFFF49D37)
-                                      : const Color(0xFF0D7A68),
-                                  shape: BoxShape.circle,
+                              if (hasPending)
+                                Container(
+                                  width: 5,
+                                  height: 5,
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 1),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFFF49D37)
+                                        : const Color(0xFF0D7A68),
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
-                              ),
-                            if (hasCompleted)
-                              Container(
-                                width: 5,
-                                height: 5,
-                                margin: const EdgeInsets.symmetric(horizontal: 1),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? Colors.white70
-                                      : const Color(0xFFBDC9C4),
-                                  shape: BoxShape.circle,
+                              if (hasCompleted)
+                                Container(
+                                  width: 5,
+                                  height: 5,
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 1),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? Colors.white70
+                                        : const Color(0xFFBDC9C4),
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
-                              ),
-                          ],
-                        ),
+                            ],
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               );

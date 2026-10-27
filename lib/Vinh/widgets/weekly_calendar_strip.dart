@@ -35,7 +35,8 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
     super.didUpdateWidget(oldWidget);
     if (!widget.showAll &&
         (widget.selectedDate.isBefore(_weekStart) ||
-            widget.selectedDate.isAfter(_weekStart.add(const Duration(days: 6))))) {
+            widget.selectedDate
+                .isAfter(_weekStart.add(const Duration(days: 6))))) {
       _weekStart = _calculateWeekStart(widget.selectedDate);
     }
   }
@@ -94,11 +95,13 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  /// Checks if a day has reminders in the list
+  /// Checks if a day has active reminders in the list
   List<ReminderModel> _getRemindersForDay(DateTime day) {
     final dayStr =
         '${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}/${day.year}';
-    return widget.reminders.where((r) => r.date == dayStr).toList();
+    return widget.reminders
+        .where((r) => !r.isDeleted && r.date == dayStr)
+        .toList();
   }
 
   @override
@@ -132,22 +135,31 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.calendar_month,
-                      color: primaryColor, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    currentMonthLabel,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: textPrimary,
+              Expanded(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.calendar_month,
+                        color: primaryColor, size: 18),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        currentMonthLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 4),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   // "Tất cả" chip
                   InkWell(
@@ -155,7 +167,7 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: widget.showAll
                             ? primaryColor
@@ -170,34 +182,43 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
                       child: Text(
                         'Tất cả',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.bold,
                           color: widget.showAll ? Colors.white : primaryColor,
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 4),
 
                   // "Hôm nay" button
                   IconButton(
-                    icon: const Icon(Icons.today_outlined, size: 20),
+                    icon: const Icon(Icons.today_outlined, size: 18),
                     tooltip: 'Hôm nay',
                     color: primaryColor,
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 30, minHeight: 30),
                     visualDensity: VisualDensity.compact,
                     onPressed: _goToToday,
                   ),
                   IconButton(
-                    icon: const Icon(Icons.chevron_left, size: 22),
+                    icon: const Icon(Icons.chevron_left, size: 20),
                     tooltip: 'Tuần trước',
                     color: textPrimary,
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 26, minHeight: 30),
                     visualDensity: VisualDensity.compact,
                     onPressed: _previousWeek,
                   ),
                   IconButton(
-                    icon: const Icon(Icons.chevron_right, size: 22),
+                    icon: const Icon(Icons.chevron_right, size: 20),
                     tooltip: 'Tuần sau',
                     color: textPrimary,
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 26, minHeight: 30),
                     visualDensity: VisualDensity.compact,
                     onPressed: _nextWeek,
                   ),
@@ -211,11 +232,14 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: weekDays.map((day) {
-              final isSelected = !widget.showAll && _isSameDay(day, widget.selectedDate);
+              final isSelected =
+                  !widget.showAll && _isSameDay(day, widget.selectedDate);
               final isToday = _isSameDay(day, today);
               final dayReminders = _getRemindersForDay(day);
-              final hasOverdue = dayReminders.any((r) => r.isOverdue && !r.isCompleted);
-              final hasPending = dayReminders.any((r) => (r.isPending || r.isOpen) && !r.isOverdue && !r.isCompleted);
+              final hasOverdue =
+                  dayReminders.any((r) => r.isOverdue && !r.isCompleted);
+              final hasPending = dayReminders.any(
+                  (r) => (r.isPending || r.isOpen) && !r.isOverdue && !r.isCompleted);
               final hasCompleted = dayReminders.any((r) => r.isCompleted);
 
               return Expanded(
@@ -224,11 +248,14 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     margin: const EdgeInsets.symmetric(horizontal: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? primaryColor
-                          : (isToday ? const Color(0xFFE7F5F2) : Colors.transparent),
+                          : (isToday
+                              ? const Color(0xFFE7F5F2)
+                              : Colors.transparent),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: isSelected
@@ -246,78 +273,88 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
                             ]
                           : null,
                     ),
-                    child: Column(
-                      children: [
-                        // Day of week
-                        Text(
-                          _getDayOfWeek(day.weekday),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: isSelected
-                                ? Colors.white70
-                                : (isToday ? primaryColor : const Color(0xFF6E7A75)),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Day of week
+                          Text(
+                            _getDayOfWeek(day.weekday),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isSelected
+                                  ? Colors.white70
+                                  : (isToday
+                                      ? primaryColor
+                                      : const Color(0xFF6E7A75)),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
+                          const SizedBox(height: 4),
 
-                        // Day number
-                        Text(
-                          '${day.day}',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: isSelected
-                                ? Colors.white
-                                : (isToday ? primaryColor : textPrimary),
+                          // Day number
+                          Text(
+                            '${day.day}',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: isSelected
+                                  ? Colors.white
+                                  : (isToday ? primaryColor : textPrimary),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
+                          const SizedBox(height: 4),
 
-                        // Dots indicators
-                        SizedBox(
-                          height: 6,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (hasOverdue)
-                                Container(
-                                  width: 5,
-                                  height: 5,
-                                  margin: const EdgeInsets.symmetric(horizontal: 1),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFBA1A1A),
-                                    shape: BoxShape.circle,
+                          // Dots indicators
+                          SizedBox(
+                            height: 6,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (hasOverdue)
+                                  Container(
+                                    width: 5,
+                                    height: 5,
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 1),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFBA1A1A),
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
-                                ),
-                              if (hasPending)
-                                Container(
-                                  width: 5,
-                                  height: 5,
-                                  margin: const EdgeInsets.symmetric(horizontal: 1),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? const Color(0xFFF49D37)
-                                        : const Color(0xFF0D7A68),
-                                    shape: BoxShape.circle,
+                                if (hasPending)
+                                  Container(
+                                    width: 5,
+                                    height: 5,
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 1),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? const Color(0xFFF49D37)
+                                          : const Color(0xFF0D7A68),
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
-                                ),
-                              if (hasCompleted)
-                                Container(
-                                  width: 5,
-                                  height: 5,
-                                  margin: const EdgeInsets.symmetric(horizontal: 1),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? Colors.white60
-                                        : const Color(0xFFBDC9C4),
-                                    shape: BoxShape.circle,
+                                if (hasCompleted)
+                                  Container(
+                                    width: 5,
+                                    height: 5,
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 1),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? Colors.white60
+                                          : const Color(0xFFBDC9C4),
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

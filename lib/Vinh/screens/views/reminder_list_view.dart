@@ -43,19 +43,21 @@ class ReminderListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (allReminders.isEmpty) {
+    final activeAllReminders =
+        allReminders.where((r) => !r.isDeleted).toList();
+    if (activeAllReminders.isEmpty) {
       return ReminderEmptyState(onCreatePressed: onCreatePressed);
     }
 
-    if (displayedReminders.isEmpty) {
+    final activeReminders =
+        displayedReminders.where((r) => !r.isDeleted).toList();
+
+    if (activeReminders.isEmpty) {
       return ReminderDayEmptyState(
         dateStr: selectedDateStr,
         onShowAllPressed: onShowAllPressed,
       );
     }
-
-    final activeReminders =
-        displayedReminders.where((r) => !r.isDeleted).toList();
 
     final overdueList =
         activeReminders.where((r) => r.isOverdue && !r.isCompleted).toList();
@@ -100,9 +102,10 @@ class ReminderListView extends StatelessWidget {
               onClaim: reminder.isOpenTask
                   ? () => onClaimReminder(reminder)
                   : null,
-              onClaimAndComplete: reminder.isOpenTask && onClaimAndCompleteReminder != null
-                  ? () => onClaimAndCompleteReminder!(reminder)
-                  : null,
+              onClaimAndComplete:
+                  reminder.isOpenTask && onClaimAndCompleteReminder != null
+                      ? () => onClaimAndCompleteReminder!(reminder)
+                      : null,
             ),
           ),
         ],
@@ -156,9 +159,10 @@ class ReminderListView extends StatelessWidget {
               onClaim: reminder.isOpenTask
                   ? () => onClaimReminder(reminder)
                   : null,
-              onClaimAndComplete: reminder.isOpenTask && onClaimAndCompleteReminder != null
-                  ? () => onClaimAndCompleteReminder!(reminder)
-                  : null,
+              onClaimAndComplete:
+                  reminder.isOpenTask && onClaimAndCompleteReminder != null
+                      ? () => onClaimAndCompleteReminder!(reminder)
+                      : null,
             ),
           ),
         ],

@@ -31,7 +31,8 @@ class CalendarPage extends StatefulWidget {
 }
 
 class _CalendarPageState extends State<CalendarPage> {
-  DateTime _currentMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _currentMonth =
+      DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
 
   String _formatDate(DateTime dt) {
@@ -106,7 +107,8 @@ class _CalendarPageState extends State<CalendarPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!'),
+            content: Text(
+                '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!'),
             backgroundColor: const Color(0xFF005F50),
           ),
         );
@@ -127,7 +129,8 @@ class _CalendarPageState extends State<CalendarPage> {
   bool get _isParentOrOwner {
     final currentMember = widget.familyMembers.firstWhere(
       (m) => m.id == widget.currentUserId,
-      orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      orElse: () =>
+          const FamilyMember(id: '', name: '', role: '', familyId: ''),
     );
     return currentMember.isParent || currentMember.isGrandparent;
   }
@@ -217,6 +220,22 @@ class _CalendarPageState extends State<CalendarPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Đã xóa "${reminder.title}".'),
+              action: SnackBarAction(
+                label: 'HOÀN TÁC',
+                textColor: const Color(0xFFaaffe9),
+                onPressed: () async {
+                  try {
+                    await widget.repository.restoreReminder(
+                      reminderId: reminder.id,
+                      currentUserId: widget.currentUserId,
+                      familyMembers: widget.familyMembers,
+                    );
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  } catch (_) {}
+                },
+              ),
             ),
           );
           setState(() {});
@@ -275,8 +294,9 @@ class _CalendarPageState extends State<CalendarPage> {
         stream: widget.repository.watchReminders(familyId: widget.familyId),
         builder: (context, snapshot) {
           final allReminders = snapshot.data ?? [];
-          final dayReminders =
-              allReminders.where((r) => r.date == selectedDateStr && !r.isDeleted).toList();
+          final dayReminders = allReminders
+              .where((r) => r.date == selectedDateStr && !r.isDeleted)
+              .toList();
 
           final overdueList = dayReminders
               .where((r) => r.isOverdue && !r.isCompleted)
@@ -287,209 +307,234 @@ class _CalendarPageState extends State<CalendarPage> {
               .toList();
 
           final pendingList = dayReminders
-              .where((r) => r.isPending && !r.isOverdue && !r.isOpen && !r.isCompleted)
+              .where((r) =>
+                  r.isPending && !r.isOverdue && !r.isOpen && !r.isCompleted)
               .toList();
 
           final completedList =
               dayReminders.where((r) => r.isCompleted).toList();
 
-          return CustomScrollView(
-            slivers: [
-              // 1. Monthly Calendar Grid
-              SliverToBoxAdapter(
-                child: MonthlyCalendarGrid(
-                  currentMonth: _currentMonth,
-                  selectedDate: _selectedDate,
-                  reminders: allReminders,
-                  onDateSelected: (date) {
-                    setState(() => _selectedDate = date);
-                  },
-                  onMonthChanged: (month) {
-                    setState(() => _currentMonth = month);
-                  },
-                ),
-              ),
-
-              // 2. Day Progress Card
-              if (dayReminders.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: FamilyProgressCard(
-                    reminders: dayReminders,
-                    dateTitle: selectedDateStr,
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: CustomScrollView(
+                slivers: [
+                  // 1. Monthly Calendar Grid
+                  SliverToBoxAdapter(
+                    child: MonthlyCalendarGrid(
+                      currentMonth: _currentMonth,
+                      selectedDate: _selectedDate,
+                      reminders: allReminders,
+                      onDateSelected: (date) {
+                        setState(() => _selectedDate = date);
+                      },
+                      onMonthChanged: (month) {
+                        setState(() => _currentMonth = month);
+                      },
+                    ),
                   ),
-                ),
 
-              // 3. Section Title for Selected Date
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Việc ngày $selectedDateStr',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: textPrimary,
-                        ),
+                  // 2. Day Progress Card
+                  if (dayReminders.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: FamilyProgressCard(
+                        reminders: dayReminders,
+                        dateTitle: selectedDateStr,
                       ),
-                      Text(
-                        '${dayReminders.length} nhắc nhở',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF6E7A75),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+                    ),
 
-              // 4. Reminders for Selected Date
-              if (dayReminders.isEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Center(
-                      child: Column(
+                  // 3. Section Title for Selected Date
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(
-                            Icons.event_note_outlined,
-                            size: 48,
-                            color: Colors.grey.shade400,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Chưa có nhắc nhở cho ngày $selectedDateStr',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              color: Color(0xFF6E7A75),
+                          Expanded(
+                            child: Text(
+                              'Việc ngày $selectedDateStr',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: textPrimary,
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          FilledButton.tonal(
-                            onPressed: _openCreateReminder,
-                            child: const Text('Thêm nhắc nhở cho ngày này'),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${dayReminders.length} nhắc nhở',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF6E7A75),
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 90),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      // 1. OVERDUE
-                      if (overdueList.isNotEmpty) ...[
-                        ReminderSectionHeader(
-                          title: 'QUÁ HẠN',
-                          count: overdueList.length,
-                          color: const Color(0xFFBA1A1A),
-                          icon: Icons.warning_amber_rounded,
-                        ),
-                        ...overdueList.map(
-                          (reminder) => ReminderCard(
-                            reminder: reminder,
-                            currentUserId: widget.currentUserId,
-                            onTap: () => _showDetailBottomSheet(reminder),
-                            onComplete: reminder.assignedTo == widget.currentUserId
-                                ? () => _completeReminder(reminder)
-                                : null,
-                            onDelete: (reminder.creatorId == widget.currentUserId || _isParentOrOwner)
-                                ? () => _confirmAndDelete(reminder)
-                                : null,
-                            onClaim: reminder.isOpenTask
-                                ? () => _claimReminder(reminder)
-                                : null,
-                            onClaimAndComplete: reminder.isOpenTask
-                                ? () => _claimAndCompleteReminder(reminder)
-                                : null,
-                          ),
-                        ),
-                      ],
 
-                      // 2. OPEN
-                      if (openList.isNotEmpty) ...[
-                        ReminderSectionHeader(
-                          title: 'VIỆC CHUNG CHƯA GÁN',
-                          count: openList.length,
-                          color: const Color(0xFF006A6A),
-                          icon: Icons.lock_open_rounded,
-                        ),
-                        ...openList.map(
-                          (reminder) => ReminderCard(
-                            reminder: reminder,
-                            currentUserId: widget.currentUserId,
-                            onTap: () => _showDetailBottomSheet(reminder),
-                            onComplete: reminder.assignedTo == widget.currentUserId
-                                ? () => _completeReminder(reminder)
-                                : null,
-                            onDelete: (reminder.creatorId == widget.currentUserId || _isParentOrOwner)
-                                ? () => _confirmAndDelete(reminder)
-                                : null,
-                            onClaim: () => _claimReminder(reminder),
-                            onClaimAndComplete: () => _claimAndCompleteReminder(reminder),
+                  // 4. Reminders for Selected Date
+                  if (dayReminders.isEmpty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Center(
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.event_note_outlined,
+                                size: 48,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Chưa có nhắc nhở cho ngày $selectedDateStr',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  color: Color(0xFF6E7A75),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              FilledButton.tonal(
+                                onPressed: _openCreateReminder,
+                                child:
+                                    const Text('Thêm nhắc nhở cho ngày này'),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 90),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
+                          // 1. OVERDUE
+                          if (overdueList.isNotEmpty) ...[
+                            ReminderSectionHeader(
+                              title: 'QUÁ HẠN',
+                              count: overdueList.length,
+                              color: const Color(0xFFBA1A1A),
+                              icon: Icons.warning_amber_rounded,
+                            ),
+                            ...overdueList.map(
+                              (reminder) => ReminderCard(
+                                reminder: reminder,
+                                currentUserId: widget.currentUserId,
+                                onTap: () => _showDetailBottomSheet(reminder),
+                                onComplete:
+                                    reminder.assignedTo == widget.currentUserId
+                                        ? () => _completeReminder(reminder)
+                                        : null,
+                                onDelete: (reminder.creatorId ==
+                                            widget.currentUserId ||
+                                        _isParentOrOwner)
+                                    ? () => _confirmAndDelete(reminder)
+                                    : null,
+                                onClaim: reminder.isOpenTask
+                                    ? () => _claimReminder(reminder)
+                                    : null,
+                                onClaimAndComplete: reminder.isOpenTask
+                                    ? () => _claimAndCompleteReminder(reminder)
+                                    : null,
+                              ),
+                            ),
+                          ],
 
-                      // 3. PENDING
-                      if (pendingList.isNotEmpty) ...[
-                        ReminderSectionHeader(
-                          title: 'CHỜ THỰC HIỆN',
-                          count: pendingList.length,
-                          color: const Color(0xFF49454F),
-                          icon: Icons.hourglass_top_rounded,
-                        ),
-                        ...pendingList.map(
-                          (reminder) => ReminderCard(
-                            reminder: reminder,
-                            currentUserId: widget.currentUserId,
-                            onTap: () => _showDetailBottomSheet(reminder),
-                            onComplete: reminder.assignedTo == widget.currentUserId
-                                ? () => _completeReminder(reminder)
-                                : null,
-                            onDelete: (reminder.creatorId == widget.currentUserId || _isParentOrOwner)
-                                ? () => _confirmAndDelete(reminder)
-                                : null,
-                            onClaim: reminder.isOpenTask
-                                ? () => _claimReminder(reminder)
-                                : null,
-                            onClaimAndComplete: reminder.isOpenTask
-                                ? () => _claimAndCompleteReminder(reminder)
-                                : null,
-                          ),
-                        ),
-                      ],
+                          // 2. OPEN
+                          if (openList.isNotEmpty) ...[
+                            ReminderSectionHeader(
+                              title: 'VIỆC CHUNG CHƯA GÁN',
+                              count: openList.length,
+                              color: const Color(0xFF006A6A),
+                              icon: Icons.lock_open_rounded,
+                            ),
+                            ...openList.map(
+                              (reminder) => ReminderCard(
+                                reminder: reminder,
+                                currentUserId: widget.currentUserId,
+                                onTap: () => _showDetailBottomSheet(reminder),
+                                onComplete:
+                                    reminder.assignedTo == widget.currentUserId
+                                        ? () => _completeReminder(reminder)
+                                        : null,
+                                onDelete: (reminder.creatorId ==
+                                            widget.currentUserId ||
+                                        _isParentOrOwner)
+                                    ? () => _confirmAndDelete(reminder)
+                                    : null,
+                                onClaim: () => _claimReminder(reminder),
+                                onClaimAndComplete: () =>
+                                    _claimAndCompleteReminder(reminder),
+                              ),
+                            ),
+                          ],
 
-                      // 4. COMPLETED
-                      if (completedList.isNotEmpty) ...[
-                        ReminderSectionHeader(
-                          title: 'ĐÃ HOÀN THÀNH',
-                          count: completedList.length,
-                          color: const Color(0xFF005F50),
-                          icon: Icons.check_circle_outline_rounded,
-                        ),
-                        ...completedList.map(
-                          (reminder) => ReminderCard(
-                            reminder: reminder,
-                            currentUserId: widget.currentUserId,
-                            onTap: () => _showDetailBottomSheet(reminder),
-                            onDelete: (reminder.creatorId == widget.currentUserId || _isParentOrOwner)
-                                ? () => _confirmAndDelete(reminder)
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ]),
-                  ),
-                ),
-            ],
+                          // 3. PENDING
+                          if (pendingList.isNotEmpty) ...[
+                            ReminderSectionHeader(
+                              title: 'CHỜ THỰC HIỆN',
+                              count: pendingList.length,
+                              color: const Color(0xFF49454F),
+                              icon: Icons.hourglass_top_rounded,
+                            ),
+                            ...pendingList.map(
+                              (reminder) => ReminderCard(
+                                reminder: reminder,
+                                currentUserId: widget.currentUserId,
+                                onTap: () => _showDetailBottomSheet(reminder),
+                                onComplete:
+                                    reminder.assignedTo == widget.currentUserId
+                                        ? () => _completeReminder(reminder)
+                                        : null,
+                                onDelete: (reminder.creatorId ==
+                                            widget.currentUserId ||
+                                        _isParentOrOwner)
+                                    ? () => _confirmAndDelete(reminder)
+                                    : null,
+                                onClaim: reminder.isOpenTask
+                                    ? () => _claimReminder(reminder)
+                                    : null,
+                                onClaimAndComplete: reminder.isOpenTask
+                                    ? () => _claimAndCompleteReminder(reminder)
+                                    : null,
+                              ),
+                            ),
+                          ],
+
+                          // 4. COMPLETED
+                          if (completedList.isNotEmpty) ...[
+                            ReminderSectionHeader(
+                              title: 'ĐÃ HOÀN THÀNH',
+                              count: completedList.length,
+                              color: const Color(0xFF005F50),
+                              icon: Icons.check_circle_outline_rounded,
+                            ),
+                            ...completedList.map(
+                              (reminder) => ReminderCard(
+                                reminder: reminder,
+                                currentUserId: widget.currentUserId,
+                                onTap: () => _showDetailBottomSheet(reminder),
+                                onDelete: (reminder.creatorId ==
+                                            widget.currentUserId ||
+                                        _isParentOrOwner)
+                                    ? () => _confirmAndDelete(reminder)
+                                    : null,
+                              ),
+                            ),
+                          ],
+                        ]),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           );
         },
       ),

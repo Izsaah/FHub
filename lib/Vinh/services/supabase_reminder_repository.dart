@@ -14,7 +14,8 @@ class SupabaseReminderRepository implements ReminderRepository {
     SupabaseClient? client,
     InMemoryReminderRepository? fallbackRepository,
   })  : _client = client ?? SupabaseConfig.client,
-        _fallbackRepository = fallbackRepository ?? InMemoryReminderRepository();
+        _fallbackRepository =
+            fallbackRepository ?? InMemoryReminderRepository();
 
   @override
   Future<List<ReminderModel>> getReminders({required String familyId}) async {
@@ -136,11 +137,8 @@ class SupabaseReminderRepository implements ReminderRepository {
 
     try {
       final payload = sanitizedReminder.toSupabaseMap();
-      final res = await client
-          .from('reminders')
-          .insert(payload)
-          .select()
-          .single();
+      final res =
+          await client.from('reminders').insert(payload).select().single();
 
       final model = ReminderModel.fromJson(Map<String, dynamic>.from(res));
       MultiTierEscalationService.instance.scheduleMultiTierEscalation(model);
@@ -178,11 +176,26 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .eq('id', reminder.id)
           .single();
-      final existing = ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
-      if (existing.creatorId != currentUserId) {
-        throw ReminderPermissionException(
-          'Only the creator can edit this reminder',
+      final isCreator = existing.creatorId == currentUserId;
+      bool isParentOrOwner = false;
+      if (familyMembers != null && familyMembers.isNotEmpty) {
+        final currentMember = familyMembers.firstWhere(
+          (m) => m.id == currentUserId,
+          orElse: () =>
+              const FamilyMember(id: '', name: '', role: '', familyId: ''),
+        );
+        final roleUpper = currentMember.role.toUpperCase();
+        isParentOrOwner = roleUpper.contains('PARENT') ||
+            roleUpper.contains('OWNER') ||
+            roleUpper.contains('GRANDPARENT');
+      }
+
+      if (!isCreator && !isParentOrOwner) {
+        throw const ReminderPermissionException(
+          'Only the creator or a parent/owner can edit this reminder',
         );
       }
 
@@ -223,6 +236,7 @@ class SupabaseReminderRepository implements ReminderRepository {
       final updateMap = {
         'title': sanitizedTitle,
         'assigned_to': reminder.assignedTo,
+        'assigned_to_name': reminder.assignedToName,
         'date': reminder.date,
         'time': reminder.time,
         'repeat_rule': reminder.repeatRule ?? 'NONE',
@@ -232,6 +246,7 @@ class SupabaseReminderRepository implements ReminderRepository {
         'voice_note_path': reminder.voiceNotePath,
         'voice_duration_seconds': reminder.voiceDurationSeconds,
         'voice_note_description': reminder.voiceNoteDescription,
+        'status': reminder.status,
       };
 
       final updateRes = await client
@@ -241,7 +256,8 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .single();
 
-      final model = ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      final model =
+          ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
       MultiTierEscalationService.instance.scheduleMultiTierEscalation(model);
       return model;
     } catch (e) {
@@ -302,8 +318,10 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .single();
 
-      final claimedModel = ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
-      MultiTierEscalationService.instance.scheduleMultiTierEscalation(claimedModel);
+      final claimedModel =
+          ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance
+          .scheduleMultiTierEscalation(claimedModel);
       return claimedModel;
     } catch (e) {
       if (e is ReminderValidationException) rethrow;
@@ -372,7 +390,8 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .eq('id', reminderId)
           .single();
-      final existing = ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
       if (existing.assignedTo != currentUserId) {
         throw ReminderPermissionException(
@@ -415,7 +434,9 @@ class SupabaseReminderRepository implements ReminderRepository {
               'date': nextDateStr,
               'time': existing.time,
               'repeat_rule': existing.repeatRule,
-              'status': existing.isOpenTask ? ReminderStatus.open : ReminderStatus.pending,
+              'status': existing.isOpenTask
+                  ? ReminderStatus.open
+                  : ReminderStatus.pending,
               'requires_proof_image': existing.requiresProofImage,
               'reward_stars': 0,
               'voice_note_path': existing.voiceNotePath,
@@ -427,7 +448,8 @@ class SupabaseReminderRepository implements ReminderRepository {
         }
       }
 
-      final completed = ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      final completed =
+          ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
       MultiTierEscalationService.instance.cancelEscalation(reminderId);
       return completed;
     } catch (e) {
@@ -464,7 +486,8 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .eq('id', reminderId)
           .single();
-      final existing = ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
       // Rule: Cho phép xóa nếu là người tạo HOẶC là Bố/Mẹ/Ông/Bà/Chủ nhà
       final isCreator = existing.creatorId == currentUserId;
@@ -472,9 +495,13 @@ class SupabaseReminderRepository implements ReminderRepository {
       if (familyMembers != null && familyMembers.isNotEmpty) {
         final currentMember = familyMembers.firstWhere(
           (m) => m.id == currentUserId,
-          orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+          orElse: () =>
+              const FamilyMember(id: '', name: '', role: '', familyId: ''),
         );
-        isParentOrOwner = currentMember.isParent || currentMember.isGrandparent;
+        final roleUpper = currentMember.role.toUpperCase();
+        isParentOrOwner = roleUpper.contains('PARENT') ||
+            roleUpper.contains('OWNER') ||
+            roleUpper.contains('GRANDPARENT');
       }
 
       if (!isCreator && !isParentOrOwner) {
@@ -504,12 +531,14 @@ class SupabaseReminderRepository implements ReminderRepository {
   Future<bool> restoreReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   }) async {
     final client = _client;
     if (client == null) {
       return _fallbackRepository.restoreReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        familyMembers: familyMembers,
       );
     }
 
@@ -519,17 +548,41 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .eq('id', reminderId)
           .single();
-      final existing = ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
-      if (existing.creatorId != currentUserId) {
+      final isCreator = existing.creatorId == currentUserId;
+      bool isParentOrOwner = false;
+      if (familyMembers != null && familyMembers.isNotEmpty) {
+        final currentMember = familyMembers.firstWhere(
+          (m) => m.id == currentUserId,
+          orElse: () =>
+              const FamilyMember(id: '', name: '', role: '', familyId: ''),
+        );
+        final roleUpper = currentMember.role.toUpperCase();
+        isParentOrOwner = roleUpper.contains('PARENT') ||
+            roleUpper.contains('OWNER') ||
+            roleUpper.contains('GRANDPARENT');
+      }
+
+      if (!isCreator && !isParentOrOwner) {
         throw ReminderPermissionException(
-          'Only creator can restore this reminder',
+          'Only creator or parent/owner can restore this reminder',
         );
       }
 
+      final isOpenTarget = existing.assignedTo == 'OPEN' ||
+          existing.assignedTo == 'ALL' ||
+          existing.assignedTo.isEmpty;
+      final restoredStatus = isOpenTarget
+          ? ReminderStatus.open
+          : (existing.completedAt != null
+              ? ReminderStatus.completed
+              : ReminderStatus.pending);
+
       await client
           .from('reminders')
-          .update({'status': ReminderStatus.pending})
+          .update({'status': restoredStatus})
           .eq('id', reminderId);
 
       return true;
@@ -538,6 +591,7 @@ class SupabaseReminderRepository implements ReminderRepository {
       return _fallbackRepository.restoreReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        familyMembers: familyMembers,
       );
     }
   }

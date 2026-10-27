@@ -51,7 +51,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   bool _hasFamily = false;
 
   bool _isCalendarView = false;
-  DateTime _currentMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _currentMonth =
+      DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
   bool _showAll = true;
   bool _filterOnlyMine = false;
@@ -106,9 +107,10 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           final fbUser = fbAuth.currentUser;
           if (fbUser != null) {
             userId ??= fbUser.uid;
-            userName ??= (fbUser.displayName != null && fbUser.displayName!.isNotEmpty)
-                ? fbUser.displayName
-                : (fbUser.email?.split('@').first ?? 'Người dùng');
+            userName ??=
+                (fbUser.displayName != null && fbUser.displayName!.isNotEmpty)
+                    ? fbUser.displayName
+                    : (fbUser.email?.split('@').first ?? 'Người dùng');
           }
         } catch (_) {}
       }
@@ -117,13 +119,18 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       userName ??= 'Tôi';
 
       // 2. Resolve Family ID and Members from Cloud Firestore
-      if (Firebase.apps.isNotEmpty && (resolvedFamilyId == null || resolvedMembers.isEmpty)) {
+      if (Firebase.apps.isNotEmpty &&
+          (resolvedFamilyId == null || resolvedMembers.isEmpty)) {
         final firestore = FirebaseFirestore.instance;
 
         // Try getting familyId from user doc
         if (resolvedFamilyId == null) {
           try {
-            final userDoc = await firestore.collection('users').doc(userId).get();
+            final userDoc = await firestore
+                .collection('users')
+                .doc(userId)
+                .get()
+                .timeout(const Duration(seconds: 3));
             if (userDoc.exists && userDoc.data() != null) {
               final fid = userDoc.data()!['familyId']?.toString();
               if (fid != null && fid.isNotEmpty) {
@@ -141,7 +148,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 .where('userId', isEqualTo: userId)
                 .where('status', isEqualTo: 'ACTIVE')
                 .limit(1)
-                .get();
+                .get()
+                .timeout(const Duration(seconds: 3));
             if (memberDocs.docs.isNotEmpty) {
               resolvedFamilyId = (memberDocs.docs.first.data()['familyId'] ??
                       memberDocs.docs.first.data()['family_id'])
@@ -156,7 +164,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             final membersSnap = await firestore
                 .collection('family_members')
                 .where('familyId', isEqualTo: resolvedFamilyId)
-                .get();
+                .get()
+                .timeout(const Duration(seconds: 3));
 
             for (final mDoc in membersSnap.docs) {
               final mData = mDoc.data();
@@ -169,8 +178,11 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
               if (memberName.isEmpty && memberUid.isNotEmpty) {
                 try {
-                  final uDoc =
-                      await firestore.collection('users').doc(memberUid).get();
+                  final uDoc = await firestore
+                      .collection('users')
+                      .doc(memberUid)
+                      .get()
+                      .timeout(const Duration(seconds: 2));
                   if (uDoc.exists && uDoc.data() != null) {
                     memberName = uDoc.data()!['name']?.toString() ??
                         uDoc.data()!['displayName']?.toString() ??
@@ -191,8 +203,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 avatarType: avatarType,
                 familyId: resolvedFamilyId,
                 rewardStarsTotal: (mData['rewardStarsTotal'] ??
-                        mData['reward_stars_total'] ??
-                        0) as int,
+                    mData['reward_stars_total'] ??
+                    0) as int,
               ));
             }
           } catch (_) {}
@@ -242,7 +254,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     widget.onUserChanged?.call(member.id);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Đã chuyển góc nhìn sang ${member.name} (${member.role})'),
+        content:
+            Text('Đã chuyển góc nhìn sang ${member.name} (${member.role})'),
         duration: const Duration(seconds: 1),
       ),
     );
@@ -267,14 +280,17 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     final isCreator = reminder.creatorId == _currentUserId;
     final currentMember = _familyMembers.firstWhere(
       (m) => m.id == _currentUserId,
-      orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      orElse: () =>
+          const FamilyMember(id: '', name: '', role: '', familyId: ''),
     );
-    final isParentOrOwner = currentMember.isParent || currentMember.isGrandparent;
+    final isParentOrOwner =
+        currentMember.isParent || currentMember.isGrandparent;
 
     if (!isCreator && !isParentOrOwner) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Chỉ người tạo hoặc Bố Mẹ/Chủ nhà mới có thể xóa lời nhắc này.'),
+          content: Text(
+              'Chỉ người tạo hoặc Bố Mẹ/Chủ nhà mới có thể xóa lời nhắc này.'),
           backgroundColor: Color(0xFFBA1A1A),
         ),
       );
@@ -323,10 +339,16 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 label: 'HOÀN TÁC',
                 textColor: const Color(0xFFaaffe9),
                 onPressed: () async {
-                  await _repository.restoreReminder(
-                    reminderId: reminder.id,
-                    currentUserId: _currentUserId,
-                  );
+                  try {
+                    await _repository.restoreReminder(
+                      reminderId: reminder.id,
+                      currentUserId: _currentUserId,
+                      familyMembers: _familyMembers,
+                    );
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  } catch (_) {}
                 },
               ),
             ),
@@ -521,65 +543,71 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         body: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE0F2EC),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.family_restroom_rounded,
-                    size: 64,
-                    color: primaryColor,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Cần tham gia Gia đình để sử dụng',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF151D1B),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Tính năng Lời nhắc và Phân công việc nhà hoạt động dựa trên không gian gia đình chung. Bạn chưa tham gia gia đình nào trên hệ thống.\n\nVui lòng tạo gia đình mới hoặc tham gia bằng mã mời để bắt đầu quản lý lời nhắc cùng người thân!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF6E7A75),
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE0F2EC),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.family_restroom_rounded,
+                      size: 64,
+                      color: primaryColor,
                     ),
                   ),
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text(
-                    'Kiểm tra lại trạng thái gia đình',
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Cần tham gia Gia đình để sử dụng',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
+                      color: Color(0xFF151D1B),
                     ),
                   ),
-                  onPressed: () {
-                    setState(() => _isLoading = true);
-                    _resolveContext();
-                  },
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Tính năng Lời nhắc và Phân công việc nhà hoạt động dựa trên không gian gia đình chung. Bạn chưa tham gia gia đình nào trên hệ thống.\n\nVui lòng tạo gia đình mới hoặc tham gia bằng mã mời để bắt đầu quản lý lời nhắc cùng người thân!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF6E7A75),
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text(
+                      'Kiểm tra lại trạng thái gia đình',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onPressed: () {
+                      setState(() => _isLoading = true);
+                      _resolveContext();
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -616,29 +644,34 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   });
                 },
               )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Nhắc việc gia đình',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                      color: primaryColor,
-                      letterSpacing: -0.5,
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Nhắc việc gia đình',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: primaryColor,
+                        letterSpacing: -0.5,
+                      ),
                     ),
-                  ),
-                  Text(
-                    _showAll
-                        ? 'Tất cả nhắc việc gia đình'
-                        : 'Việc ngày ${_formatDate(_selectedDate)}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF3E4946),
-                      fontWeight: FontWeight.w500,
+                    Text(
+                      _showAll
+                          ? 'Tất cả nhắc việc gia đình'
+                          : 'Việc ngày ${_formatDate(_selectedDate)}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF3E4946),
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
         backgroundColor: const Color(0xFFEDF5F2),
         elevation: 1,
@@ -649,8 +682,11 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             icon: Icon(
               _isSearchOpen ? Icons.close : Icons.search,
               color: primaryColor,
+              size: 22,
             ),
             tooltip: _isSearchOpen ? 'Đóng tìm kiếm' : 'Tìm kiếm nhắc nhở',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             onPressed: () {
               setState(() {
                 _isSearchOpen = !_isSearchOpen;
@@ -661,14 +697,15 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               });
             },
           ),
-          // Chuyển đổi thành viên người dùng chủ động
+          // Chuyển đổi thành viên người dùng chủ động (gọn gàng, không tràn tên)
           PopupMenuButton<FamilyMember>(
             tooltip: 'Chuyển đổi góc nhìn thành viên',
+            padding: EdgeInsets.zero,
             icon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 CircleAvatar(
-                  radius: 12,
+                  radius: 11,
                   backgroundColor: primaryColor,
                   child: Text(
                     _currentUserName.isNotEmpty
@@ -676,21 +713,26 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                         : 'U',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 11,
+                      fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  _currentUserName,
-                  style: const TextStyle(
-                    color: textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 65),
+                  child: Text(
+                    _currentUserName,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: const TextStyle(
+                      color: textPrimary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
-                const Icon(Icons.arrow_drop_down, color: textPrimary, size: 18),
+                const Icon(Icons.arrow_drop_down, color: textPrimary, size: 16),
               ],
             ),
             onSelected: _switchUser,
@@ -708,21 +750,17 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                       size: 18,
                     ),
                     const SizedBox(width: 10),
-                    Text('${member.name} (${member.role})'),
+                    Flexible(
+                      child: Text(
+                        '${member.name} (${member.role})',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               );
             }).toList(),
-          ),
-          // Nút tạo lời nhắc nhanh trên thanh AppBar
-          IconButton(
-            icon: const Icon(
-              Icons.add_circle_rounded,
-              color: primaryColor,
-              size: 26,
-            ),
-            tooltip: 'Tạo lời nhắc mới',
-            onPressed: _openCreateReminder,
           ),
           // Chuyển đổi qua lại giữa List View và Calendar View
           IconButton(
@@ -731,20 +769,24 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   ? Icons.format_list_bulleted_rounded
                   : Icons.calendar_month_rounded,
               color: primaryColor,
+              size: 22,
             ),
             tooltip: _isCalendarView
                 ? 'Chuyển sang chế độ Danh sách (List View)'
                 : 'Chuyển sang chế độ Lịch (Calendar View)',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             onPressed: () {
               setState(() {
                 _isCalendarView = !_isCalendarView;
               });
             },
           ),
-          // Menu mở toàn trang Calendar
+          // Menu mở rộng: Trợ lý AI, Tạo lời nhắc, Lịch toàn màn hình
           PopupMenuButton<String>(
             tooltip: 'Tùy chọn khác',
-            icon: const Icon(Icons.more_vert, color: primaryColor),
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.more_vert, color: primaryColor, size: 22),
             onSelected: (val) {
               if (val == 'full_calendar') {
                 Navigator.of(context).push(
@@ -760,34 +802,65 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 );
               } else if (val == 'ai_assistant') {
                 _openAiAssistant();
+              } else if (val == 'create_reminder') {
+                _openCreateReminder();
               }
             },
-            itemBuilder: (ctx) => [
-              const PopupMenuItem(
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(
                 value: 'ai_assistant',
                 child: Row(
                   children: [
                     Icon(Icons.auto_awesome_rounded,
                         size: 18, color: Color(0xFF0D7A68)),
                     SizedBox(width: 8),
-                    Text('Trợ lý AI Gia đình (Gemini)'),
+                    Flexible(
+                      child: Text(
+                        'Trợ lý AI Gia đình (Gemini)',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
+                value: 'create_reminder',
+                child: Row(
+                  children: [
+                    Icon(Icons.add_circle_outline_rounded,
+                        size: 18, color: primaryColor),
+                    SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'Tạo lời nhắc mới',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
                 value: 'full_calendar',
                 child: Row(
                   children: [
                     Icon(Icons.open_in_new_rounded,
                         size: 18, color: primaryColor),
                     SizedBox(width: 8),
-                    Text('Mở trang Lịch toàn màn hình'),
+                    Flexible(
+                      child: Text(
+                        'Mở trang Lịch toàn màn hình',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -801,16 +874,21 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
           // 1. Lọc theo Scope: Tất cả vs Việc của tôi
           final scopedReminders = _filterOnlyMine
-              ? allReminders.where((r) => r.assignedTo == _currentUserId).toList()
+              ? allReminders
+                  .where((r) => r.assignedTo == _currentUserId)
+                  .toList()
               : allReminders;
 
-          // 2. Lọc theo từ khóa tìm kiếm (Title hoặc Tên/Vai trò người nhận)
+          // 2. Lọc theo từ khóa tìm kiếm (Title, Ghi chú giọng nói, hoặc Tên/Vai trò người nhận)
           final searchedReminders = _searchQuery.isEmpty
               ? scopedReminders
               : scopedReminders.where((r) {
-                  final titleMatch = r.title
-                      .toLowerCase()
-                      .contains(_searchQuery.toLowerCase());
+                  final q = _searchQuery.toLowerCase();
+                  final titleMatch = r.title.toLowerCase().contains(q);
+                  final voiceDescMatch =
+                      (r.voiceNoteDescription ?? '').toLowerCase().contains(q);
+                  final directAssigneeMatch =
+                      r.assignedToName.toLowerCase().contains(q);
                   final member = _familyMembers.firstWhere(
                     (m) => m.id == r.assignedTo,
                     orElse: () => const FamilyMember(
@@ -820,13 +898,10 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                       familyId: '',
                     ),
                   );
-                  final assigneeMatch = member.name
-                          .toLowerCase()
-                          .contains(_searchQuery.toLowerCase()) ||
-                      member.role
-                          .toLowerCase()
-                          .contains(_searchQuery.toLowerCase());
-                  return titleMatch || assigneeMatch;
+                  final assigneeMatch = directAssigneeMatch ||
+                      member.name.toLowerCase().contains(q) ||
+                      member.role.toLowerCase().contains(q);
+                  return titleMatch || voiceDescMatch || assigneeMatch;
                 }).toList();
 
           final selectedDateStr = _formatDate(_selectedDate);
@@ -836,98 +911,148 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   .where((r) => r.date == selectedDateStr)
                   .toList();
 
-          return Column(
-            children: [
-              // Thanh lọc phạm vi: [👨‍👩‍👧 Cả nhà] vs [👤 Việc của tôi]
-              ReminderScopeFilterChips(
-                filterOnlyMine: _filterOnlyMine,
-                onScopeChanged: (val) => setState(() => _filterOnlyMine = val),
-              ),
-
-              // Calendar View hoặc Weekly Strip
-              if (_isCalendarView) ...[
-                ReminderCalendarView(
-                  currentMonth: _currentMonth,
-                  selectedDate: _selectedDate,
-                  showAll: _showAll,
-                  reminders: scopedReminders,
-                  selectedDateFormatted: selectedDateStr,
-                  onDateSelected: (date) {
-                    setState(() {
-                      _selectedDate = date;
-                      _showAll = false;
-                    });
-                  },
-                  onMonthChanged: (newMonth) {
-                    setState(() {
-                      _currentMonth = newMonth;
-                    });
-                  },
-                  onShowAllPressed: () => setState(() => _showAll = true),
-                ),
-              ] else
-                WeeklyCalendarStrip(
-                  selectedDate: _selectedDate,
-                  showAll: _showAll,
-                  reminders: scopedReminders,
-                  onDateSelected: (date) {
-                    setState(() {
-                      _selectedDate = date;
-                      _showAll = false;
-                    });
-                  },
-                  onSelectAll: () {
-                    setState(() {
-                      _showAll = true;
-                    });
-                  },
-                ),
-
-              // Family Daily Progress Card
-              FamilyProgressCard(
-                reminders: _showAll ? searchedReminders : displayedReminders,
-                dateTitle: _showAll ? 'Tất cả' : selectedDateStr,
-              ),
-
-              // List View phân nhóm theo 4 mức ưu tiên
-              Expanded(
-                child: ReminderListView(
-                  allReminders: allReminders,
-                  displayedReminders: displayedReminders,
-                  currentUserId: _currentUserId,
-                  selectedDateStr: selectedDateStr,
-                  isShowingAll: _showAll,
-                  isParentOrOwner: _familyMembers.any(
-                    (m) =>
-                        m.id == _currentUserId &&
-                        (m.isParent || m.isGrandparent),
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: Column(
+                children: [
+                  // Thanh lọc phạm vi: [👨‍👩‍👧 Cả nhà] vs [👤 Việc của tôi]
+                  ReminderScopeFilterChips(
+                    filterOnlyMine: _filterOnlyMine,
+                    onScopeChanged: (val) =>
+                        setState(() => _filterOnlyMine = val),
                   ),
-                  onCreatePressed: _openCreateReminder,
-                  onShowAllPressed: () => setState(() => _showAll = true),
-                  onTapReminder: _showDetailBottomSheet,
-                  onCompleteReminder: _completeReminder,
-                  onDeleteReminder: _confirmAndDelete,
-                  onClaimReminder: _claimReminder,
-                  onClaimAndCompleteReminder: _claimAndCompleteReminder,
-                ),
+
+                  // Calendar View hoặc Weekly Strip
+                  if (_isCalendarView) ...[
+                    ReminderCalendarView(
+                      currentMonth: _currentMonth,
+                      selectedDate: _selectedDate,
+                      showAll: _showAll,
+                      reminders: scopedReminders,
+                      selectedDateFormatted: selectedDateStr,
+                      onDateSelected: (date) {
+                        setState(() {
+                          _selectedDate = date;
+                          _showAll = false;
+                        });
+                      },
+                      onMonthChanged: (newMonth) {
+                        setState(() {
+                          _currentMonth = newMonth;
+                        });
+                      },
+                      onShowAllPressed: () => setState(() => _showAll = true),
+                    ),
+                  ] else
+                    WeeklyCalendarStrip(
+                      selectedDate: _selectedDate,
+                      showAll: _showAll,
+                      reminders: scopedReminders,
+                      onDateSelected: (date) {
+                        setState(() {
+                          _selectedDate = date;
+                          _showAll = false;
+                        });
+                      },
+                      onSelectAll: () {
+                        setState(() {
+                          _showAll = true;
+                        });
+                      },
+                    ),
+
+                  // Family Daily Progress Card
+                  FamilyProgressCard(
+                    reminders: _showAll ? searchedReminders : displayedReminders,
+                    dateTitle: _showAll ? 'Tất cả' : selectedDateStr,
+                  ),
+
+                  // List View phân nhóm theo 4 mức ưu tiên
+                  Expanded(
+                    child: ReminderListView(
+                      allReminders: allReminders,
+                      displayedReminders: displayedReminders,
+                      currentUserId: _currentUserId,
+                      selectedDateStr: selectedDateStr,
+                      isShowingAll: _showAll,
+                      isParentOrOwner: _familyMembers.any(
+                        (m) =>
+                            m.id == _currentUserId &&
+                            (m.isParent || m.isGrandparent),
+                      ),
+                      onCreatePressed: _openCreateReminder,
+                      onShowAllPressed: () => setState(() => _showAll = true),
+                      onTapReminder: _showDetailBottomSheet,
+                      onCompleteReminder: _completeReminder,
+                      onDeleteReminder: _confirmAndDelete,
+                      onClaimReminder: _claimReminder,
+                      onClaimAndCompleteReminder: _claimAndCompleteReminder,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           );
         },
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'fab_create_reminder',
-        onPressed: _openCreateReminder,
-        backgroundColor: primaryColor,
-        elevation: 4,
-        icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
-        label: const Text(
-          'Tạo lời nhắc',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: FloatingActionButton.extended(
+                  heroTag: 'fab_create_reminder',
+                  onPressed: _openCreateReminder,
+                  backgroundColor: primaryColor,
+                  elevation: 4,
+                  icon: const Icon(
+                    Icons.add_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                  label: const Text(
+                    'Tạo lời nhắc',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: FloatingActionButton.extended(
+                  heroTag: 'fab_ai_assistant',
+                  onPressed: _openAiAssistant,
+                  backgroundColor: primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 4,
+                  icon: const Icon(
+                    Icons.auto_awesome,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  label: const Text(
+                    'Trợ lý AI',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

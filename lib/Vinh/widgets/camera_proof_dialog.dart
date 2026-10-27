@@ -118,7 +118,8 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
     if (_capturedImagePath == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng chụp ảnh bằng Camera của máy trước khi xác nhận!'),
+          content: Text(
+              'Vui lòng chụp ảnh bằng Camera của máy trước khi xác nhận!'),
           backgroundColor: Color(0xFFBA1A1A),
         ),
       );
@@ -230,6 +231,8 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                         children: [
                           const Text(
                             'Chụp ảnh nghiệm thu bằng máy',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 16,
@@ -277,11 +280,16 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                                 ? null
                                 : () => _pickImage(ImageSource.camera),
                             child: Container(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
                               decoration: const BoxDecoration(
                                 gradient: RadialGradient(
                                   center: Alignment.center,
                                   radius: 1.0,
-                                  colors: [Color(0xFF23302C), Color(0xFF101715)],
+                                  colors: [
+                                    Color(0xFF23302C),
+                                    Color(0xFF101715)
+                                  ],
                                 ),
                               ),
                               child: Center(
@@ -311,6 +319,7 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                                           const SizedBox(height: 12),
                                           const Text(
                                             'Chạm vào đây để mở Camera máy',
+                                            textAlign: TextAlign.center,
                                             style: TextStyle(
                                               color: Colors.white,
                                               fontSize: 14,
@@ -320,6 +329,7 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                                           const SizedBox(height: 4),
                                           const Text(
                                             'Chụp ảnh thực tế công việc đã hoàn thành',
+                                            textAlign: TextAlign.center,
                                             style: TextStyle(
                                               color: Color(0xFF9AA7A2),
                                               fontSize: 11,
@@ -348,21 +358,28 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.verified,
-                                        color: tealAccent, size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      widget.currentUserName,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.verified,
+                                          color: tealAccent, size: 14),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          widget.currentUserName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
+                                const SizedBox(width: 8),
                                 Text(
                                   timestamp,
                                   style: const TextStyle(
@@ -397,12 +414,16 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        Text(
-                          '* (Bắt buộc)',
-                          style: TextStyle(
-                            color: Color(0xFFFF8A80),
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                        Flexible(
+                          child: Text(
+                            '* (Bắt buộc)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Color(0xFFFF8A80),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],
@@ -472,6 +493,8 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                               icon: const Icon(Icons.camera_alt_rounded),
                               label: const Text(
                                 'Mở Camera Chụp',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 14),
                               ),
@@ -504,7 +527,8 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.white70,
-                                side: const BorderSide(color: Color(0xFF3E4D49)),
+                                side:
+                                    const BorderSide(color: Color(0xFF3E4D49)),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -512,7 +536,11 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                                     const EdgeInsets.symmetric(vertical: 12),
                               ),
                               icon: const Icon(Icons.refresh, size: 18),
-                              label: const Text('Chụp lại'),
+                              label: const Text(
+                                'Chụp lại',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                               onPressed: _retakePhoto,
                             ),
                           ),
@@ -533,6 +561,8 @@ class _CameraProofDialogState extends State<CameraProofDialog> {
                                   size: 18),
                               label: const Text(
                                 'Xác nhận hoàn thành',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14,

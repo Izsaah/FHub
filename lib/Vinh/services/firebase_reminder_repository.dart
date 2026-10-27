@@ -35,7 +35,8 @@ class FirebaseReminderRepository implements ReminderRepository {
       try {
         return FirebaseFirestore.instance;
       } catch (e) {
-        debugPrint('FirebaseReminderRepository: Firestore instance unavailable: $e');
+        debugPrint(
+            'FirebaseReminderRepository: Firestore instance unavailable: $e');
         return null;
       }
     }
@@ -247,7 +248,8 @@ class FirebaseReminderRepository implements ReminderRepository {
     );
 
     await docRef.set(newReminder.toFirestoreMap());
-    MultiTierEscalationService.instance.scheduleMultiTierEscalation(newReminder);
+    MultiTierEscalationService.instance
+        .scheduleMultiTierEscalation(newReminder);
     return newReminder;
   }
 
@@ -286,10 +288,24 @@ class FirebaseReminderRepository implements ReminderRepository {
     existingData['id'] = docSnap.id;
     final existing = ReminderModel.fromJson(existingData);
 
-    // Rule: Chỉ người tạo mới được sửa
-    if (existing.creatorId != currentUserId) {
+    // Rule: Chỉ người tạo HOẶC Cha Mẹ/Chủ nhà mới được sửa
+    final isCreator = existing.creatorId == currentUserId;
+    bool isParentOrOwner = false;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      final currentMember = familyMembers.firstWhere(
+        (m) => m.id == currentUserId,
+        orElse: () =>
+            const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      );
+      final roleUpper = currentMember.role.toUpperCase();
+      isParentOrOwner = roleUpper.contains('PARENT') ||
+          roleUpper.contains('OWNER') ||
+          roleUpper.contains('GRANDPARENT');
+    }
+
+    if (!isCreator && !isParentOrOwner) {
       throw const ReminderPermissionException(
-        'Only the creator can edit this reminder',
+        'Only the creator or a parent/owner can edit this reminder',
       );
     }
 
@@ -342,6 +358,7 @@ class FirebaseReminderRepository implements ReminderRepository {
       voiceNotePath: reminder.voiceNotePath,
       voiceDurationSeconds: reminder.voiceDurationSeconds,
       voiceNoteDescription: reminder.voiceNoteDescription,
+      clearVoiceNote: reminder.voiceNotePath == null,
       status: reminder.status,
     );
 
@@ -531,7 +548,8 @@ class FirebaseReminderRepository implements ReminderRepository {
           date: nextDateStr,
           time: existing.time,
           repeatRule: existing.repeatRule,
-          status: existing.isOpenTask ? ReminderStatus.open : ReminderStatus.pending,
+          status:
+              existing.isOpenTask ? ReminderStatus.open : ReminderStatus.pending,
           requiresProofImage: existing.requiresProofImage,
           rewardStars: 0,
           voiceNotePath: existing.voiceNotePath,
@@ -540,7 +558,8 @@ class FirebaseReminderRepository implements ReminderRepository {
           createdAt: now,
         );
         await nextDocRef.set(nextReminder.toFirestoreMap());
-        MultiTierEscalationService.instance.scheduleMultiTierEscalation(nextReminder);
+        MultiTierEscalationService.instance
+            .scheduleMultiTierEscalation(nextReminder);
       }
     }
 
@@ -585,9 +604,13 @@ class FirebaseReminderRepository implements ReminderRepository {
     if (familyMembers != null && familyMembers.isNotEmpty) {
       final currentMember = familyMembers.firstWhere(
         (m) => m.id == currentUserId,
-        orElse: () => const FamilyMember(id: '', name: '', role: '', familyId: ''),
+        orElse: () =>
+            const FamilyMember(id: '', name: '', role: '', familyId: ''),
       );
-      isParentOrOwner = currentMember.isParent || currentMember.isGrandparent;
+      final roleUpper = currentMember.role.toUpperCase();
+      isParentOrOwner = roleUpper.contains('PARENT') ||
+          roleUpper.contains('OWNER') ||
+          roleUpper.contains('GRANDPARENT');
     }
 
     if (!isCreator && !isParentOrOwner) {
@@ -610,6 +633,7 @@ class FirebaseReminderRepository implements ReminderRepository {
   Future<bool> restoreReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   }) async {
     final col = _remindersCollection;
     final fallback = _fallbackRepository;
@@ -618,6 +642,7 @@ class FirebaseReminderRepository implements ReminderRepository {
         return fallback.restoreReminder(
           reminderId: reminderId,
           currentUserId: currentUserId,
+          familyMembers: familyMembers,
         );
       }
       throw Exception('Firestore is not available');
@@ -632,14 +657,37 @@ class FirebaseReminderRepository implements ReminderRepository {
     final existingData = Map<String, dynamic>.from(docSnap.data()!);
     final existing = ReminderModel.fromJson(existingData);
 
-    if (existing.creatorId != currentUserId) {
+    final isCreator = existing.creatorId == currentUserId;
+    bool isParentOrOwner = false;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      final currentMember = familyMembers.firstWhere(
+        (m) => m.id == currentUserId,
+        orElse: () =>
+            const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      );
+      final roleUpper = currentMember.role.toUpperCase();
+      isParentOrOwner = roleUpper.contains('PARENT') ||
+          roleUpper.contains('OWNER') ||
+          roleUpper.contains('GRANDPARENT');
+    }
+
+    if (!isCreator && !isParentOrOwner) {
       throw const ReminderPermissionException(
-        'Only creator can restore this reminder',
+        'Only creator or parent/owner can restore this reminder',
       );
     }
 
+    final isOpenTarget = existing.assignedTo == 'OPEN' ||
+        existing.assignedTo == 'ALL' ||
+        existing.assignedTo.isEmpty;
+    final restoredStatus = isOpenTarget
+        ? ReminderStatus.open
+        : (existing.completedAt != null
+            ? ReminderStatus.completed
+            : ReminderStatus.pending);
+
     await docRef.update({
-      'status': ReminderStatus.pending,
+      'status': restoredStatus,
     });
 
     return true;

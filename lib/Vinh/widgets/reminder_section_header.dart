@@ -26,20 +26,26 @@ class ReminderSectionHeader extends StatelessWidget {
             Icon(icon, size: 16, color: textColor),
             const SizedBox(width: 6),
           ],
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.1,
-              color: textColor,
+          Flexible(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.1,
+                color: textColor,
+              ),
             ),
           ),
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: color != null ? color!.withValues(alpha: 0.12) : const Color(0xFFE2EAE7),
+              color: color != null
+                  ? color!.withValues(alpha: 0.12)
+                  : const Color(0xFFE2EAE7),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(

@@ -37,12 +37,16 @@ class ChoreRewardCard extends StatelessWidget {
                   size: 22,
                 ),
                 SizedBox(width: 8),
-                Text(
-                  'Nghiệm thu hoàn thành việc nhà',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: textPrimary,
+                Expanded(
+                  child: Text(
+                    'Nghiệm thu hoàn thành việc nhà',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: textPrimary,
+                    ),
                   ),
                 ),
               ],
