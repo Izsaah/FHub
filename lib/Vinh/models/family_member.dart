@@ -104,3 +104,39 @@ class FamilyMember {
   @override
   int get hashCode => id.hashCode;
 }
+
+
+/// Đại diện cho một Gia đình mà người dùng tham gia (Hỗ trợ 1 người tham gia N gia đình)
+class FamilyOption {
+  final String id;
+  final String name;
+  final String? joinCode;
+  final String? role;
+
+  const FamilyOption({
+    required this.id,
+    required this.name,
+    this.joinCode,
+    this.role,
+  });
+
+  /// Sắp xếp danh sách gia đình theo thứ tự bảng chữ cái (A -> Z)
+  static List<FamilyOption> sortAlphabetically(Iterable<FamilyOption> items) {
+    final list = List<FamilyOption>.from(items);
+    list.sort(
+      (a, b) =>
+          a.name.trim().toLowerCase().compareTo(b.name.trim().toLowerCase()),
+    );
+    return list;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FamilyOption &&
+          runtimeType == other.runtimeType &&
+          id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+}

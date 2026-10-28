@@ -11,6 +11,7 @@ class ReminderStatus {
 class ReminderModel {
   final String id;
   final String familyId;
+  final String? familyName;
   final String creatorId;
   final String? creatorName;
   final String assignedTo;
@@ -32,6 +33,7 @@ class ReminderModel {
   const ReminderModel({
     required this.id,
     required this.familyId,
+    this.familyName,
     required this.creatorId,
     this.creatorName,
     required this.assignedTo,
@@ -150,6 +152,7 @@ class ReminderModel {
   ReminderModel copyWith({
     String? id,
     String? familyId,
+    String? familyName,
     String? creatorId,
     String? creatorName,
     String? assignedTo,
@@ -172,6 +175,7 @@ class ReminderModel {
     return ReminderModel(
       id: id ?? this.id,
       familyId: familyId ?? this.familyId,
+      familyName: familyName ?? this.familyName,
       creatorId: creatorId ?? this.creatorId,
       creatorName: creatorName ?? this.creatorName,
       assignedTo: assignedTo ?? this.assignedTo,
@@ -215,6 +219,8 @@ class ReminderModel {
     return ReminderModel(
       id: (json['id'] ?? '').toString(),
       familyId: (json['family_id'] ?? json['familyId'] ?? '').toString(),
+      familyName:
+          json['family_name'] as String? ?? json['familyName'] as String?,
       creatorId: (json['creator_id'] ?? json['creatorId'] ?? '').toString(),
       creatorName: json['creator_name'] as String? ?? json['creatorName'] as String?,
       assignedTo: (json['assigned_to'] ?? json['assignedTo'] ?? '').toString(),
@@ -261,6 +267,10 @@ class ReminderModel {
       'id': id,
       'familyId': familyId,
       'family_id': familyId,
+      if (familyName != null) ...{
+        'familyName': familyName,
+        'family_name': familyName,
+      },
       'creatorId': creatorId,
       'creator_id': creatorId,
       'creatorName': creatorName,
@@ -334,6 +344,10 @@ class ReminderModel {
     return {
       'familyId': familyId,
       'family_id': familyId,
+      if (familyName != null) ...{
+        'familyName': familyName,
+        'family_name': familyName,
+      },
       'creatorId': creatorId,
       'creator_id': creatorId,
       if (creatorName != null) ...{

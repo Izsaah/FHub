@@ -10,6 +10,9 @@ import '../widgets/voice_recorder_widget.dart';
 
 class CreateReminderScreen extends StatefulWidget {
   final String familyId;
+  final String? familyName;
+  final List<FamilyOption>? families;
+  final Map<String, List<FamilyMember>>? membersByFamilyId;
   final String currentUserId;
   final String currentUserName;
   final List<FamilyMember> familyMembers;
@@ -19,6 +22,9 @@ class CreateReminderScreen extends StatefulWidget {
   const CreateReminderScreen({
     super.key,
     required this.familyId,
+    this.familyName,
+    this.families,
+    this.membersByFamilyId,
     required this.currentUserId,
     this.currentUserName = 'Me',
     required this.familyMembers,
@@ -36,6 +42,11 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
 
+  late String _activeFamilyId;
+  late String? _activeFamilyName;
+  late List<FamilyOption> _families;
+  late List<FamilyMember> _activeMembers;
+
   FamilyMember? _selectedMember;
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
@@ -51,7 +62,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
 
   FamilyMember? get _currentMember {
     try {
-      return widget.familyMembers.firstWhere(
+      return _activeMembers.firstWhere(
         (m) => m.id == widget.currentUserId,
       );
     } catch (_) {
@@ -89,9 +100,30 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   @override
   void initState() {
     super.initState();
+    _families = widget.families != null && widget.families!.isNotEmpty
+        ? FamilyOption.sortAlphabetically(widget.families!)
+        : [
+            FamilyOption(
+              id: widget.familyId,
+              name: widget.familyName ?? 'Gia đình của tôi',
+            ),
+          ];
+    _activeFamilyId = widget.familyId;
+    _activeFamilyName = widget.familyName ??
+        _families
+            .where((f) => f.id == widget.familyId)
+            .map((f) => f.name)
+            .firstOrNull;
+    _activeMembers = widget.membersByFamilyId?[_activeFamilyId] ??
+        List<FamilyMember>.from(widget.familyMembers);
+
     final existing = widget.existingReminder;
 
     if (existing != null) {
+      _activeFamilyId = existing.familyId;
+      _activeFamilyName = existing.familyName ?? _activeFamilyName;
+      _activeMembers = widget.membersByFamilyId?[_activeFamilyId] ??
+          List<FamilyMember>.from(widget.familyMembers);
       _titleController.text = existing.title;
       _voiceNotePath = existing.voiceNotePath;
       _voiceDurationSeconds = existing.voiceDurationSeconds;
@@ -119,13 +151,13 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           familyId: '',
         );
       } else {
-        _selectedMember = widget.familyMembers.firstWhere(
+        _selectedMember = _activeMembers.firstWhere(
           (m) => m.id == existing.assignedTo,
           orElse: () => FamilyMember(
             id: existing.assignedTo,
             name: existing.assignedToName,
             role: 'Member',
-            familyId: widget.familyId,
+            familyId: _activeFamilyId,
           ),
         );
       }
@@ -138,11 +170,11 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       // Default member: Nếu là con cái thì mặc định là chính mình; Bố Mẹ thì gán cho thành viên khác
       if (!_canAssignChores) {
         _selectedMember = _currentMember ??
-            (widget.familyMembers.isNotEmpty ? widget.familyMembers.first : null);
-      } else if (widget.familyMembers.isNotEmpty) {
-        _selectedMember = widget.familyMembers.firstWhere(
+            (_activeMembers.isNotEmpty ? _activeMembers.first : null);
+      } else if (_activeMembers.isNotEmpty) {
+        _selectedMember = _activeMembers.firstWhere(
           (m) => m.id != widget.currentUserId,
-          orElse: () => widget.familyMembers.first,
+          orElse: () => _activeMembers.first,
         );
       }
     }
@@ -256,7 +288,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     }
     final picked = await MemberPickerBottomSheet.show(
       context,
-      familyMembers: widget.familyMembers,
+      familyMembers: _activeMembers,
       selectedMember: _selectedMember,
     );
     if (picked != null) {
@@ -304,6 +336,8 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         }
 
         final updated = widget.existingReminder!.copyWith(
+          familyId: _activeFamilyId,
+          familyName: _activeFamilyName,
           title: _titleController.text.trim(),
           assignedTo: isNowOpenTask ? '' : _selectedMember!.id,
           assignedToName: isNowOpenTask ? 'Cả nhà' : _selectedMember!.name,
@@ -322,7 +356,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         final saved = await widget.repository.updateReminder(
           reminder: updated,
           currentUserId: widget.currentUserId,
-          familyMembers: widget.familyMembers,
+          familyMembers: _activeMembers,
         );
 
         if (mounted) {
@@ -337,7 +371,8 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       } else {
         final newReminder = ReminderModel(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
-          familyId: widget.familyId,
+          familyId: _activeFamilyId,
+          familyName: _activeFamilyName,
           creatorId: widget.currentUserId,
           creatorName: widget.currentUserName,
           title: _titleController.text.trim(),
@@ -358,7 +393,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         final created = await widget.repository.createReminder(
           reminder: newReminder,
           currentUserId: widget.currentUserId,
-          familyMembers: widget.familyMembers,
+          familyMembers: _activeMembers,
         );
 
         if (mounted) {
@@ -434,6 +469,111 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 0. CHỌN GIA ĐÌNH (Nếu có thông tin gia đình hoặc tham gia > 1 gia đình)
+                    if (_families.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFBDC9C4)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.home_work_rounded,
+                              color: primaryColor,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 10),
+                            const Text(
+                              'Gia đình:',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: textMuted,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: (!widget.isEditing && _families.length > 1)
+                                  ? DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: _families.any(
+                                                (f) => f.id == _activeFamilyId)
+                                            ? _activeFamilyId
+                                            : _families.first.id,
+                                        isDense: true,
+                                        isExpanded: true,
+                                        icon: const Icon(
+                                          Icons.keyboard_arrow_down_rounded,
+                                          color: primaryColor,
+                                        ),
+                                        items: _families.map((fam) {
+                                          return DropdownMenuItem<String>(
+                                            value: fam.id,
+                                            child: Text(
+                                              fam.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w700,
+                                                color: primaryColor,
+                                              ),
+                                            ),
+                                          );
+                                        }).toList(),
+                                        onChanged: (newFamId) {
+                                          if (newFamId == null ||
+                                              newFamId == _activeFamilyId) {
+                                            return;
+                                          }
+                                          final selectedFam = _families
+                                              .firstWhere((f) => f.id == newFamId);
+                                          final newMembers = widget
+                                                  .membersByFamilyId?[newFamId] ??
+                                              widget.familyMembers;
+                                          setState(() {
+                                            _activeFamilyId = newFamId;
+                                            _activeFamilyName = selectedFam.name;
+                                            _activeMembers = List<FamilyMember>.from(
+                                                newMembers);
+                                            if (_selectedMember != null &&
+                                                _selectedMember!.id != 'OPEN') {
+                                              _selectedMember = _activeMembers
+                                                      .isNotEmpty
+                                                  ? _activeMembers.firstWhere(
+                                                      (m) =>
+                                                          m.id !=
+                                                          widget.currentUserId,
+                                                      orElse: () =>
+                                                          _activeMembers.first,
+                                                    )
+                                                  : null;
+                                            }
+                                          });
+                                        },
+                                      ),
+                                    )
+                                  : Text(
+                                      _activeFamilyName ?? 'Gia đình của tôi',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: primaryColor,
+                                      ),
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
                     // 1. TIÊU ĐỀ
                     const Text(
                       'Nội dung việc cần làm *',

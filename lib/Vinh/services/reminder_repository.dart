@@ -14,6 +14,12 @@ export 'supabase_reminder_repository.dart';
 abstract class ReminderRepository {
   Future<List<ReminderModel>> getReminders({required String familyId});
   Stream<List<ReminderModel>> watchReminders({required String familyId});
+  Future<List<ReminderModel>> getRemindersForFamilies({
+    required List<String> familyIds,
+  });
+  Stream<List<ReminderModel>> watchRemindersForFamilies({
+    required List<String> familyIds,
+  });
   Future<List<ReminderModel>> getPendingReminders({required String familyId});
   Future<List<ReminderModel>> getCompletedReminders({required String familyId});
 
@@ -207,9 +213,7 @@ class InMemoryReminderRepository implements ReminderRepository {
   }
 
   void _notify(String familyId) {
-    final active = _reminders
-        .where((r) => r.familyId == familyId && !r.isDeleted)
-        .toList();
+    final active = _reminders.where((r) => !r.isDeleted).toList();
     _controller.add(List.unmodifiable(active));
   }
 
@@ -226,6 +230,33 @@ class InMemoryReminderRepository implements ReminderRepository {
     yield* _controller.stream.map(
       (list) =>
           list.where((r) => r.familyId == familyId && !r.isDeleted).toList(),
+    );
+  }
+
+  @override
+  Future<List<ReminderModel>> getRemindersForFamilies({
+    required List<String> familyIds,
+  }) async {
+    if (familyIds.isEmpty) return [];
+    final idSet = familyIds.toSet();
+    return _reminders
+        .where((r) => idSet.contains(r.familyId) && !r.isDeleted)
+        .toList();
+  }
+
+  @override
+  Stream<List<ReminderModel>> watchRemindersForFamilies({
+    required List<String> familyIds,
+  }) async* {
+    if (familyIds.isEmpty) {
+      yield [];
+      return;
+    }
+    final idSet = familyIds.toSet();
+    yield await getRemindersForFamilies(familyIds: familyIds);
+    yield* _controller.stream.map(
+      (list) =>
+          list.where((r) => idSet.contains(r.familyId) && !r.isDeleted).toList(),
     );
   }
 

@@ -16,6 +16,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   final ReminderModel reminder;
   final String currentUserId;
   final String currentUserName;
+  final String? familyName;
   final ReminderRepository repository;
   final List<FamilyMember> familyMembers;
   final VoidCallback? onReminderUpdated;
@@ -25,6 +26,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     required this.reminder,
     required this.currentUserId,
     this.currentUserName = 'Tôi',
+    this.familyName,
     required this.repository,
     this.familyMembers = const [],
     this.onReminderUpdated,
@@ -35,6 +37,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     required ReminderModel reminder,
     required String currentUserId,
     String currentUserName = 'Tôi',
+    String? familyName,
     required ReminderRepository repository,
     List<FamilyMember> familyMembers = const [],
     VoidCallback? onReminderUpdated,
@@ -47,6 +50,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         reminder: reminder,
         currentUserId: currentUserId,
         currentUserName: currentUserName,
+        familyName: familyName,
         repository: repository,
         familyMembers: familyMembers,
         onReminderUpdated: onReminderUpdated,
@@ -520,7 +524,53 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
 
-                  // Chi tiết: Người nhận, Giờ, Ngày, Lặp lại, Nghiệm thu, Trạng thái
+                  // Chi tiết: Gia đình, Người nhận, Giờ, Ngày, Lặp lại, Nghiệm thu, Trạng thái
+                  _buildDetailRow(
+                    icon: Icons.home_work_outlined,
+                    label: 'Gia đình',
+                    valueWidget: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE4F6EF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.home_rounded,
+                            size: 15,
+                            color: Color(0xFF005F50),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              (familyName != null &&
+                                      familyName!.trim().isNotEmpty)
+                                  ? familyName!.trim()
+                                  : ((reminder.familyName != null &&
+                                          reminder.familyName!
+                                              .trim()
+                                              .isNotEmpty)
+                                      ? reminder.familyName!.trim()
+                                      : (reminder.familyId.isNotEmpty
+                                          ? reminder.familyId
+                                          : 'Gia đình của tôi')),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF005F50),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   _buildDetailRow(
                     icon: Icons.person_outline,
                     label: 'Giao cho',

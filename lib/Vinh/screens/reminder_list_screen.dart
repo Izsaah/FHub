@@ -21,6 +21,8 @@ import 'views/reminder_list_view.dart';
 /// Điều phối giữa List View và Calendar View, tìm kiếm, lọc theo người và ngày.
 class ReminderListScreen extends StatefulWidget {
   final String? familyId;
+  final List<FamilyOption>? families;
+  final Map<String, List<FamilyMember>>? membersByFamilyId;
   final String? currentUserId;
   final String? currentUserName;
   final List<FamilyMember>? familyMembers;
@@ -30,6 +32,8 @@ class ReminderListScreen extends StatefulWidget {
   const ReminderListScreen({
     super.key,
     this.familyId,
+    this.families,
+    this.membersByFamilyId,
     this.currentUserId,
     this.currentUserName,
     this.familyMembers,
@@ -42,13 +46,21 @@ class ReminderListScreen extends StatefulWidget {
 }
 
 class _ReminderListScreenState extends State<ReminderListScreen> {
-  late String _familyId;
+  String _familyId = '';
+  List<FamilyOption> _families = [];
+  Map<String, String> _familyNamesById = {};
+  Map<String, List<FamilyMember>> _membersByFamilyId = {};
   late String _currentUserId;
   late String _currentUserName;
   late List<FamilyMember> _familyMembers;
   late ReminderRepository _repository;
   bool _isLoading = true;
   bool _hasFamily = false;
+
+  String get _currentFamilyName =>
+      _familyNamesById[_familyId] ??
+      (_families.where((f) => f.id == _familyId).map((f) => f.name).firstOrNull ??
+          'Gia đình của tôi');
 
   bool _isCalendarView = false;
   DateTime _currentMonth =
@@ -75,12 +87,47 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.familyId != null &&
+    if (widget.families != null &&
+        widget.families!.isNotEmpty &&
+        widget.currentUserId != null) {
+      _hasFamily = true;
+      _families = FamilyOption.sortAlphabetically(widget.families!);
+      _familyNamesById = {for (final f in _families) f.id: f.name};
+      if (widget.familyId != null &&
+          widget.familyId!.isNotEmpty &&
+          _families.any((f) => f.id == widget.familyId)) {
+        _familyId = widget.familyId!;
+      } else {
+        // Mặc định chọn family đầu tiên theo bảng chữ cái (Alphabet A -> Z)
+        _familyId = _families.first.id;
+      }
+      _currentUserId = widget.currentUserId!;
+      _currentUserName = widget.currentUserName ?? 'Minh';
+      _membersByFamilyId = widget.membersByFamilyId != null
+          ? Map<String, List<FamilyMember>>.from(widget.membersByFamilyId!)
+          : {};
+      if (widget.familyMembers != null &&
+          !_membersByFamilyId.containsKey(_familyId)) {
+        _membersByFamilyId[_familyId] =
+            List<FamilyMember>.from(widget.familyMembers!);
+      }
+      _familyMembers =
+          _membersByFamilyId[_familyId] ?? widget.familyMembers ?? [];
+      _repository = widget.repository ?? FirebaseReminderRepository();
+      _isLoading = false;
+    } else if (widget.familyId != null &&
         widget.familyId!.isNotEmpty &&
         widget.currentUserId != null &&
         widget.familyMembers != null) {
       _hasFamily = true;
       _familyId = widget.familyId!;
+      _families = [
+        FamilyOption(id: _familyId, name: 'Gia đình của tôi'),
+      ];
+      _familyNamesById = {_familyId: 'Gia đình của tôi'};
+      _membersByFamilyId = {
+        _familyId: List<FamilyMember>.from(widget.familyMembers!),
+      };
       _currentUserId = widget.currentUserId!;
       _currentUserName = widget.currentUserName ?? 'Minh';
       _familyMembers = widget.familyMembers!;
@@ -91,14 +138,78 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     }
   }
 
+  Future<List<FamilyMember>> _loadMembersForFamilyFromFirestore(
+    FirebaseFirestore firestore,
+    String famId,
+    String currentUid,
+    String currentUname,
+  ) async {
+    final List<FamilyMember> members = [];
+    try {
+      final membersSnap = await firestore
+          .collection('family_members')
+          .where('familyId', isEqualTo: famId)
+          .get()
+          .timeout(const Duration(seconds: 3));
+
+      for (final mDoc in membersSnap.docs) {
+        final mData = mDoc.data();
+        final status = (mData['status'] ?? 'ACTIVE').toString();
+        if (status != 'ACTIVE') continue;
+
+        final memberUid =
+            (mData['userId'] ?? mData['user_id'] ?? '').toString();
+        final role = (mData['role'] ?? 'Member').toString();
+        String memberName =
+            (mData['name'] ?? mData['userName'] ?? '').toString();
+        String? avatarType = mData['avatarType']?.toString();
+
+        if (memberName.isEmpty && memberUid.isNotEmpty) {
+          try {
+            final uDoc = await firestore
+                .collection('users')
+                .doc(memberUid)
+                .get()
+                .timeout(const Duration(seconds: 2));
+            if (uDoc.exists && uDoc.data() != null) {
+              memberName = uDoc.data()!['name']?.toString() ??
+                  uDoc.data()!['displayName']?.toString() ??
+                  '';
+              avatarType ??= uDoc.data()!['avatar_type']?.toString();
+            }
+          } catch (_) {}
+        }
+
+        if (memberName.isEmpty) {
+          memberName = memberUid == currentUid ? currentUname : 'Thành viên';
+        }
+
+        members.add(FamilyMember(
+          id: memberUid.isNotEmpty ? memberUid : mDoc.id,
+          name: memberName,
+          role: role,
+          avatarType: avatarType,
+          familyId: famId,
+          rewardStarsTotal: (mData['rewardStarsTotal'] ??
+              mData['reward_stars_total'] ??
+              0) as int,
+        ));
+      }
+    } catch (_) {}
+    return members;
+  }
+
   Future<void> _resolveContext() async {
     try {
       String? userId = widget.currentUserId;
       String? userName = widget.currentUserName;
-      String? resolvedFamilyId = widget.familyId;
-      List<FamilyMember> resolvedMembers = widget.familyMembers != null
-          ? List<FamilyMember>.from(widget.familyMembers!)
+      List<FamilyOption> resolvedFamilies = widget.families != null
+          ? List<FamilyOption>.from(widget.families!)
           : [];
+      Map<String, List<FamilyMember>> resolvedMembersByFam =
+          widget.membersByFamilyId != null
+              ? Map<String, List<FamilyMember>>.from(widget.membersByFamilyId!)
+              : {};
 
       // 1. Resolve Current User from Firebase Auth
       if (Firebase.apps.isNotEmpty) {
@@ -118,107 +229,146 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       userId ??= 'current_user';
       userName ??= 'Tôi';
 
-      // 2. Resolve Family ID and Members from Cloud Firestore
-      if (Firebase.apps.isNotEmpty &&
-          (resolvedFamilyId == null || resolvedMembers.isEmpty)) {
+      // 2. Resolve ALL Families (1 người có thể tham gia N gia đình) and Members from Cloud Firestore
+      if (Firebase.apps.isNotEmpty && resolvedFamilies.isEmpty) {
         final firestore = FirebaseFirestore.instance;
+        final Map<String, String> familyIdToRole = {};
 
-        // Try getting familyId from user doc
-        if (resolvedFamilyId == null) {
-          try {
-            final userDoc = await firestore
-                .collection('users')
-                .doc(userId)
-                .get()
-                .timeout(const Duration(seconds: 3));
-            if (userDoc.exists && userDoc.data() != null) {
-              final fid = userDoc.data()!['familyId']?.toString();
-              if (fid != null && fid.isNotEmpty) {
-                resolvedFamilyId = fid;
-              }
+        // 2a. Lấy tất cả các family_members đang ACTIVE của người dùng
+        try {
+          final memberDocs = await firestore
+              .collection('family_members')
+              .where('userId', isEqualTo: userId)
+              .get()
+              .timeout(const Duration(seconds: 3));
+          for (final doc in memberDocs.docs) {
+            final data = doc.data();
+            final status = (data['status'] ?? 'ACTIVE').toString();
+            if (status != 'ACTIVE') continue;
+            final fid = (data['familyId'] ?? data['family_id'])?.toString();
+            if (fid != null && fid.isNotEmpty) {
+              familyIdToRole[fid] = (data['role'] ?? 'Member').toString();
             }
-          } catch (_) {}
+          }
+        } catch (_) {}
+
+        // 2b. Kiểm tra thêm trường familyId trong users/{userId} (nếu có)
+        try {
+          final userDoc = await firestore
+              .collection('users')
+              .doc(userId)
+              .get()
+              .timeout(const Duration(seconds: 3));
+          if (userDoc.exists && userDoc.data() != null) {
+            final uName = userDoc.data()!['name']?.toString();
+            if (uName != null && uName.isNotEmpty && widget.currentUserName == null) {
+              userName = uName;
+            }
+            final fid = userDoc.data()!['familyId']?.toString();
+            if (fid != null &&
+                fid.isNotEmpty &&
+                !familyIdToRole.containsKey(fid)) {
+              familyIdToRole[fid] = 'Member';
+            }
+          }
+        } catch (_) {}
+
+        if (widget.familyId != null &&
+            widget.familyId!.isNotEmpty &&
+            !familyIdToRole.containsKey(widget.familyId)) {
+          familyIdToRole[widget.familyId!] = 'Member';
         }
 
-        // Try getting familyId from family_members collection
-        if (resolvedFamilyId == null) {
+        // 2c. Tải thông tin chi tiết (tên gia đình, mã mời) của từng family
+        for (final entry in familyIdToRole.entries) {
+          final fid = entry.key;
+          String famName = 'Gia đình';
+          String? joinCode;
           try {
-            final memberDocs = await firestore
-                .collection('family_members')
-                .where('userId', isEqualTo: userId)
-                .where('status', isEqualTo: 'ACTIVE')
-                .limit(1)
+            final famDoc = await firestore
+                .collection('families')
+                .doc(fid)
                 .get()
                 .timeout(const Duration(seconds: 3));
-            if (memberDocs.docs.isNotEmpty) {
-              resolvedFamilyId = (memberDocs.docs.first.data()['familyId'] ??
-                      memberDocs.docs.first.data()['family_id'])
+            if (famDoc.exists && famDoc.data() != null) {
+              famName = famDoc.data()!['name']?.toString() ?? 'Gia đình';
+              joinCode = (famDoc.data()!['joinCode'] ??
+                      famDoc.data()!['join_code'])
                   ?.toString();
             }
           } catch (_) {}
+
+          resolvedFamilies.add(
+            FamilyOption(
+              id: fid,
+              name: famName,
+              joinCode: joinCode,
+              role: entry.value,
+            ),
+          );
         }
 
-        // Load real members of this family from Firestore
-        if (resolvedFamilyId != null && resolvedMembers.isEmpty) {
-          try {
-            final membersSnap = await firestore
-                .collection('family_members')
-                .where('familyId', isEqualTo: resolvedFamilyId)
-                .get()
-                .timeout(const Duration(seconds: 3));
+        // 2d. Sắp xếp danh sách gia đình theo thứ tự bảng chữ cái (A -> Z)
+        resolvedFamilies = FamilyOption.sortAlphabetically(resolvedFamilies);
 
-            for (final mDoc in membersSnap.docs) {
-              final mData = mDoc.data();
-              final memberUid =
-                  (mData['userId'] ?? mData['user_id'] ?? '').toString();
-              final role = (mData['role'] ?? 'Member').toString();
-              String memberName =
-                  (mData['name'] ?? mData['userName'] ?? '').toString();
-              String? avatarType = mData['avatarType']?.toString();
-
-              if (memberName.isEmpty && memberUid.isNotEmpty) {
-                try {
-                  final uDoc = await firestore
-                      .collection('users')
-                      .doc(memberUid)
-                      .get()
-                      .timeout(const Duration(seconds: 2));
-                  if (uDoc.exists && uDoc.data() != null) {
-                    memberName = uDoc.data()!['name']?.toString() ??
-                        uDoc.data()!['displayName']?.toString() ??
-                        '';
-                    avatarType ??= uDoc.data()!['avatar_type']?.toString();
-                  }
-                } catch (_) {}
-              }
-
-              if (memberName.isEmpty) {
-                memberName = memberUid == userId ? userName : 'Thành viên';
-              }
-
-              resolvedMembers.add(FamilyMember(
-                id: memberUid.isNotEmpty ? memberUid : mDoc.id,
-                name: memberName,
-                role: role,
-                avatarType: avatarType,
-                familyId: resolvedFamilyId,
-                rewardStarsTotal: (mData['rewardStarsTotal'] ??
-                    mData['reward_stars_total'] ??
-                    0) as int,
-              ));
-            }
-          } catch (_) {}
+        // 2e. Tải danh sách thành viên cho các gia đình của người dùng
+        for (final fam in resolvedFamilies) {
+          if (!resolvedMembersByFam.containsKey(fam.id)) {
+            final members = await _loadMembersForFamilyFromFirestore(
+              firestore,
+              fam.id,
+              userId,
+              userName!,
+            );
+            resolvedMembersByFam[fam.id] = members;
+          }
         }
       }
 
-      final bool hasFamily = resolvedFamilyId != null &&
-          resolvedFamilyId.isNotEmpty &&
-          !resolvedFamilyId.startsWith('family_current_user');
+      if (resolvedFamilies.isEmpty &&
+          widget.familyId != null &&
+          widget.familyId!.isNotEmpty) {
+        resolvedFamilies = [
+          FamilyOption(id: widget.familyId!, name: 'Gia đình của tôi'),
+        ];
+        if (widget.familyMembers != null) {
+          resolvedMembersByFam[widget.familyId!] =
+              List<FamilyMember>.from(widget.familyMembers!);
+        }
+      }
+
+      resolvedFamilies = FamilyOption.sortAlphabetically(resolvedFamilies);
+
+      // Mặc định chọn family đầu tiên theo bảng chữ cái (hoặc familyId được truyền vào nếu hợp lệ)
+      String selectedFamilyId = '';
+      if (widget.familyId != null &&
+          widget.familyId!.isNotEmpty &&
+          resolvedFamilies.any((f) => f.id == widget.familyId)) {
+        selectedFamilyId = widget.familyId!;
+      } else if (_familyId.isNotEmpty &&
+          resolvedFamilies.any((f) => f.id == _familyId)) {
+        selectedFamilyId = _familyId;
+      } else if (resolvedFamilies.isNotEmpty) {
+        selectedFamilyId = resolvedFamilies.first.id;
+      }
+
+      final bool hasFamily = selectedFamilyId.isNotEmpty &&
+          !selectedFamilyId.startsWith('family_current_user');
+
+      final resolvedMembers = resolvedMembersByFam[selectedFamilyId] ??
+          (widget.familyMembers != null
+              ? List<FamilyMember>.from(widget.familyMembers!)
+              : <FamilyMember>[]);
 
       if (mounted) {
         setState(() {
           _hasFamily = hasFamily;
-          _familyId = resolvedFamilyId ?? '';
+          _families = resolvedFamilies;
+          _familyNamesById = {
+            for (final f in resolvedFamilies) f.id: f.name,
+          };
+          _membersByFamilyId = resolvedMembersByFam;
+          _familyId = selectedFamilyId;
           _currentUserId = userId!;
           _currentUserName = userName!;
           _familyMembers = resolvedMembers;
@@ -246,6 +396,32 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     }
   }
 
+  Future<void> _selectFamily(FamilyOption family) async {
+    if (_familyId == family.id) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _familyId = family.id;
+      _familyMembers = _membersByFamilyId[family.id] ?? [];
+    });
+
+    if (_familyMembers.isEmpty && Firebase.apps.isNotEmpty) {
+      final loaded = await _loadMembersForFamilyFromFirestore(
+        FirebaseFirestore.instance,
+        family.id,
+        _currentUserId,
+        _currentUserName,
+      );
+      if (mounted) {
+        setState(() {
+          _membersByFamilyId[family.id] = loaded;
+          if (_familyId == family.id) {
+            _familyMembers = loaded;
+          }
+        });
+      }
+    }
+  }
+
   void _switchUser(FamilyMember member) {
     setState(() {
       _currentUserId = member.id;
@@ -266,6 +442,9 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       MaterialPageRoute(
         builder: (ctx) => CreateReminderScreen(
           familyId: _familyId,
+          familyName: _currentFamilyName,
+          families: _families,
+          membersByFamilyId: _membersByFamilyId,
           currentUserId: _currentUserId,
           currentUserName: _currentUserName,
           familyMembers: _familyMembers,
@@ -276,17 +455,24 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     setState(() {});
   }
 
-  Future<void> _confirmAndDelete(ReminderModel reminder) async {
-    final isCreator = reminder.creatorId == _currentUserId;
-    final currentMember = _familyMembers.firstWhere(
+  List<FamilyMember> _getMembersForReminder(ReminderModel reminder) {
+    return _membersByFamilyId[reminder.familyId] ?? _familyMembers;
+  }
+
+  bool _canDeleteReminder(ReminderModel reminder) {
+    if (reminder.creatorId == _currentUserId) return true;
+    final members = _getMembersForReminder(reminder);
+    final currentMember = members.firstWhere(
       (m) => m.id == _currentUserId,
       orElse: () =>
           const FamilyMember(id: '', name: '', role: '', familyId: ''),
     );
-    final isParentOrOwner =
-        currentMember.isParent || currentMember.isGrandparent;
+    return currentMember.isParent || currentMember.isGrandparent;
+  }
 
-    if (!isCreator && !isParentOrOwner) {
+  Future<void> _confirmAndDelete(ReminderModel reminder) async {
+    final targetMembers = _getMembersForReminder(reminder);
+    if (!_canDeleteReminder(reminder)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -329,7 +515,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         await _repository.deleteReminder(
           reminderId: reminder.id,
           currentUserId: _currentUserId,
-          familyMembers: _familyMembers,
+          familyMembers: targetMembers,
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -343,7 +529,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                     await _repository.restoreReminder(
                       reminderId: reminder.id,
                       currentUserId: _currentUserId,
-                      familyMembers: _familyMembers,
+                      familyMembers: targetMembers,
                     );
                     if (mounted) {
                       setState(() {});
@@ -502,14 +688,294 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   }
 
   void _showDetailBottomSheet(ReminderModel reminder) {
+    final resolvedFamName =
+        (reminder.familyName != null && reminder.familyName!.trim().isNotEmpty)
+            ? reminder.familyName!
+            : (_familyNamesById[reminder.familyId] ?? _currentFamilyName);
     ReminderDetailBottomSheet.show(
       context,
       reminder: reminder,
       currentUserId: _currentUserId,
       currentUserName: _currentUserName,
+      familyName: resolvedFamName,
       repository: _repository,
-      familyMembers: _familyMembers,
+      familyMembers: _getMembersForReminder(reminder),
       onReminderUpdated: () => setState(() {}),
+    );
+  }
+
+  void _showFamilyPickerBottomSheet() {
+    showModalBottomSheet<FamilyOption>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 520,
+                maxHeight: MediaQuery.of(ctx).size.height * 0.75,
+              ),
+              child: Container(
+                margin: const EdgeInsets.all(12),
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.home_work_rounded,
+                          color: Color(0xFF005F50),
+                          size: 22,
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Chọn gia đình hiển thị',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF151D1B),
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE4F6EF),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            'A → Z (${_families.length})',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF005F50),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Danh sách lời nhắc tổng (Cả nhà) sẽ chỉ hiển thị các lời nhắc thuộc gia đình bạn chọn bên dưới.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF6E7A75),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _families.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final fam = _families[index];
+                          final isSelected = fam.id == _familyId;
+                          final memberCount =
+                              _membersByFamilyId[fam.id]?.length ?? 0;
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              Navigator.of(ctx).pop(fam);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(0xFFE4F6EF)
+                                    : const Color(0xFFF7FBF9),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? const Color(0xFF005F50)
+                                      : const Color(0xFFDCE8E3),
+                                  width: isSelected ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 18,
+                                    backgroundColor: isSelected
+                                        ? const Color(0xFF005F50)
+                                        : const Color(0xFFDCE8E3),
+                                    child: Text(
+                                      fam.name.isNotEmpty
+                                          ? fam.name[0].toUpperCase()
+                                          : 'G',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : const Color(0xFF005F50),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          fam.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: isSelected
+                                                ? const Color(0xFF005F50)
+                                                : const Color(0xFF151D1B),
+                                          ),
+                                        ),
+                                        if (memberCount > 0 ||
+                                            (fam.role != null &&
+                                                fam.role!.isNotEmpty))
+                                          Text(
+                                            [
+                                              if (memberCount > 0)
+                                                '$memberCount thành viên',
+                                              if (fam.role != null &&
+                                                  fam.role!.isNotEmpty)
+                                                'Vai trò: ${fam.role}',
+                                            ].join(' • '),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Color(0xFF6E7A75),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isSelected)
+                                    const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: Color(0xFF005F50),
+                                      size: 22,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    ).then((picked) {
+      if (picked != null) {
+        _selectFamily(picked);
+      }
+    });
+  }
+
+  Widget _buildFamilyContextBar() {
+    if (_filterOnlyMine) {
+      // Phần cá nhân: Mỗi ReminderCard đã hiển thị trực tiếp huy hiệu 🏠 <Tên Gia đình>
+      return const SizedBox.shrink();
+    }
+
+    // Phần list remind tổng (Cả nhà): Có mục Chọn Family (mặc định family đầu tiên theo alphabet)
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+      child: InkWell(
+        onTap: _showFamilyPickerBottomSheet,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFBDC9C4)),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.home_work_rounded,
+                size: 15,
+                color: Color(0xFF005F50),
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'Chọn gia đình:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6E7A75),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _currentFamilyName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF005F50),
+                  ),
+                ),
+              ),
+              if (_families.length > 1)
+                Container(
+                  margin: const EdgeInsets.only(right: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE4F6EF),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${_families.length} nhà',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF005F50),
+                    ),
+                  ),
+                ),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: Color(0xFF005F50),
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -868,18 +1334,28 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         ),
       ),
       body: StreamBuilder<List<ReminderModel>>(
-        stream: _repository.watchReminders(familyId: _familyId),
+        stream: _filterOnlyMine
+            ? _repository.watchRemindersForFamilies(
+                familyIds: _families.isNotEmpty
+                    ? _families.map((f) => f.id).toList()
+                    : [_familyId],
+              )
+            : _repository.watchReminders(familyId: _familyId),
         builder: (context, snapshot) {
           final allReminders = snapshot.data ?? [];
 
-          // 1. Lọc theo Scope: Tất cả vs Việc của tôi
+          // 1. Lọc theo Scope:
+          // - Cả nhà (!_filterOnlyMine): Chỉ hiện lời nhắc thuộc family đang được chọn (_familyId)
+          // - Việc của tôi (_filterOnlyMine): Hiện việc cá nhân của tôi trên các family kèm nhãn family
           final scopedReminders = _filterOnlyMine
               ? allReminders
                   .where((r) => r.assignedTo == _currentUserId)
                   .toList()
-              : allReminders;
+              : allReminders
+                  .where((r) => r.familyId == _familyId)
+                  .toList();
 
-          // 2. Lọc theo từ khóa tìm kiếm (Title, Ghi chú giọng nói, hoặc Tên/Vai trò người nhận)
+          // 2. Lọc theo từ khóa tìm kiếm (Title, Ghi chú giọng nói, Gia đình, hoặc Tên/Vai trò người nhận)
           final searchedReminders = _searchQuery.isEmpty
               ? scopedReminders
               : scopedReminders.where((r) {
@@ -887,9 +1363,14 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   final titleMatch = r.title.toLowerCase().contains(q);
                   final voiceDescMatch =
                       (r.voiceNoteDescription ?? '').toLowerCase().contains(q);
+                  final famName =
+                      (r.familyName ?? _familyNamesById[r.familyId] ?? '')
+                          .toLowerCase();
+                  final familyMatch = famName.contains(q);
                   final directAssigneeMatch =
                       r.assignedToName.toLowerCase().contains(q);
-                  final member = _familyMembers.firstWhere(
+                  final famMembers = _getMembersForReminder(r);
+                  final member = famMembers.firstWhere(
                     (m) => m.id == r.assignedTo,
                     orElse: () => const FamilyMember(
                       id: '',
@@ -901,7 +1382,10 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   final assigneeMatch = directAssigneeMatch ||
                       member.name.toLowerCase().contains(q) ||
                       member.role.toLowerCase().contains(q);
-                  return titleMatch || voiceDescMatch || assigneeMatch;
+                  return titleMatch ||
+                      voiceDescMatch ||
+                      familyMatch ||
+                      assigneeMatch;
                 }).toList();
 
           final selectedDateStr = _formatDate(_selectedDate);
@@ -922,6 +1406,9 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                     onScopeChanged: (val) =>
                         setState(() => _filterOnlyMine = val),
                   ),
+
+                  // Thanh chọn Family (ở chế độ Cả nhà) hoặc hiển thị ngữ cảnh đa gia đình (ở chế độ Việc của tôi)
+                  _buildFamilyContextBar(),
 
                   // Calendar View hoặc Weekly Strip
                   if (_isCalendarView) ...[
@@ -971,7 +1458,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   // List View phân nhóm theo 4 mức ưu tiên
                   Expanded(
                     child: ReminderListView(
-                      allReminders: allReminders,
+                      allReminders: scopedReminders,
                       displayedReminders: displayedReminders,
                       currentUserId: _currentUserId,
                       selectedDateStr: selectedDateStr,
@@ -981,6 +1468,9 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                             m.id == _currentUserId &&
                             (m.isParent || m.isGrandparent),
                       ),
+                      familyNamesById: _familyNamesById,
+                      showFamilyBadge: _filterOnlyMine,
+                      canDeletePredicate: _canDeleteReminder,
                       onCreatePressed: _openCreateReminder,
                       onShowAllPressed: () => setState(() => _showAll = true),
                       onTapReminder: _showDetailBottomSheet,
