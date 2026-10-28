@@ -7,6 +7,7 @@ import 'theme/danh_colors.dart';
 import 'theme/danh_svgs.dart';
 import 'widgets/premium_badge_widget.dart';
 import 'widgets/family_premium_status_widget.dart';
+import '../Thinh/theme/app_language.dart';
 
 /// Điểm truy cập trung tâm (Entry Point) của Module Danh
 ///
@@ -45,8 +46,13 @@ class DanhPaymentEntry {
   static Future<void> openFamilyJackpot(BuildContext context) {
     if (!service.isPremium) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🌟 Vui lòng nâng cấp lên Gói Premium để mở khóa Hũ Niềm Vui Gia Đình!'),
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              '🌟 Vui lòng nâng cấp lên Gói Premium để mở khóa Hũ Niềm Vui Gia Đình!',
+              '🌟 Please upgrade to Premium to unlock Family Jackpot!',
+            ),
+          ),
           backgroundColor: DanhColors.brand800,
         ),
       );
@@ -132,7 +138,9 @@ class DanhPaymentEntry {
                         Row(
                           children: [
                             Text(
-                              isPremium ? 'Tổ Ấm Premium' : 'Nâng cấp Tổ Ấm Plus',
+                              isPremium
+                                  ? AppLanguage.text('Tổ Ấm Premium', 'Family Hub Premium')
+                                  : AppLanguage.text('Nâng cấp Tổ Ấm Plus', 'Upgrade to Family Hub Plus'),
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -146,8 +154,14 @@ class DanhPaymentEntry {
                         const SizedBox(height: 3),
                         Text(
                           isPremium
-                              ? 'Đã mở rộng tối đa 10 thành viên & mở khóa Hũ Niềm Vui'
-                              : 'Mở rộng tối đa lên 10 thành viên & Hũ Niềm Vui Gia Đình',
+                              ? AppLanguage.text(
+                                  'Đã mở rộng tối đa 10 thành viên & mở khóa Hũ Niềm Vui',
+                                  'Expanded up to 10 members & Family Jackpot unlocked',
+                                )
+                              : AppLanguage.text(
+                                  'Mở rộng tối đa lên 10 thành viên & Hũ Niềm Vui Gia Đình',
+                                  'Expand up to 10 members & Family Jackpot',
+                                ),
                           style: const TextStyle(
                             fontSize: 11,
                             color: DanhColors.textMuted,
@@ -175,7 +189,9 @@ class DanhPaymentEntry {
                       }
                     },
                     child: Text(
-                      isPremium ? 'Quản lý' : 'Nâng cấp',
+                      isPremium
+                          ? AppLanguage.text('Quản lý', 'Manage')
+                          : AppLanguage.text('Nâng cấp', 'Upgrade'),
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -201,8 +217,14 @@ class DanhPaymentEntry {
                       Expanded(
                         child: Text(
                           isPremium
-                              ? 'Hũ Niềm Vui Gia Đình • Vào nạp quỹ & Lắc 30s nổ hũ!'
-                              : 'Hũ Niềm Vui Gia Đình (Đặc quyền gói Premium)',
+                              ? AppLanguage.text(
+                                  'Hũ Niềm Vui Gia Đình • Vào nạp quỹ & Lắc 30s nổ hũ!',
+                                  'Family Jackpot • Deposit & Shake 30s to win!',
+                                )
+                              : AppLanguage.text(
+                                  'Hũ Niềm Vui Gia Đình (Đặc quyền gói Premium)',
+                                  'Family Jackpot (Exclusive to Premium plan)',
+                                ),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,

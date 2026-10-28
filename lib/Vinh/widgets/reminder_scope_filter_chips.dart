@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../Thinh/theme/app_language.dart';
 
 /// Thanh lựa chọn phạm vi xem: [👨‍👩‍👧 Cả nhà] hoặc [👤 Việc của tôi]
 class ReminderScopeFilterChips extends StatelessWidget {
@@ -32,13 +33,13 @@ class ReminderScopeFilterChips extends StatelessWidget {
                 size: 16,
                 color: !filterOnlyMine ? primaryColor : unselectedTextColor,
               ),
-              label: const Center(
+              label: Center(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    '👨‍👩‍👧 Cả nhà',
+                    AppLanguage.text('👨‍👩‍👧 Cả nhà', '👨‍👩‍👧 All Family'),
                     maxLines: 1,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 12.5,
                     ),
@@ -74,13 +75,13 @@ class ReminderScopeFilterChips extends StatelessWidget {
                 size: 16,
                 color: filterOnlyMine ? primaryColor : unselectedTextColor,
               ),
-              label: const Center(
+              label: Center(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    '👤 Việc của tôi',
+                    AppLanguage.text('👤 Việc của tôi', '👤 My Tasks'),
                     maxLines: 1,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 12.5,
                     ),

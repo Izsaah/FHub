@@ -79,7 +79,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(_loadData);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Đã chuyển sang gia đình "${family.name}"'),
+          content: Text(
+            LongStrings.t(
+              'Đã chuyển sang gia đình "${family.name}"',
+              'Switched to family "${family.name}"',
+            ),
+          ),
           backgroundColor: const Color(0xFF005F50),
           duration: const Duration(seconds: 2),
         ),
@@ -96,9 +101,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
-            'Gia đình hiện tại',
-            style: TextStyle(
+          Text(
+            LongStrings.currentFamilyTitle,
+            style: const TextStyle(
               fontSize: 12.5,
               color: Color(0xFF6E7A75),
             ),
@@ -111,9 +116,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             onPressed: _openFamilySetup,
             icon: const Icon(Icons.group_add_outlined, size: 16),
-            label: const Text(
-              'Chưa tham gia • Tham gia ngay',
-              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+            label: Text(
+              LongStrings.notJoinedJoinNow,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -128,9 +133,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Gia đình hiện tại (1)',
-                style: TextStyle(
+              Text(
+                LongStrings.currentFamilySingle,
+                style: const TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF6E7A75),
@@ -139,20 +144,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
               InkWell(
                 borderRadius: BorderRadius.circular(8),
                 onTap: _openFamilySetup,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.add_circle_outline,
                         size: 14,
                         color: Color(0xFF005F50),
                       ),
-                      SizedBox(width: 4),
+                      const SizedBox(width: 4),
                       Text(
-                        'Thêm / Tham gia',
-                        style: TextStyle(
+                        LongStrings.addOrJoin,
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF005F50),
@@ -205,7 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      'Mã: ${single.joinCode}',
+                      '${LongStrings.codePrefix}${single.joinCode}',
                       style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.bold,
@@ -229,7 +234,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Expanded(
               child: Text(
-                'Gia đình tham gia (${families.length} gia đình)',
+                LongStrings.joinedFamiliesCount(families.length),
                 style: const TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
@@ -240,20 +245,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             InkWell(
               borderRadius: BorderRadius.circular(8),
               onTap: _openFamilySetup,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.add_home_work_outlined,
                       size: 14,
                       color: Color(0xFF005F50),
                     ),
-                    SizedBox(width: 4),
+                    const SizedBox(width: 4),
                     Text(
-                      'Quản lý / Thêm',
-                      style: TextStyle(
+                      LongStrings.manageOrAdd,
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF005F50),
@@ -324,9 +329,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: const Color(0xFF005F50),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text(
-                          'Đang chọn',
-                          style: TextStyle(
+                        child: Text(
+                          LongStrings.activeTag,
+                          style: const TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
@@ -477,8 +482,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context, _, child) {
         return Scaffold(
           appBar: CustomAppBar(
-            title: LongStrings.t('Tổ Ấm Yêu Thương', 'Family Hub'),
-            subtitle: LongStrings.t('Thông tin cá nhân', 'Profile details'),
+            title: LongStrings.profileTitle,
+            subtitle: LongStrings.profileSubtitle,
           ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _profileDataFuture,
@@ -591,18 +596,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     color: const Color(0xFFFFDCBD),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
-                                  child: const Row(
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(
+                                      const Icon(
                                         Icons.shield,
                                         size: 12,
                                         color: Color(0xFF2C1600),
                                       ),
-                                      SizedBox(width: 4),
+                                      const SizedBox(width: 4),
                                       Text(
-                                        'Thành viên',
-                                        style: TextStyle(
+                                        LongStrings.memberBadge,
+                                        style: const TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w600,
                                           color: Color(0xFF2C1600),
