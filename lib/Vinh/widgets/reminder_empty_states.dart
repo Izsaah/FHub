@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../Thinh/theme/app_language.dart';
 
 /// Trạng thái khi chưa có bất kỳ lời nhắc nào trong gia đình
 class ReminderEmptyState extends StatelessWidget {
@@ -31,20 +32,23 @@ class ReminderEmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Chưa có lời nhắc nào.',
+            Text(
+              AppLanguage.text('Chưa có lời nhắc nào.', 'No reminders yet.'),
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF151D1B),
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Hãy tạo lời nhắc để giúp gia đình bạn phân chia việc nhà ngăn nắp và gắn kết hơn.',
+            Text(
+              AppLanguage.text(
+                'Hãy tạo lời nhắc để giúp gia đình bạn phân chia việc nhà ngăn nắp và gắn kết hơn.',
+                'Create reminders to help your family organize chores and stay connected.',
+              ),
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 color: Color(0xFF6E7A75),
               ),
@@ -60,11 +64,11 @@ class ReminderEmptyState extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               ),
               icon: const Icon(Icons.add),
-              label: const Text(
-                'Tạo lời nhắc mới',
+              label: Text(
+                AppLanguage.text('Tạo lời nhắc mới', 'Create new reminder'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               onPressed: onCreatePressed,
             ),
@@ -109,7 +113,7 @@ class ReminderDayEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Chưa có việc cho ngày $dateStr',
+              AppLanguage.text('Chưa có việc cho ngày $dateStr', 'No tasks for $dateStr'),
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 16,
@@ -118,10 +122,13 @@ class ReminderDayEmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'Nhấn "Tạo lời nhắc" để thêm mới, hoặc xem "Tất cả" trên lịch.',
+            Text(
+              AppLanguage.text(
+                'Nhấn "Tạo lời nhắc" để thêm mới, hoặc xem "Tất cả" trên lịch.',
+                'Tap "Create reminder" to add, or view "All" on calendar.',
+              ),
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
                 color: Color(0xFF6E7A75),
               ),
@@ -129,11 +136,11 @@ class ReminderDayEmptyState extends StatelessWidget {
             const SizedBox(height: 16),
             TextButton.icon(
               icon: const Icon(Icons.list_alt, color: Color(0xFF0D7A68)),
-              label: const Text(
-                'Xem tất cả nhắc nhở',
+              label: Text(
+                AppLanguage.text('Xem tất cả nhắc nhở', 'View all reminders'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+                style: const TextStyle(
                   color: Color(0xFF0D7A68),
                   fontWeight: FontWeight.bold,
                 ),

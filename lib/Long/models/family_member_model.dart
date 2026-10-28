@@ -1,4 +1,5 @@
 import 'user_model.dart';
+import '../utils/long_strings.dart';
 
 enum Role { owner, member }
 
@@ -28,13 +29,15 @@ class FamilyMemberModel {
   String get roleLabel {
     switch (memberRole.toUpperCase()) {
       case 'GRANDPARENT':
-        return 'Ông / Bà';
+        return LongStrings.t('Ông / Bà', 'Grandparent');
       case 'CHILD':
-        return 'Con cái';
+        return LongStrings.t('Con cái', 'Child');
       case 'PARENT':
-        return 'Bố / Mẹ';
+        return LongStrings.t('Bố / Mẹ', 'Parent');
       default:
-        return role == Role.owner ? 'Chủ nhà' : 'Thành viên';
+        return role == Role.owner
+            ? LongStrings.t('Chủ nhà', 'Owner')
+            : LongStrings.t('Thành viên', 'Member');
     }
   }
 

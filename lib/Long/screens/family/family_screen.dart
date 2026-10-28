@@ -93,21 +93,31 @@ class _FamilyScreenState extends State<FamilyScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(isOwner ? 'Delete family?' : 'Leave family?'),
+        title: Text(
+          isOwner
+              ? LongStrings.t('Xóa gia đình?', 'Delete family?')
+              : LongStrings.t('Rời gia đình?', 'Leave family?'),
+        ),
         content: Text(
           isOwner
-              ? 'Deleting "${family.name}" will remove the family and its memberships. Reminders and historical data will be kept.'
-              : 'You will be removed from "${family.name}". You can join again later with an invitation code.',
+              ? LongStrings.t(
+                  'Xóa "${family.name}" sẽ xóa gia đình và tư cách thành viên. Lời nhắc và dữ liệu lịch sử sẽ được giữ lại.',
+                  'Deleting "${family.name}" will remove the family and its memberships. Reminders and historical data will be kept.',
+                )
+              : LongStrings.t(
+                  'Bạn sẽ rời khỏi "${family.name}". Bạn có thể tham gia lại sau bằng mã mời.',
+                  'You will be removed from "${family.name}". You can join again later with an invitation code.',
+                ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(LongStrings.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
-            child: Text(isOwner ? 'Delete family' : 'Leave family'),
+            child: Text(isOwner ? LongStrings.deleteFamily : LongStrings.leaveFamily),
           ),
         ],
       ),
@@ -127,8 +137,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
         SnackBar(
           content: Text(
             result == LeaveFamilyResult.familyDeleted
-                ? 'Family deleted. Reminders and historical data were kept.'
-                : 'You have left the family.',
+                ? LongStrings.t(
+                    'Đã xóa gia đình. Lời nhắc và dữ liệu lịch sử được giữ lại.',
+                    'Family deleted. Reminders and historical data were kept.',
+                  )
+                : LongStrings.t(
+                    'Bạn đã rời khỏi gia đình.',
+                    'You have left the family.',
+                  ),
           ),
           backgroundColor: const Color(0xFF005F50),
         ),
@@ -151,11 +167,15 @@ class _FamilyScreenState extends State<FamilyScreen> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange),
-              SizedBox(width: 8),
-              Expanded(child: Text('Giới Hạn Thành Viên')),
+              const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  LongStrings.t('Giới Hạn Thành Viên', 'Member Limit Reached'),
+                ),
+              ),
             ],
           ),
           content: Text(
@@ -164,7 +184,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Đóng'),
+              child: Text(LongStrings.t('Đóng', 'Close')),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -175,7 +195,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 Navigator.pop(ctx);
                 DanhPaymentEntry.openPremiumPlans(context);
               },
-              child: const Text('Nâng cấp Premium (10 người)'),
+              child: Text(
+                LongStrings.t(
+                  'Nâng cấp Premium (10 người)',
+                  'Upgrade to Premium (10 members)',
+                ),
+              ),
             ),
           ],
         ),
@@ -186,7 +211,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
     Clipboard.setData(ClipboardData(text: code));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Mã $code đã được sao chép! Hãy gửi cho thành viên mới.'),
+        content: Text(
+          LongStrings.t(
+            'Mã $code đã được sao chép! Hãy gửi cho thành viên mới.',
+            'Code $code copied! Send it to your new family member.',
+          ),
+        ),
         backgroundColor: const Color(0xFF005F50),
       ),
     );
@@ -388,9 +418,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Text(
-                                    'Mã: ',
-                                    style: TextStyle(
+                                  Text(
+                                    LongStrings.codePrefix,
+                                    style: const TextStyle(
                                       fontSize: 12,
                                       color: Color(0xFF6E7A75),
                                     ),
@@ -422,7 +452,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Thành viên trong tổ ấm (${members.length})',
+                            LongStrings.familyMembersHeader(members.length),
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -459,9 +489,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               members.length,
                             ),
                             icon: const Icon(Icons.person_add, size: 20),
-                            label: const Text(
-                              'Thêm thành viên mới',
-                              style: TextStyle(
+                            label: Text(
+                              LongStrings.addNewMember,
+                              style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -495,10 +525,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 ),
                           label: Text(
                             _isLeaving
-                                ? 'Please wait...'
+                                ? LongStrings.t('Vui lòng chờ...', 'Please wait...')
                                 : isOwner
-                                    ? 'Delete Family'
-                                    : 'Leave Family',
+                                    ? LongStrings.deleteFamily
+                                    : LongStrings.leaveFamily,
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,

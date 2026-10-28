@@ -6,6 +6,7 @@ import '../services/payment_service.dart';
 import '../theme/danh_colors.dart';
 import '../theme/danh_svgs.dart';
 import 'premium_badge_widget.dart';
+import '../../Thinh/theme/app_language.dart';
 
 /// Widget hiển thị Trạng thái Gói & Hạn mức Thành viên của Gia đình
 /// - Dành cho TOÀN BỘ thành viên trong tổ ấm (không chỉ riêng Owner)
@@ -61,11 +62,15 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                       PremiumBadgeWidget(
                         isPremium: isPremium,
                         compact: true,
-                        customText: isPremium ? 'TỔ ẤM PREMIUM' : 'GÓI CƠ BẢN',
+                        customText: isPremium
+                            ? AppLanguage.text('TỔ ẤM PREMIUM', 'FAMILY PREMIUM')
+                            : AppLanguage.text('GÓI CƠ BẢN', 'BASIC PLAN'),
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        sub.planName,
+                        isPremium
+                            ? AppLanguage.text('Tổ Ấm Premium', 'Family Premium')
+                            : AppLanguage.text('Gói Cơ Bản (Miễn phí)', 'Basic Plan (Free)'),
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -97,7 +102,9 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          isPremium ? 'Chi tiết' : 'Nâng cấp 10 người',
+                          isPremium
+                              ? AppLanguage.text('Chi tiết', 'Details')
+                              : AppLanguage.text('Nâng cấp 10 người', 'Upgrade to 10'),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -120,12 +127,15 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Số lượng thành viên',
-                    style: TextStyle(fontSize: 12, color: DanhColors.textMuted),
+                  Text(
+                    AppLanguage.text('Số lượng thành viên', 'Family members'),
+                    style: const TextStyle(fontSize: 12, color: DanhColors.textMuted),
                   ),
                   Text(
-                    '$currentMemberCount / $maxMembers người',
+                    AppLanguage.text(
+                      '$currentMemberCount / $maxMembers người',
+                      '$currentMemberCount / $maxMembers members',
+                    ),
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
@@ -165,8 +175,14 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                       Expanded(
                         child: Text(
                           isPremium
-                              ? 'Đã đạt hạn mức tối đa của gói ($maxMembers thành viên).'
-                              : 'Đã đạt giới hạn 4 người. Nâng cấp Premium để mời thêm tối đa 10 người!',
+                              ? AppLanguage.text(
+                                  'Đã đạt hạn mức tối đa của gói ($maxMembers thành viên).',
+                                  'Reached max plan limit ($maxMembers members).',
+                                )
+                              : AppLanguage.text(
+                                  'Đã đạt giới hạn 4 người. Nâng cấp Premium để mời thêm tối đa 10 người!',
+                                  'Reached 4-member limit. Upgrade to Premium to invite up to 10 members!',
+                                ),
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -179,7 +195,10 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                 )
               else
                 Text(
-                  'Còn trống ${maxMembers - currentMemberCount} vị trí mời thêm vào gia đình.',
+                  AppLanguage.text(
+                    'Còn trống ${maxMembers - currentMemberCount} vị trí mời thêm vào gia đình.',
+                    '${maxMembers - currentMemberCount} slots remaining to invite to family.',
+                  ),
                   style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
                 ),
 
@@ -225,7 +244,7 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                             Row(
                               children: [
                                 Text(
-                                  'Hũ Niềm Vui Gia Đình',
+                                  AppLanguage.text('Hũ Niềm Vui Gia Đình', 'Family Jackpot'),
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
@@ -249,8 +268,14 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                             ),
                             Text(
                               isPremium
-                                  ? 'Góp quỹ & Lắc điện thoại 30s nổ hũ'
-                                  : 'Mở khóa khi nâng cấp lên Tổ Ấm Premium',
+                                  ? AppLanguage.text(
+                                      'Góp quỹ & Lắc điện thoại 30s nổ hũ',
+                                      'Contribute fund & Shake phone 30s to win',
+                                    )
+                                  : AppLanguage.text(
+                                      'Mở khóa khi nâng cấp lên Tổ Ấm Premium',
+                                      'Unlock by upgrading to Family Hub Premium',
+                                    ),
                               style: TextStyle(
                                 fontSize: 11,
                                 color: isPremium ? const Color(0xFF8D4000) : Colors.grey.shade600,
