@@ -2030,5 +2030,105 @@ void main() {
       expect(updated.voiceDurationSeconds, isNull);
       expect(updated.voiceNoteDescription, isNull);
     });
+
+    testWidgets(
+        'Multi-Family Workflow: defaults to first alphabetical family in general list, switches family, and shows family badge in personal list & detail view',
+        (tester) async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        const ReminderModel(
+          id: 'rem_fam_a',
+          familyId: 'fam_an_binh',
+          familyName: 'Gia Đình An Bình',
+          creatorId: 'user_vinh',
+          assignedTo: 'user_vinh',
+          assignedToName: 'Vinh',
+          title: 'Mua trái cây cho Gia Đình An Bình',
+          date: '28/10/2026',
+          time: '09:00',
+          status: ReminderStatus.pending,
+        ),
+        const ReminderModel(
+          id: 'rem_fam_b',
+          familyId: 'fam_ngoai',
+          familyName: 'Gia Đình Ngoại',
+          creatorId: 'user_vinh',
+          assignedTo: 'user_vinh',
+          assignedToName: 'Vinh',
+          title: 'Biếu thuốc bổ cho Gia Đình Ngoại',
+          date: '28/10/2026',
+          time: '15:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      // Pass families in reverse alphabetical order to verify automatic alphabetical sort
+      const families = [
+        FamilyOption(id: 'fam_ngoai', name: 'Gia Đình Ngoại', role: 'PARENT'),
+        FamilyOption(
+            id: 'fam_an_binh', name: 'Gia Đình An Bình', role: 'OWNER'),
+      ];
+
+      final membersByFam = {
+        'fam_an_binh': const [
+          FamilyMember(
+              id: 'user_vinh',
+              name: 'Vinh',
+              role: 'OWNER',
+              familyId: 'fam_an_binh'),
+        ],
+        'fam_ngoai': const [
+          FamilyMember(
+              id: 'user_vinh',
+              name: 'Vinh',
+              role: 'PARENT',
+              familyId: 'fam_ngoai'),
+        ],
+      };
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReminderListScreen(
+            families: families,
+            membersByFamilyId: membersByFam,
+            currentUserId: 'user_vinh',
+            currentUserName: 'Vinh',
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Default selected family is "Gia Đình An Bình" (first alphabetically)
+      expect(find.text('Gia Đình An Bình'), findsOneWidget);
+      expect(find.text('Mua trái cây cho Gia Đình An Bình'), findsOneWidget);
+      // Does NOT show reminder from "Gia Đình Ngoại" in general view when "Gia Đình An Bình" is selected
+      expect(find.text('Biếu thuốc bổ cho Gia Đình Ngoại'), findsNothing);
+
+      // 2. Open family picker and switch to "Gia Đình Ngoại"
+      await tester.tap(find.text('Chọn gia đình:'));
+      await tester.pumpAndSettle();
+      expect(find.text('Chọn gia đình hiển thị'), findsOneWidget);
+      await tester.tap(find.text('Gia Đình Ngoại').last);
+      await tester.pumpAndSettle();
+
+      // Now only "Gia Đình Ngoại" reminders are displayed in general list
+      expect(find.text('Biếu thuốc bổ cho Gia Đình Ngoại'), findsOneWidget);
+      expect(find.text('Mua trái cây cho Gia Đình An Bình'), findsNothing);
+
+      // 3. Switch to "👤 Việc của tôi" (Personal reminders) -> shows reminders from ALL families with family badges
+      await tester.tap(find.text('👤 Việc của tôi'));
+      await tester.pumpAndSettle();
+      expect(find.text('Mua trái cây cho Gia Đình An Bình'), findsOneWidget);
+      expect(find.text('Biếu thuốc bổ cho Gia Đình Ngoại'), findsOneWidget);
+      expect(find.text('Gia Đình An Bình'), findsAtLeastNWidgets(1));
+      expect(find.text('Gia Đình Ngoại'), findsAtLeastNWidgets(1));
+
+      // 4. Tap a reminder to view detail -> shows "Gia đình: " row with family name
+      await tester.tap(find.text('Mua trái cây cho Gia Đình An Bình'));
+      await tester.pumpAndSettle();
+      expect(find.text('Gia đình: '), findsOneWidget);
+      expect(find.text('Gia Đình An Bình'), findsAtLeastNWidgets(1));
+      expect(tester.takeException(), isNull);
+    });
   });
 }

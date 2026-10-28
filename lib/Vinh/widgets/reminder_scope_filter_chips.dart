@@ -20,14 +20,16 @@ class ReminderScopeFilterChips extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: const Color(0xFFEDF5F2),
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
       child: Row(
         children: [
           Expanded(
             child: ChoiceChip(
+              visualDensity: const VisualDensity(horizontal: -2, vertical: -3),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               avatar: Icon(
                 Icons.groups_rounded,
-                size: 18,
+                size: 16,
                 color: !filterOnlyMine ? primaryColor : unselectedTextColor,
               ),
               label: const Center(
@@ -38,7 +40,7 @@ class ReminderScopeFilterChips extends StatelessWidget {
                     maxLines: 1,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                      fontSize: 12.5,
                     ),
                   ),
                 ),
@@ -65,9 +67,11 @@ class ReminderScopeFilterChips extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: ChoiceChip(
+              visualDensity: const VisualDensity(horizontal: -2, vertical: -3),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               avatar: Icon(
                 Icons.person_rounded,
-                size: 18,
+                size: 16,
                 color: filterOnlyMine ? primaryColor : unselectedTextColor,
               ),
               label: const Center(
@@ -78,7 +82,7 @@ class ReminderScopeFilterChips extends StatelessWidget {
                     maxLines: 1,
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                      fontSize: 12.5,
                     ),
                   ),
                 ),

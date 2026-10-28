@@ -66,6 +66,74 @@ class SupabaseReminderRepository implements ReminderRepository {
   }
 
   @override
+  Future<List<ReminderModel>> getRemindersForFamilies({
+    required List<String> familyIds,
+  }) async {
+    final cleanIds =
+        familyIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    if (cleanIds.isEmpty) return [];
+    if (cleanIds.length == 1) {
+      return getReminders(familyId: cleanIds.first);
+    }
+    final client = _client;
+    if (client == null) {
+      return _fallbackRepository.getRemindersForFamilies(familyIds: cleanIds);
+    }
+
+    try {
+      final response = await client
+          .from('reminders')
+          .select()
+          .inFilter('family_id', cleanIds)
+          .neq('status', ReminderStatus.deleted)
+          .order('date', ascending: true)
+          .order('time', ascending: true);
+
+      return (response as List)
+          .map((json) => ReminderModel.fromJson(Map<String, dynamic>.from(json)))
+          .toList();
+    } catch (_) {
+      return _fallbackRepository.getRemindersForFamilies(familyIds: cleanIds);
+    }
+  }
+
+  @override
+  Stream<List<ReminderModel>> watchRemindersForFamilies({
+    required List<String> familyIds,
+  }) async* {
+    final cleanIds =
+        familyIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    if (cleanIds.isEmpty) {
+      yield [];
+      return;
+    }
+    if (cleanIds.length == 1) {
+      yield* watchReminders(familyId: cleanIds.first);
+      return;
+    }
+    final client = _client;
+    if (client == null) {
+      yield* _fallbackRepository.watchRemindersForFamilies(familyIds: cleanIds);
+      return;
+    }
+
+    try {
+      yield await getRemindersForFamilies(familyIds: cleanIds);
+      yield* client
+          .from('reminders')
+          .stream(primaryKey: ['id'])
+          .inFilter('family_id', cleanIds)
+          .map((data) => data
+              .where((json) => json['status'] != ReminderStatus.deleted)
+              .map((json) =>
+                  ReminderModel.fromJson(Map<String, dynamic>.from(json)))
+              .toList());
+    } catch (_) {
+      yield* _fallbackRepository.watchRemindersForFamilies(familyIds: cleanIds);
+    }
+  }
+
+  @override
   Future<List<ReminderModel>> getPendingReminders({
     required String familyId,
   }) async {

@@ -16,6 +16,9 @@ class ReminderListView extends StatelessWidget {
   final String selectedDateStr;
   final bool isShowingAll;
   final bool isParentOrOwner;
+  final Map<String, String> familyNamesById;
+  final bool showFamilyBadge;
+  final bool Function(ReminderModel)? canDeletePredicate;
   final VoidCallback onCreatePressed;
   final VoidCallback onShowAllPressed;
   final ValueChanged<ReminderModel> onTapReminder;
@@ -32,6 +35,9 @@ class ReminderListView extends StatelessWidget {
     required this.selectedDateStr,
     required this.isShowingAll,
     this.isParentOrOwner = false,
+    this.familyNamesById = const {},
+    this.showFamilyBadge = false,
+    this.canDeletePredicate,
     required this.onCreatePressed,
     required this.onShowAllPressed,
     required this.onTapReminder,
@@ -74,8 +80,19 @@ class ReminderListView extends StatelessWidget {
     final completedList =
         activeReminders.where((r) => r.isCompleted).toList();
 
-    bool canDelete(ReminderModel r) =>
-        r.creatorId == currentUserId || isParentOrOwner;
+    bool canDelete(ReminderModel r) {
+      if (canDeletePredicate != null) {
+        return canDeletePredicate!(r);
+      }
+      return r.creatorId == currentUserId || isParentOrOwner;
+    }
+
+    String? resolveFamilyName(ReminderModel r) {
+      if (r.familyName != null && r.familyName!.trim().isNotEmpty) {
+        return r.familyName;
+      }
+      return familyNamesById[r.familyId];
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
@@ -92,6 +109,8 @@ class ReminderListView extends StatelessWidget {
             (reminder) => ReminderCard(
               reminder: reminder,
               currentUserId: currentUserId,
+              familyName: showFamilyBadge ? resolveFamilyName(reminder) : null,
+              showFamilyBadge: showFamilyBadge,
               onTap: () => onTapReminder(reminder),
               onComplete: reminder.assignedTo == currentUserId
                   ? () => onCompleteReminder(reminder)
@@ -122,6 +141,8 @@ class ReminderListView extends StatelessWidget {
             (reminder) => ReminderCard(
               reminder: reminder,
               currentUserId: currentUserId,
+              familyName: showFamilyBadge ? resolveFamilyName(reminder) : null,
+              showFamilyBadge: showFamilyBadge,
               onTap: () => onTapReminder(reminder),
               onComplete: reminder.assignedTo == currentUserId
                   ? () => onCompleteReminder(reminder)
@@ -149,6 +170,8 @@ class ReminderListView extends StatelessWidget {
             (reminder) => ReminderCard(
               reminder: reminder,
               currentUserId: currentUserId,
+              familyName: showFamilyBadge ? resolveFamilyName(reminder) : null,
+              showFamilyBadge: showFamilyBadge,
               onTap: () => onTapReminder(reminder),
               onComplete: reminder.assignedTo == currentUserId
                   ? () => onCompleteReminder(reminder)
@@ -179,6 +202,8 @@ class ReminderListView extends StatelessWidget {
             (reminder) => ReminderCard(
               reminder: reminder,
               currentUserId: currentUserId,
+              familyName: showFamilyBadge ? resolveFamilyName(reminder) : null,
+              showFamilyBadge: showFamilyBadge,
               onTap: () => onTapReminder(reminder),
               onDelete: canDelete(reminder)
                   ? () => onDeleteReminder(reminder)

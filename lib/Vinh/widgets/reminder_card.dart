@@ -9,6 +9,8 @@ import 'voice_reminder_player.dart';
 class ReminderCard extends StatelessWidget {
   final ReminderModel reminder;
   final String currentUserId;
+  final String? familyName;
+  final bool showFamilyBadge;
   final VoidCallback onTap;
   final VoidCallback? onComplete;
   final VoidCallback? onDelete;
@@ -19,6 +21,8 @@ class ReminderCard extends StatelessWidget {
     super.key,
     required this.reminder,
     required this.currentUserId,
+    this.familyName,
+    this.showFamilyBadge = false,
     required this.onTap,
     this.onComplete,
     this.onDelete,
@@ -177,12 +181,65 @@ class ReminderCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 6),
 
-                          // Assignee pill + time
+                          // Assignee pill + time + family badge
                           Wrap(
                             spacing: 6,
                             runSpacing: 4,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
+                              if (showFamilyBadge)
+                                Builder(
+                                  builder: (context) {
+                                    final resolvedFamily = (familyName != null &&
+                                            familyName!.trim().isNotEmpty)
+                                        ? familyName!.trim()
+                                        : ((reminder.familyName != null &&
+                                                reminder.familyName!
+                                                    .trim()
+                                                    .isNotEmpty)
+                                            ? reminder.familyName!.trim()
+                                            : reminder.familyId);
+                                    if (resolvedFamily.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFE4F6EF),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: const Color(0xFFB9E4C9),
+                                        ),
+                                      ),
+                                      constraints:
+                                          const BoxConstraints(maxWidth: 160),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.home_work_rounded,
+                                            size: 12,
+                                            color: Color(0xFF005F50),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Flexible(
+                                            child: Text(
+                                              resolvedFamily,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF005F50),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 2),

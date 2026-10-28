@@ -158,6 +158,131 @@ class FirebaseReminderRepository implements ReminderRepository {
   }
 
   @override
+  Future<List<ReminderModel>> getRemindersForFamilies({
+    required List<String> familyIds,
+  }) async {
+    final cleanIds =
+        familyIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    if (cleanIds.isEmpty) return [];
+    if (cleanIds.length == 1) {
+      return getReminders(familyId: cleanIds.first);
+    }
+
+    final col = _remindersCollection;
+    final fallback = _fallbackRepository;
+    if (col == null) {
+      if (fallback != null) {
+        return fallback.getRemindersForFamilies(familyIds: cleanIds);
+      }
+      return [];
+    }
+
+    try {
+      final batchIds = cleanIds.take(30).toList();
+      final snap1 = await col.where('familyId', whereIn: batchIds).get();
+      final Map<String, ReminderModel> items = {};
+
+      for (final doc in snap1.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        data['id'] = doc.id;
+        final model = ReminderModel.fromJson(data);
+        if (!model.isDeleted) {
+          items[doc.id] = model;
+        }
+      }
+
+      final snap2 = await col.where('family_id', whereIn: batchIds).get();
+      for (final doc in snap2.docs) {
+        if (!items.containsKey(doc.id)) {
+          final data = Map<String, dynamic>.from(doc.data());
+          data['id'] = doc.id;
+          final model = ReminderModel.fromJson(data);
+          if (!model.isDeleted) {
+            items[doc.id] = model;
+          }
+        }
+      }
+
+      final list = items.values.toList();
+      list.sort((a, b) {
+        final dtA = a.dueDateTime ?? DateTime(2099);
+        final dtB = b.dueDateTime ?? DateTime(2099);
+        return dtA.compareTo(dtB);
+      });
+
+      return List.unmodifiable(list);
+    } catch (e) {
+      debugPrint('FirebaseReminderRepository getRemindersForFamilies error: $e');
+      if (fallback != null) {
+        return fallback.getRemindersForFamilies(familyIds: cleanIds);
+      }
+      return [];
+    }
+  }
+
+  @override
+  Stream<List<ReminderModel>> watchRemindersForFamilies({
+    required List<String> familyIds,
+  }) async* {
+    final cleanIds =
+        familyIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    if (cleanIds.isEmpty) {
+      yield [];
+      return;
+    }
+    if (cleanIds.length == 1) {
+      yield* watchReminders(familyId: cleanIds.first);
+      return;
+    }
+
+    final col = _remindersCollection;
+    final fallback = _fallbackRepository;
+    if (col == null) {
+      if (fallback != null) {
+        yield* fallback.watchRemindersForFamilies(familyIds: cleanIds);
+      } else {
+        yield [];
+      }
+      return;
+    }
+
+    try {
+      yield await getRemindersForFamilies(familyIds: cleanIds);
+
+      final batchIds = cleanIds.take(30).toList();
+      yield* col
+          .where('familyId', whereIn: batchIds)
+          .snapshots()
+          .map((snapshot) {
+        final list = snapshot.docs
+            .map((doc) {
+              final data = Map<String, dynamic>.from(doc.data());
+              data['id'] = doc.id;
+              return ReminderModel.fromJson(data);
+            })
+            .where((r) => !r.isDeleted)
+            .toList();
+
+        list.sort((a, b) {
+          final dtA = a.dueDateTime ?? DateTime(2099);
+          final dtB = b.dueDateTime ?? DateTime(2099);
+          return dtA.compareTo(dtB);
+        });
+
+        return List<ReminderModel>.unmodifiable(list);
+      });
+    } catch (e) {
+      debugPrint(
+          'FirebaseReminderRepository watchRemindersForFamilies error: $e');
+      if (fallback != null) {
+        yield* fallback.watchRemindersForFamilies(familyIds: cleanIds);
+      } else {
+        yield [];
+      }
+    }
+  }
+
+  @override
   Future<List<ReminderModel>> getPendingReminders({
     required String familyId,
   }) async {
