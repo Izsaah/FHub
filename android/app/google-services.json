@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "698012966949",
+    "project_id": "fhub-1c45b",
+    "storage_bucket": "fhub-1c45b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:698012966949:android:4becedfd21597d85e85fcc",
+        "android_client_info": {
+          "package_name": "com.example.fhub"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "698012966949-fh7theud75hce128gclnmccshs6iaaf8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxQZgh-qSI3PzbjoGsMGS3Yisgpy_6DGI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "698012966949-fh7theud75hce128gclnmccshs6iaaf8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

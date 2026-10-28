@@ -129,13 +129,24 @@ class _LoginFormViewState extends State<LoginFormView> {
       }
     } catch (error) {
       AuthService.googleSignInInProgress = false;
+      debugPrint('Google Sign-In Error Details: $error');
       if (!mounted) return;
       final err = error.toString().toLowerCase();
       String message = _t(
-        'Đăng nhập Google thất bại. Vui lòng thử lại.',
-        'Google Sign-In failed. Please try again.',
+        'Đăng nhập Google thất bại ($error).',
+        'Google Sign-In failed ($error).',
       );
-      if (err.contains('operation-not-allowed')) {
+      if (err.contains('10') || err.contains('developer_error')) {
+        message = _t(
+          'Lỗi cấu hình SHA-1 (ApiException 10): Vui lòng thêm mã SHA-1 của máy vào Firebase Console (Project Settings > Android app).',
+          'Missing SHA-1 fingerprint in Firebase Console (ApiException 10).',
+        );
+      } else if (err.contains('12500')) {
+        message = _t(
+          'Lỗi tài khoản Google Play Services (ApiException 12500): Vui lòng kiểm tra lại tài khoản Google trên điện thoại.',
+          'Google Play Services error (ApiException 12500). Please check your Google account on the device.',
+        );
+      } else if (err.contains('operation-not-allowed')) {
         message = _t(
           'Chưa bật đăng nhập Google trong Firebase Console (Authentication > Sign-in method).',
           'Google sign-in is disabled in Firebase Console.',

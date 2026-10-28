@@ -20,10 +20,14 @@ class AuthService {
         Uri.base.queryParameters['type'] == 'recovery';
   }
 
+  static const String webClientId =
+      '698012966949-fh7theud75hce128gclnmccshs6iaaf8.apps.googleusercontent.com';
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   late final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
+    serverClientId: webClientId,
   );
 
   /// Stream lắng nghe trạng thái đăng nhập tự động
@@ -70,6 +74,16 @@ class AuthService {
 
         final GoogleSignInAuthentication googleAuth =
             await googleUser.authentication;
+        debugPrint(
+          'Google Sign-In tokens: accessToken=${googleAuth.accessToken != null ? "OK" : "null"}, idToken=${googleAuth.idToken != null ? "OK" : "null"}',
+        );
+
+        if (googleAuth.idToken == null && googleAuth.accessToken == null) {
+          throw Exception(
+            'Không nhận được token xác thực từ Google. Vui lòng kiểm tra cấu hình SHA-1 trên Firebase Console.',
+          );
+        }
+
         final OAuthCredential credential = GoogleAuthProvider.credential(
           accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
