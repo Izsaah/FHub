@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/family.dart';
 import '../models/family_member.dart';
 
+enum LeaveFamilyResult { memberLeft, familyDeleted }
+
 /// Firestore schema used by the Khoa module:
 /// families/{familyId}
 /// family_members/{familyId}_{uid}
@@ -139,7 +141,13 @@ class FamilyService {
 
         // Kiểm tra giới hạn thành viên theo gói cước Free (4 người) vs Premium (10 người)
         final familyDoc = await transaction.get(_families.doc(family.id));
+        if (!familyDoc.exists) {
+          throw Exception('Gia đình này không còn tồn tại.');
+        }
         final famData = familyDoc.data() ?? <String, dynamic>{};
+        if (famData['deleting'] == true) {
+          throw Exception('Gia đình này đang được đóng và không thể tham gia.');
+        }
         final bool isPrem = famData['isPremium'] as bool? ?? false;
         final int maxMem = famData['maxMembers'] as int? ?? (isPrem ? 10 : 4);
 
@@ -220,6 +228,136 @@ class FamilyService {
     } on FirebaseException catch (e) {
       throw Exception(_friendlyFirebaseError(e, 'Không thể tải thông tin gia đình.'));
     }
+  }
+
+  Future<LeaveFamilyResult> leaveFamily({
+    required String familyId,
+    required bool expectedOwner,
+  }) async {
+    final uid = currentUserId;
+    final familyRef = _families.doc(familyId);
+    final myMemberRef = _members.doc(_membershipId(familyId, uid));
+    final userRef = _firestore.collection('users').doc(uid);
+
+    try {
+      final isOwner = await _firestore.runTransaction((transaction) async {
+        final familySnapshot = await transaction.get(familyRef);
+        final myMemberSnapshot = await transaction.get(myMemberRef);
+
+        if (!familySnapshot.exists || !myMemberSnapshot.exists) {
+          throw Exception('Bạn không còn là thành viên của gia đình này.');
+        }
+
+        final familyData = familySnapshot.data()!;
+        final memberData = myMemberSnapshot.data()!;
+        final status =
+            memberData['status'] as String? ?? FamilyMember.statusActive;
+        if (status != FamilyMember.statusActive) {
+          throw Exception('Bạn không còn là thành viên đang hoạt động của gia đình này.');
+        }
+
+        final ownerId = familyData['ownerId']?.toString();
+        final memberIsOwner = (memberData['isOwner'] as bool?) == true;
+        if (memberIsOwner &&
+            ownerId != null &&
+            ownerId.isNotEmpty &&
+            ownerId != uid) {
+          throw Exception(
+            'Thông tin Owner không đồng nhất. Vui lòng tải lại trang và thử lại.',
+          );
+        }
+        final isOwner =
+            ownerId == uid ||
+            ((ownerId == null || ownerId.isEmpty) && memberIsOwner);
+        if (isOwner != expectedOwner) {
+          throw Exception(
+            'Quyền sở hữu gia đình đã thay đổi. Vui lòng tải lại trang và thử lại.',
+          );
+        }
+
+        final userSnapshot = await transaction.get(userRef);
+        if (isOwner) {
+          transaction.update(familyRef, {
+            'deleting': true,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          transaction.delete(myMemberRef);
+          _clearFamilyPointer(transaction, userRef, userSnapshot, familyId);
+        }
+
+        return isOwner;
+      });
+
+      if (isOwner) {
+        await _deleteFamilyAndMemberships(
+          familyId: familyId,
+          familyRef: familyRef,
+          ownerMembershipRef: myMemberRef,
+        );
+        return LeaveFamilyResult.familyDeleted;
+      }
+      return LeaveFamilyResult.memberLeft;
+    } on FirebaseException catch (e) {
+      throw Exception(_friendlyFirebaseError(e, 'Không thể rời gia đình.'));
+    }
+  }
+
+  Future<void> _deleteFamilyAndMemberships({
+    required String familyId,
+    required DocumentReference<Map<String, dynamic>> familyRef,
+    required DocumentReference<Map<String, dynamic>> ownerMembershipRef,
+  }) async {
+    final members = await _members.where('familyId', isEqualTo: familyId).get();
+    final otherMemberships = members.docs
+        .where((member) => member.reference.id != ownerMembershipRef.id)
+        .toList();
+
+    for (final member in members.docs) {
+      final userId =
+          (member.data()['userId'] ?? member.data()['user_id'])?.toString();
+      if (userId == null || userId.isEmpty) continue;
+      await _firestore.runTransaction((transaction) async {
+        final userRef = _firestore.collection('users').doc(userId);
+        final userSnapshot = await transaction.get(userRef);
+        _clearFamilyPointer(transaction, userRef, userSnapshot, familyId);
+      });
+    }
+
+    const batchSize = 450;
+    for (var start = 0; start < otherMemberships.length; start += batchSize) {
+      final end = start + batchSize < otherMemberships.length
+          ? start + batchSize
+          : otherMemberships.length;
+      final batch = _firestore.batch();
+      for (final member in otherMemberships.sublist(start, end)) {
+        batch.delete(member.reference);
+      }
+      await batch.commit();
+    }
+
+    final finalBatch = _firestore.batch();
+    finalBatch.delete(ownerMembershipRef);
+    finalBatch.delete(familyRef);
+    await finalBatch.commit();
+  }
+
+  void _clearFamilyPointer(
+    Transaction transaction,
+    DocumentReference<Map<String, dynamic>> userRef,
+    DocumentSnapshot<Map<String, dynamic>> userSnapshot,
+    String familyId,
+  ) {
+    if (!userSnapshot.exists) return;
+    final data = userSnapshot.data()!;
+    final update = <String, dynamic>{};
+    if (data['familyId'] == familyId) {
+      update['familyId'] = FieldValue.delete();
+    }
+    if (data['family_id'] == familyId) {
+      update['family_id'] = FieldValue.delete();
+    }
+    if (update.isNotEmpty) transaction.update(userRef, update);
   }
 
   /// Owner can deactivate or memorialize a member. Historical data is not deleted.

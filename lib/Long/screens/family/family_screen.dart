@@ -7,8 +7,8 @@ import '../../models/family_member_model.dart';
 import '../../models/user_model.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/family_member_tile.dart';
-import '../../../Khoa/screens/create_family_screen.dart';
-import '../../../Khoa/screens/join_family_screen.dart';
+import '../../../Khoa/screens/family_setup_screen.dart';
+import '../../../Khoa/services/family_service.dart';
 import '../../../Danh/danh_payment_entry.dart';
 
 class FamilyScreen extends StatefulWidget {
@@ -20,8 +20,10 @@ class FamilyScreen extends StatefulWidget {
 
 class _FamilyScreenState extends State<FamilyScreen> {
   final _familyDataService = FamilyDataService();
+  final _familyService = FamilyService();
 
   late Future<Map<String, dynamic>> _familyDataFuture;
+  bool _isLeaving = false;
 
   @override
   void initState() {
@@ -40,6 +42,74 @@ class _FamilyScreenState extends State<FamilyScreen> {
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
     }
     return {'family': family, 'members': members};
+  }
+
+  Future<void> _openFamilySetup() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FamilySetupScreen()),
+    );
+    if (!mounted) return;
+    _familyDataService.clearCache();
+    setState(_loadData);
+  }
+
+  Future<void> _leaveFamily(FamilyModel family, {required bool isOwner}) async {
+    if (_isLeaving) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isOwner ? 'Delete family?' : 'Leave family?'),
+        content: Text(
+          isOwner
+              ? 'Deleting "${family.name}" will remove the family and its memberships. Reminders and historical data will be kept.'
+              : 'You will be removed from "${family.name}". You can join again later with an invitation code.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
+            child: Text(isOwner ? 'Delete family' : 'Leave family'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isLeaving = true);
+    try {
+      final result = await _familyService.leaveFamily(
+        familyId: family.id,
+        expectedOwner: isOwner,
+      );
+      if (!mounted) return;
+      _familyDataService.clearCache();
+      setState(_loadData);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result == LeaveFamilyResult.familyDeleted
+                ? 'Family deleted. Reminders and historical data were kept.'
+                : 'You have left the family.',
+          ),
+          backgroundColor: const Color(0xFF005F50),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLeaving = false);
+    }
   }
 
   void _handleInviteMember(String code, int currentMemberCount) {
@@ -135,7 +205,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 16, color: Color(0xFF3E4946)),
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 32),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -145,50 +215,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    onPressed: () async {
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const CreateFamilyScreen(),
-                        ),
-                      );
-                      if (result != null && mounted) {
-                        _familyDataService.clearCache();
-                        setState(() => _loadData());
-                      }
-                    },
+                    onPressed: _openFamilySetup,
                     child: const Text(
-                      'Create a Family',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      foregroundColor: const Color(0xFF005F50),
-                      side: const BorderSide(color: Color(0xFF005F50)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: () async {
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const JoinFamilyScreen(),
-                        ),
-                      );
-                      if (result != null && mounted) {
-                        _familyDataService.clearCache();
-                        setState(() => _loadData());
-                      }
-                    },
-                    child: const Text(
-                      'Join a Family',
+                      'Set Up Your Family',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -272,7 +301,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             ],
                           ),
                           InkWell(
-                            onTap: () => _handleInviteMember(family.joinCode, members.length),
+                            onTap: () => _handleInviteMember(
+                              family.joinCode,
+                              members.length,
+                            ),
                             borderRadius: BorderRadius.circular(16),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
@@ -351,7 +383,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               backgroundColor: const Color(0xFFE7F0EC)
                                   .withValues(alpha: 0.3),
                             ),
-                            onPressed: () => _handleInviteMember(family.joinCode, members.length),
+                            onPressed: () => _handleInviteMember(
+                              family.joinCode,
+                              members.length,
+                            ),
                             icon: const Icon(Icons.person_add, size: 20),
                             label: const Text(
                               'Thêm thành viên mới',
@@ -363,6 +398,43 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            side: BorderSide(color: Colors.red.shade300),
+                            foregroundColor: Colors.red.shade700,
+                          ),
+                          onPressed: _isLeaving
+                              ? null
+                              : () => _leaveFamily(family, isOwner: isOwner),
+                          icon: _isLeaving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  isOwner ? Icons.delete_outline : Icons.logout,
+                                  size: 20,
+                                ),
+                          label: Text(
+                            _isLeaving
+                                ? 'Please wait...'
+                                : isOwner
+                                ? 'Delete Family'
+                                : 'Leave Family',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
