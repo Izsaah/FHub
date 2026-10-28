@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/family_data_service.dart';
@@ -5,14 +6,28 @@ import '../../models/user_model.dart';
 import '../../models/family_model.dart';
 import '../../models/family_member_model.dart';
 import '../../models/reminder_model.dart';
+import '../../utils/long_strings.dart';
 import '../../widgets/check_in_button.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/family_member_tile.dart';
+import '../../widgets/family_selector_bar.dart';
+import '../family/family_screen.dart';
 import '../../../Khoa/screens/family_setup_screen.dart';
+import '../../../Thinh/theme/app_language.dart';
+import '../../../Vinh/models/reminder_model.dart' as vinh;
 import '../../../Vinh/screens/reminder_list_screen.dart';
+import '../../../Vinh/services/firebase_reminder_repository.dart';
+import '../../../Vinh/widgets/reminder_detail_bottom_sheet.dart' as vinh_sheet;
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onNavigateToFamily;
+  final VoidCallback? onNavigateToReminders;
+
+  const HomeScreen({
+    super.key,
+    this.onNavigateToFamily,
+    this.onNavigateToReminders,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -27,6 +42,23 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadData();
+    _familydataService.selectedFamilyIdNotifier.addListener(
+      _onSelectedFamilyChanged,
+    );
+  }
+
+  @override
+  void dispose() {
+    _familydataService.selectedFamilyIdNotifier.removeListener(
+      _onSelectedFamilyChanged,
+    );
+    super.dispose();
+  }
+
+  void _onSelectedFamilyChanged() {
+    if (mounted) {
+      setState(_loadData);
+    }
   }
 
   void _loadData() {
@@ -35,24 +67,75 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<Map<String, dynamic>> _fetchHomeData() async {
     final user = await _familydataService.getCurrentUser();
+    final families = await _familydataService.getMyFamilies();
     final family = await _familydataService.getCurrentFamily();
-    final members = await _familydataService.getFamilyMembers();
-    final reminders = await _familydataService.getMyPendingReminders();
+    final members = await _familydataService.getFamilyMembers(
+      familyId: family?.id,
+    );
+    final allReminders = await _familydataService.getMyPendingReminders(
+      acrossAllFamilies: true,
+    );
+
+    // Chỉ hiển thị các tác vụ chưa xong (PENDING) mà thôi
+    final pendingReminders = allReminders
+        .where((r) => r.status == ReminderStatus.pending)
+        .toList();
 
     return {
       'user': user,
+      'families': families,
       'family': family,
       'members': members,
-      'reminders': reminders,
+      'reminders': pendingReminders,
     };
   }
 
-  Future<void> _handleCheckIn() async {
+  Future<void> _handleSelectFamily(FamilyModel selected) async {
+    await _familydataService.selectFamily(selected.id);
+    if (mounted) {
+      setState(_loadData);
+    }
+  }
+
+  Future<void> _openFamilySetup() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const FamilySetupScreen(),
+      ),
+    );
+    if (mounted) {
+      _familydataService.clearCache();
+      setState(_loadData);
+    }
+  }
+
+  void _navigateToFamily() {
+    if (widget.onNavigateToFamily != null) {
+      widget.onNavigateToFamily!();
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const FamilyScreen(),
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleCheckIn(String? familyId) async {
     try {
-      await _familydataService.checkIn(_familydataService.currentUserId);
-      setState(() {
-        _loadData();
-      });
+      await _familydataService.checkIn(
+        _familydataService.currentUserId,
+        familyId: familyId,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(LongStrings.checkInSuccess),
+            backgroundColor: const Color(0xFF005F50),
+          ),
+        );
+        setState(_loadData);
+      }
     } catch (e) {
       debugPrint('Check-in error: $e');
     }
@@ -61,230 +144,441 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _handleCompleteReminder(String reminderId) async {
     try {
       await _familydataService.completeReminder(reminderId);
-      setState(() {
-        _loadData();
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(LongStrings.completeTaskSuccess),
+            backgroundColor: const Color(0xFF005F50),
+          ),
+        );
+        setState(_loadData);
+      }
     } catch (e) {
       debugPrint('Complete reminder error: $e');
     }
   }
 
+  /// Mở chi tiết lời nhắc tương ứng khi nhấn vào từng lời nhắc trên trang Home
+  Future<void> _handleOpenReminderDetail(
+    ReminderModel reminder,
+    String? familyName,
+    UserModel currentUser,
+  ) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('reminders')
+          .doc(reminder.id)
+          .get();
+
+      final vinh.ReminderModel vinhModel;
+      if (doc.exists && doc.data() != null) {
+        final data = Map<String, dynamic>.from(doc.data()!);
+        data['id'] = doc.id;
+        vinhModel = vinh.ReminderModel.fromJson(data);
+      } else {
+        vinhModel = vinh.ReminderModel(
+          id: reminder.id,
+          familyId: reminder.familyId,
+          familyName: familyName ?? reminder.familyName,
+          creatorId: reminder.creatorId,
+          assignedTo: reminder.assignedTo,
+          assignedToName: currentUser.name,
+          title: reminder.title,
+          date:
+              '${reminder.date.day.toString().padLeft(2, '0')}/${reminder.date.month.toString().padLeft(2, '0')}/${reminder.date.year}',
+          time:
+              '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}',
+          status: 'PENDING',
+        );
+      }
+
+      if (!mounted) return;
+
+      await vinh_sheet.ReminderDetailBottomSheet.show(
+        context,
+        reminder: vinhModel,
+        currentUserId: _familydataService.currentUserId,
+        currentUserName: currentUser.name,
+        familyName: familyName ?? reminder.familyName,
+        repository: FirebaseReminderRepository(),
+        onReminderUpdated: () {
+          if (mounted) setState(_loadData);
+        },
+      );
+    } catch (e) {
+      debugPrint('Open reminder detail error: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _homeDataFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: Colors.white,
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, child) {
+        return FutureBuilder<Map<String, dynamic>>(
+          future: _homeDataFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                backgroundColor: Colors.white,
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
 
-        if (snapshot.hasError) {
-          return Scaffold(
-            backgroundColor: Colors.white,
-            body: Center(child: Text('Error: ${snapshot.error}')),
-          );
-        }
+            if (snapshot.hasError) {
+              return Scaffold(
+                backgroundColor: Colors.white,
+                body: Center(child: Text('Error: ${snapshot.error}')),
+              );
+            }
 
-        final data = snapshot.data!;
-        final UserModel user = data['user'];
-        final FamilyModel? family = data['family'];
-        final List<FamilyMemberModel> members = data['members'];
-        final List<ReminderModel> myReminders = data['reminders'];
+            final data = snapshot.data!;
+            final UserModel user = data['user'];
+            final List<FamilyModel> families =
+                (data['families'] as List<FamilyModel>?) ?? [];
+            final FamilyModel? family = data['family'];
+            final List<FamilyMemberModel> members = data['members'];
+            final List<ReminderModel> myReminders = data['reminders'];
 
-        // Determine check-in status
-        final currentMember = members
-            .where((m) => m.user.id == user.id)
-            .firstOrNull;
-        final isCheckedIn = currentMember?.isCheckedInToday ?? false;
+            final currentMember =
+                members.where((m) => m.user.id == user.id).firstOrNull;
+            final isCheckedIn = currentMember?.isCheckedInToday ?? false;
 
-        return Scaffold(
-          backgroundColor: Colors.white,
-          appBar: CustomAppBar(title: 'Good morning, ${user.name}'),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: family == null
-                ? Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 60),
-                      const Icon(
-                        Icons.family_restroom,
-                        size: 80,
-                        color: Colors.grey,
+            return Scaffold(
+              backgroundColor: Colors.white,
+              appBar: CustomAppBar(
+                title: LongStrings.goodMorning(user.name),
+                actions: [
+                  // Lối tắt trên thanh AppBar dẫn nhanh sang trang Family tương ứng
+                  Tooltip(
+                    message: LongStrings.familyShortcutTooltip,
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.family_restroom_rounded,
+                        color: Color(0xFF005F50),
                       ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        "You haven't joined a family yet.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        "Ask your family owner for an invitation code, or create a new family.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
-                      const SizedBox(height: 32),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF005F50),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        icon: const Icon(Icons.family_restroom),
-                        label: const Text(
-                          'Join / Create Family',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        onPressed: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const FamilySetupScreen(),
-                            ),
-                          );
-                          if (mounted) {
-                            _familydataService.clearCache();
-                            setState(() {
-                              _loadData();
-                            });
-                          }
-                        },
-                      ),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      onPressed: _navigateToFamily,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ),
+              body: SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: family == null
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          const SizedBox(height: 60),
+                          const Icon(
+                            Icons.family_restroom,
+                            size: 80,
+                            color: Colors.grey,
+                          ),
+                          const SizedBox(height: 24),
                           Text(
-                            family.name,
+                            LongStrings.notJoinedFamilyYet,
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
-                              fontSize: 18,
-                              color: Colors.grey,
-                              fontWeight: FontWeight.w500,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          TextButton.icon(
-                            icon: const Icon(Icons.settings_outlined,
-                                size: 16, color: Color(0xFF005F50)),
-                            label: const Text(
-                              'Gia đình',
-                              style: TextStyle(
-                                  color: Color(0xFF005F50), fontSize: 13),
+                          const SizedBox(height: 16),
+                          Text(
+                            LongStrings.askFamilyOwner,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
                             ),
-                            onPressed: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const FamilySetupScreen(),
-                                ),
-                              );
-                              if (mounted) {
-                                _familydataService.clearCache();
-                                setState(() {
-                                  _loadData();
-                                });
-                              }
-                            },
+                          ),
+                          const SizedBox(height: 32),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF005F50),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(Icons.family_restroom),
+                            label: Text(
+                              LongStrings.joinOrCreateFamily,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            onPressed: _openFamilySetup,
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 24),
-                      CheckInButton(
-                        isCheckedIn: isCheckedIn,
-                        onPressed: _handleCheckIn,
-                      ),
-                      const SizedBox(height: 32),
-                      const Text(
-                        'Family Today',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ...members.map(
-                        (member) => FamilyMemberTile(member: member),
-                      ),
-                      const SizedBox(height: 32),
-                      const Text(
-                        'My Reminders',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      if (myReminders.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: Text(
-                            'No pending reminders.',
-                            style: TextStyle(color: Colors.grey, fontSize: 16),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Thanh chọn gia đình dạng select chuẩn (giống trang Reminder)
+                          // Giới hạn hiển thị tối đa 5 gia đình, nếu > 5 thì cuộn
+                          FamilySelectorBar(
+                            families: families,
+                            currentFamily: family,
+                            onFamilySelected: _handleSelectFamily,
+                            onAddFamily: _openFamilySetup,
+                            onQuickNavigateToFamily: _navigateToFamily,
                           ),
-                        )
-                      else
-                        ...myReminders.map((reminder) {
-                          final timeString =
-                              '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}';
-                          return Card(
-                            elevation: 0,
-                            color: Colors.blue[50],
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
-                              leading: const Icon(
-                                Icons.medication,
-                                color: Colors.blue,
+
+                          const SizedBox(height: 20),
+                          CheckInButton(
+                            isCheckedIn: isCheckedIn,
+                            onPressed: () => _handleCheckIn(family.id),
+                          ),
+                          const SizedBox(height: 28),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  families.length > 1
+                                      ? '${LongStrings.familyToday} · ${family.name}'
+                                      : LongStrings.familyToday,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
-                              title: Text(
-                                '${reminder.title} · $timeString',
+                              Text(
+                                LongStrings.membersCount(members.length),
                                 style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: Color(0xFF6E7A75),
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              trailing: IconButton(
-                                icon: const Icon(
-                                  Icons.check_circle_outline,
-                                  color: Colors.blue,
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          ...members.map(
+                            (member) => FamilyMemberTile(member: member),
+                          ),
+                          const SizedBox(height: 28),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                LongStrings.myReminders,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                onPressed: () =>
-                                    _handleCompleteReminder(reminder.id),
                               ),
+                              if (myReminders.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE4F6EF),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '${myReminders.length}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF005F50),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+
+                          // Danh sách lời nhắc chưa xong
+                          if (myReminders.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Text(
+                                LongStrings.noPendingReminders,
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            )
+                          else
+                            ...myReminders.map((reminder) {
+                              final timeString =
+                                  '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}';
+                              final remFamName = reminder.familyName ??
+                                  families
+                                      .where((f) => f.id == reminder.familyId)
+                                      .map((f) => f.name)
+                                      .firstOrNull ??
+                                  family.name;
+
+                              return Card(
+                                elevation: 0,
+                                color: const Color(0xFFF3F8F6),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(
+                                    color: const Color(0xFFBDC9C4)
+                                        .withValues(alpha: 0.5),
+                                  ),
+                                ),
+                                margin: const EdgeInsets.only(bottom: 10),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  // Nhấn vào reminder mở trực tiếp chi tiết reminder tương ứng
+                                  onTap: () => _handleOpenReminderDetail(
+                                    reminder,
+                                    remFamName,
+                                    user,
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFD7EFE6),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                          child: const Icon(
+                                            Icons.assignment_outlined,
+                                            color: Color(0xFF005F50),
+                                            size: 20,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '${reminder.title} · $timeString',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 15,
+                                                  color: Color(0xFF151D1B),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 5),
+
+                                              // Huy hiệu hiện rõ thông tin tác vụ đó ở gia đình nào
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color:
+                                                      const Color(0xFFE4F6EF),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.cottage_rounded,
+                                                      size: 13,
+                                                      color: Color(0xFF005F50),
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Flexible(
+                                                      child: Text(
+                                                        remFamName,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: const TextStyle(
+                                                          fontSize: 11.5,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color:
+                                                              Color(0xFF005F50),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        IconButton(
+                                          tooltip:
+                                              LongStrings.completeTaskSuccess,
+                                          icon: const Icon(
+                                            Icons.check_circle_outline,
+                                            color: Color(0xFF005F50),
+                                            size: 24,
+                                          ),
+                                          onPressed: () =>
+                                              _handleCompleteReminder(
+                                            reminder.id,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+
+                          const SizedBox(height: 8),
+
+                          // View all reminders: Mở sang ReminderListScreen riêng (không có thanh dưới, có nút quay lại)
+                          Center(
+                            child: TextButton.icon(
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF005F50),
+                              ),
+                              icon: const Icon(Icons.arrow_forward, size: 16),
+                              label: Text(
+                                LongStrings.viewAllReminders,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              onPressed: () {
+                                if (widget.onNavigateToReminders != null) {
+                                  widget.onNavigateToReminders!();
+                                } else {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => ReminderListScreen(
+                                        familyId: family.id,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
                             ),
-                          );
-                        }),
-                      if (myReminders.isNotEmpty)
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const ReminderListScreen(),
-                              ),
-                            );
-                          },
-                          child: const Text('View all reminders'),
-                        ),
-                    ],
-                  ),
-          ),
+                          ),
+                        ],
+                      ),
+              ),
+            );
+          },
         );
       },
     );

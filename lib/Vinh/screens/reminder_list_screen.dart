@@ -1,8 +1,12 @@
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../Khoa/screens/family_setup_screen.dart';
+import '../../Long/screens/family/family_screen.dart';
+import '../../Long/services/family_data_service.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../services/reminder_repository.dart';
@@ -403,6 +407,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       _familyId = family.id;
       _familyMembers = _membersByFamilyId[family.id] ?? [];
     });
+    FamilyDataService().selectFamily(family.id);
 
     if (_familyMembers.isEmpty && Firebase.apps.isNotEmpty) {
       final loaded = await _loadMembersForFamilyFromFirestore(
@@ -710,187 +715,193 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) {
-        return SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 520,
-                maxHeight: MediaQuery.of(ctx).size.height * 0.75,
-              ),
-              child: Container(
-                margin: const EdgeInsets.all(12),
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Thanh kéo (handle bar)
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.home_work_rounded,
-                          color: Color(0xFF005F50),
-                          size: 22,
-                        ),
-                        const SizedBox(width: 8),
-                        const Expanded(
-                          child: Text(
-                            'Chọn gia đình hiển thị',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF151D1B),
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE4F6EF),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            'A → Z (${_families.length})',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF005F50),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Danh sách lời nhắc tổng (Cả nhà) sẽ chỉ hiển thị các lời nhắc thuộc gia đình bạn chọn bên dưới.',
+              ),
+              const SizedBox(height: 14),
+
+              // Header
+              Row(
+                children: [
+                  const Icon(
+                    Icons.home_work_rounded,
+                    color: Color(0xFF005F50),
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Chọn gia đình hiển thị',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12.5,
-                        color: Color(0xFF6E7A75),
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF151D1B),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Flexible(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: _families.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final fam = _families[index];
-                          final isSelected = fam.id == _familyId;
-                          final memberCount =
-                              _membersByFamilyId[fam.id]?.length ?? 0;
-                          return InkWell(
-                            borderRadius: BorderRadius.circular(14),
-                            onTap: () {
-                              Navigator.of(ctx).pop(fam);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 12),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE4F6EF),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      'A → Z (${_families.length})',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF005F50),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Danh sách lời nhắc tổng (Cả nhà) sẽ chỉ hiển thị các lời nhắc thuộc gia đình bạn chọn bên dưới.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: Color(0xFF6E7A75),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // Danh sách gia đình: Giới hạn tối đa 5 mục hiển thị, nếu > 5 thì cuộn
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: math.min(_families.length, 5) * 58.0,
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  physics: _families.length > 5
+                      ? const AlwaysScrollableScrollPhysics()
+                      : const NeverScrollableScrollPhysics(),
+                  itemCount: _families.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final fam = _families[index];
+                    final isSelected = fam.id == _familyId;
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        Navigator.of(ctx).pop(fam);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFFE4F6EF)
+                              : const Color(0xFFF7FBF9),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? const Color(0xFF005F50)
+                                : const Color(0xFFDCE8E3),
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(7),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? const Color(0xFFE4F6EF)
-                                    : const Color(0xFFF7FBF9),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? const Color(0xFF005F50)
-                                      : const Color(0xFFDCE8E3),
-                                  width: isSelected ? 1.5 : 1,
-                                ),
+                                    ? const Color(0xFF005F50)
+                                    : const Color(0xFFE4F6EF),
+                                shape: BoxShape.circle,
                               ),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 18,
-                                    backgroundColor: isSelected
-                                        ? const Color(0xFF005F50)
-                                        : const Color(0xFFDCE8E3),
-                                    child: Text(
-                                      fam.name.isNotEmpty
-                                          ? fam.name[0].toUpperCase()
-                                          : 'G',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: isSelected
-                                            ? Colors.white
-                                            : const Color(0xFF005F50),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          fam.name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                            color: isSelected
-                                                ? const Color(0xFF005F50)
-                                                : const Color(0xFF151D1B),
-                                          ),
-                                        ),
-                                        if (memberCount > 0 ||
-                                            (fam.role != null &&
-                                                fam.role!.isNotEmpty))
-                                          Text(
-                                            [
-                                              if (memberCount > 0)
-                                                '$memberCount thành viên',
-                                              if (fam.role != null &&
-                                                  fam.role!.isNotEmpty)
-                                                'Vai trò: ${fam.role}',
-                                            ].join(' • '),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Color(0xFF6E7A75),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (isSelected)
-                                    const Icon(
-                                      Icons.check_circle_rounded,
-                                      color: Color(0xFF005F50),
-                                      size: 22,
-                                    ),
-                                ],
+                              child: Icon(
+                                Icons.cottage_rounded,
+                                size: 16,
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFF005F50),
                               ),
                             ),
-                          );
-                        },
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                fam.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.w600,
+                                  color: isSelected
+                                      ? const Color(0xFF005F50)
+                                      : const Color(0xFF151D1B),
+                                ),
+                              ),
+                            ),
+                            if (isSelected)
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: Color(0xFF005F50),
+                                size: 20,
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ),
-            ),
+
+              const SizedBox(height: 14),
+
+              // Nút Tạo / Tham gia thêm gia đình
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  side: const BorderSide(color: Color(0xFF005F50)),
+                  foregroundColor: const Color(0xFF005F50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.add_home_work_outlined, size: 18),
+                label: const Text(
+                  '+ Tạo hoặc tham gia gia đình khác',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const FamilySetupScreen(),
+                    ),
+                  );
+                  _resolveContext();
+                },
+              ),
+            ],
           ),
         );
       },
@@ -914,7 +925,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         onTap: _showFamilyPickerBottomSheet,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
@@ -924,7 +935,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             children: [
               const Icon(
                 Icons.home_work_rounded,
-                size: 15,
+                size: 16,
                 color: Color(0xFF005F50),
               ),
               const SizedBox(width: 6),
@@ -953,7 +964,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 Container(
                   margin: const EdgeInsets.only(right: 4),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE4F6EF),
                     borderRadius: BorderRadius.circular(8),
@@ -971,6 +982,28 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 Icons.keyboard_arrow_down_rounded,
                 color: Color(0xFF005F50),
                 size: 18,
+              ),
+              const SizedBox(width: 4),
+              Tooltip(
+                message: 'Xem trang gia đình',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const FamilyScreen(),
+                      ),
+                    );
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.open_in_new_rounded,
+                      size: 15,
+                      color: Color(0xFF005F50),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),

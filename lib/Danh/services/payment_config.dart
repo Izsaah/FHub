@@ -15,7 +15,6 @@ class PaymentConfig {
   // Số tiền gói Premium mặc định (Tháng)
   static const int defaultAmount = 49000;
 
-  //mock (tự xóa này nha Danh)
   static String get apiKey => DefaultFirebaseOptions.defaultAuthDomain;
 
   // Cấu hình SePay Sandbox API

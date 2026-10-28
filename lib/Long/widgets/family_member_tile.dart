@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/family_member_model.dart';
+import '../utils/long_strings.dart';
 
 class FamilyMemberTile extends StatelessWidget {
   final FamilyMemberModel member;
@@ -45,12 +46,21 @@ class FamilyMemberTile extends StatelessWidget {
             height: 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.blue[100],
-              border: Border.all(color: const Color(0xFF0D7A68), width: 2),
+              color: isCheckedIn
+                  ? const Color(0xFFD7EFE6)
+                  : const Color(0xFFE0E5E3),
+              border: Border.all(
+                color: isCheckedIn
+                    ? const Color(0xFF005F50)
+                    : const Color(0xFFBDC9C4),
+                width: 2,
+              ),
             ),
             alignment: Alignment.center,
             child: Text(
-              member.user.name.substring(0, 1).toUpperCase(),
+              member.user.name.isNotEmpty
+                  ? member.user.name.substring(0, 1).toUpperCase()
+                  : '?',
               style: TextStyle(
                 color: Colors.blue[900],
                 fontWeight: FontWeight.bold,
@@ -85,18 +95,21 @@ class FamilyMemberTile extends StatelessWidget {
                           : const Color(0xFF6E7A75),
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      isCheckedIn
-                          ? 'Checked in · $timeString'
-                          : 'Not checked in',
-                      style: TextStyle(
-                        color: isCheckedIn
-                            ? const Color(0xFF005F50)
-                            : const Color(0xFF6E7A75),
-                        fontSize: 12,
-                        fontWeight: isCheckedIn
-                            ? FontWeight.w500
-                            : FontWeight.normal,
+                    Flexible(
+                      child: Text(
+                        isCheckedIn
+                            ? LongStrings.t('Đã điểm danh · $timeString', 'Checked in · $timeString')
+                            : LongStrings.t('Chưa điểm danh', 'Not checked in'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isCheckedIn
+                              ? const Color(0xFF005F50)
+                              : const Color(0xFF6E7A75),
+                          fontSize: 12,
+                          fontWeight:
+                              isCheckedIn ? FontWeight.w500 : FontWeight.normal,
+                        ),
                       ),
                     ),
                   ],
@@ -104,22 +117,48 @@ class FamilyMemberTile extends StatelessWidget {
               ],
             ),
           ),
-          if (member.role == Role.owner)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFDCBD),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'Owner',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Color(0xFF6C3E00),
-                  fontWeight: FontWeight.bold,
+          const SizedBox(width: 6),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0F4EE),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  member.roleLabel,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    color: Color(0xFF005F50),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
+              if (member.role == Role.owner) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFDCBD),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    LongStrings.t('Chủ nhà', 'Owner'),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF6C3E00),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
