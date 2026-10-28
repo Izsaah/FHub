@@ -7,6 +7,9 @@ import '../../models/family_member_model.dart';
 import '../../models/user_model.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/family_member_tile.dart';
+import '../../widgets/family_selector_bar.dart';
+import '../../utils/long_strings.dart';
+import '../../../Thinh/theme/app_language.dart';
 import '../../../Khoa/screens/family_setup_screen.dart';
 import '../../../Khoa/services/family_service.dart';
 import '../../../Danh/danh_payment_entry.dart';
@@ -29,6 +32,23 @@ class _FamilyScreenState extends State<FamilyScreen> {
   void initState() {
     super.initState();
     _loadData();
+    _familyDataService.selectedFamilyIdNotifier.addListener(
+      _onSelectedFamilyChanged,
+    );
+  }
+
+  @override
+  void dispose() {
+    _familyDataService.selectedFamilyIdNotifier.removeListener(
+      _onSelectedFamilyChanged,
+    );
+    super.dispose();
+  }
+
+  void _onSelectedFamilyChanged() {
+    if (mounted) {
+      setState(_loadData);
+    }
   }
 
   void _loadData() {
@@ -36,12 +56,26 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<Map<String, dynamic>> _fetchFamilyData() async {
+    final families = await _familyDataService.getMyFamilies();
     final family = await _familyDataService.getCurrentFamily();
-    final members = await _familyDataService.getFamilyMembers();
+    final members = await _familyDataService.getFamilyMembers(
+      familyId: family?.id,
+    );
     if (family != null) {
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
     }
-    return {'family': family, 'members': members};
+    return {
+      'families': families,
+      'family': family,
+      'members': members,
+    };
+  }
+
+  Future<void> _selectFamily(FamilyModel family) async {
+    await _familyDataService.selectFamily(family.id);
+    if (mounted) {
+      setState(_loadData);
+    }
   }
 
   Future<void> _openFamilySetup() async {
@@ -87,7 +121,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
         expectedOwner: isOwner,
       );
       if (!mounted) return;
-      _familyDataService.clearCache();
+      _familyDataService.resetAll();
       setState(_loadData);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -121,7 +155,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
             children: [
               Icon(Icons.warning_amber_rounded, color: Colors.orange),
               SizedBox(width: 8),
-              Text('Giới Hạn Thành Viên'),
+              Expanded(child: Text('Giới Hạn Thành Viên')),
             ],
           ),
           content: Text(
@@ -158,76 +192,99 @@ class _FamilyScreenState extends State<FamilyScreen> {
     );
   }
 
+  /// Hiển thị thanh chọn gia đình dạng select (khớp giao diện ReminderListScreen),
+  /// giới hạn hiển thị tối đa 5 gia đình, nếu > 5 thì cuộn
+  Widget _buildFamilySwitcherSection(
+    List<FamilyModel> families,
+    FamilyModel currentFamily,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: FamilySelectorBar(
+        families: families,
+        currentFamily: currentFamily,
+        onFamilySelected: _selectFamily,
+        onAddFamily: _openFamilySetup,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Tổ Ấm Yêu Thương'),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: _familyDataFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, child) {
+        return Scaffold(
+          appBar: CustomAppBar(title: LongStrings.lovingHome),
+          body: FutureBuilder<Map<String, dynamic>>(
+            future: _familyDataFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
 
-          final data = snapshot.data!;
-          final FamilyModel? family = data['family'];
-          final List<FamilyMemberModel> members = data['members'];
+              final data = snapshot.data!;
+              final List<FamilyModel> families =
+                  (data['families'] as List<FamilyModel>?) ?? [];
+              final FamilyModel? family = data['family'];
+              final List<FamilyMemberModel> members = data['members'];
 
-          if (family == null) {
-            return Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(
-                    Icons.family_restroom,
-                    size: 80,
-                    color: Color(0xFF005F50),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Welcome to Family Hub',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF151D1B),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "You aren't in a family yet. Create one or join an existing family to get started.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Color(0xFF3E4946)),
-                  ),
-                  const SizedBox(height: 32),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: const Color(0xFF005F50),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+              if (family == null) {
+                return Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Icon(
+                        Icons.family_restroom,
+                        size: 80,
+                        color: Color(0xFF005F50),
                       ),
-                    ),
-                    onPressed: _openFamilySetup,
-                    child: const Text(
-                      'Set Up Your Family',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                      const SizedBox(height: 24),
+                      Text(
+                        LongStrings.welcomeFamilyHub,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF151D1B),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      Text(
+                        LongStrings.notInFamilyDesc,
+                        textAlign: TextAlign.center,
+                        style:
+                            const TextStyle(fontSize: 16, color: Color(0xFF3E4946)),
+                      ),
+                      const SizedBox(height: 32),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          backgroundColor: const Color(0xFF005F50),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: _openFamilySetup,
+                        child: Text(
+                          LongStrings.setUpYourFamily,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          }
+                );
+              }
 
           final currentMember = members.firstWhere(
             (m) => m.user.id == _familyDataService.currentUserId,
@@ -240,15 +297,21 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       name: '?',
                       email: '?',
                     ),
-              role: Role.member,
+              role: family.ownerId == _familyDataService.currentUserId
+                  ? Role.owner
+                  : Role.member,
             ),
           );
-          final isOwner = currentMember.role == Role.owner;
+          final isOwner = currentMember.role == Role.owner ||
+              family.ownerId == _familyDataService.currentUserId;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
+                // Thanh chuyển đổi gia đình (hiển thị khác nhau cho 1 vs N gia đình)
+                _buildFamilySwitcherSection(families, family),
+
                 // Widget hiển thị gói Premium & hạn mức thành viên (dành cho mọi thành viên)
                 DanhPaymentEntry.buildFamilyPremiumStatus(members.length),
 
@@ -282,24 +345,31 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.cottage,
-                                color: Color(0xFF0D7A68),
-                                size: 24,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                family.name,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF151D1B),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.cottage,
+                                  color: Color(0xFF0D7A68),
+                                  size: 24,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    family.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF151D1B),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
                           InkWell(
                             onTap: () => _handleInviteMember(
                               family.joinCode,
@@ -316,6 +386,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   const Text(
                                     'Mã: ',
@@ -426,8 +497,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             _isLeaving
                                 ? 'Please wait...'
                                 : isOwner
-                                ? 'Delete Family'
-                                : 'Leave Family',
+                                    ? 'Delete Family'
+                                    : 'Leave Family',
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -444,5 +515,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
         },
       ),
     );
+  },
+);
   }
 }

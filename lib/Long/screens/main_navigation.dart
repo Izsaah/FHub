@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'home/home_screen.dart';
 import 'family/family_screen.dart';
 import 'profile/profile_screen.dart';
+import '../services/family_data_service.dart';
 import '../../Ai/screens/ai_chat_screen.dart';
 import '../../Vinh/screens/reminder_list_screen.dart';
 
@@ -16,8 +17,11 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    const HomeScreen(),
+  late final List<Widget> _screens = [
+    HomeScreen(
+      onNavigateToFamily: () => setState(() => _currentIndex = 2),
+      onNavigateToReminders: () => setState(() => _currentIndex = 1),
+    ),
     const ReminderListScreen(),
     const FamilyScreen(),
     const ProfileScreen(),
@@ -42,7 +46,9 @@ class _MainNavigationState extends State<MainNavigation> {
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => const AiChatScreen(),
+                    builder: (context) => AiChatScreen(
+                      familyId: FamilyDataService().selectedFamilyId,
+                    ),
                   ),
                 );
               },

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/long_strings.dart';
+
 class CheckInButton extends StatelessWidget {
   final bool isCheckedIn;
   final VoidCallback onPressed;
@@ -57,7 +59,9 @@ class CheckInButton extends StatelessWidget {
             Icon(isCheckedIn ? Icons.check_circle : Icons.task_alt, size: 24),
             const SizedBox(width: 8),
             Text(
-              isCheckedIn ? "You're already checked in" : "I'M OK",
+              isCheckedIn
+                  ? LongStrings.t("Đã điểm danh hôm nay", "You're already checked in")
+                  : LongStrings.t("TÔI ỔN (ĐIỂM DANH)", "I'M OK"),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
