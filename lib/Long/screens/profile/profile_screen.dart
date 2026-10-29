@@ -271,88 +271,103 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        ...families.map((fam) {
-          final isSelected = fam.id == currentFamily?.id;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => _selectFamily(fam),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? const Color(0xFFE4F6EF)
-                      : const Color(0xFFF7FAF8),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: families.length > 3 ? 180.0 : double.infinity,
+          ),
+          child: Scrollbar(
+            thumbVisibility: families.length > 3,
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: families.length > 3
+                  ? const AlwaysScrollableScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              itemCount: families.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final fam = families[index];
+                final isSelected = fam.id == currentFamily?.id;
+                return InkWell(
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isSelected
-                        ? const Color(0xFF005F50)
-                        : const Color(0xFFDCE8E3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.cottage_rounded,
-                      size: 17,
-                      color: isSelected
-                          ? const Color(0xFF005F50)
-                          : const Color(0xFF6E7A75),
+                  onTap: () => _selectFamily(fam),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        fam.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.bold,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFFE4F6EF)
+                          : const Color(0xFFF7FAF8),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF005F50)
+                            : const Color(0xFFDCE8E3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.cottage_rounded,
+                          size: 17,
                           color: isSelected
                               ? const Color(0xFF005F50)
-                              : const Color(0xFF151D1B),
+                              : const Color(0xFF6E7A75),
                         ),
-                      ),
-                    ),
-                    if (isSelected)
-                      Container(
-                        margin: const EdgeInsets.only(right: 6),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF005F50),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          LongStrings.activeTag,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            fam.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.bold,
+                              color: isSelected
+                                  ? const Color(0xFF005F50)
+                                  : const Color(0xFF151D1B),
+                            ),
                           ),
                         ),
-                      ),
-                    if (fam.joinCode.isNotEmpty)
-                      Text(
-                        fam.joinCode,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF6E7A75),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+                        if (isSelected)
+                          Container(
+                            margin: const EdgeInsets.only(right: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF005F50),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              LongStrings.activeTag,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        if (fam.joinCode.isNotEmpty)
+                          Text(
+                            fam.joinCode,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF6E7A75),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        }),
+          ),
+        ),
       ],
     );
   }
@@ -483,7 +498,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Scaffold(
           appBar: CustomAppBar(
             title: LongStrings.profileTitle,
-            subtitle: LongStrings.profileSubtitle,
           ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _profileDataFuture,

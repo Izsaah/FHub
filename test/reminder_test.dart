@@ -316,7 +316,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Nhắc việc gia đình'), findsOneWidget);
+      expect(find.text('Tổ Ấm Yêu Thương'), findsOneWidget);
       expect(find.text('CHỜ THỰC HIỆN'), findsOneWidget);
       expect(find.text('ĐÃ HOÀN THÀNH'), findsOneWidget);
       expect(find.text('Take medicine'), findsOneWidget);
@@ -1844,7 +1844,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Nhắc việc gia đình'), findsOneWidget);
+      expect(find.text('Tổ Ấm Yêu Thương'), findsOneWidget);
       expect(find.text('Lương Diệu Vinh'), findsAtLeastNWidgets(1));
       expect(find.byType(WeeklyCalendarStrip), findsOneWidget);
       expect(find.text('123qweasdzxc'), findsOneWidget);

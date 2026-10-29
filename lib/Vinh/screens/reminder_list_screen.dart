@@ -1217,33 +1217,13 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   });
                 },
               )
-            : FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      AppLanguage.text('Nhắc việc gia đình', 'Family Reminders'),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        color: primaryColor,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    Text(
-                      _showAll
-                          ? AppLanguage.text('Tất cả nhắc việc gia đình', 'All family reminders')
-                          : AppLanguage.text('Việc ngày ${_formatDate(_selectedDate)}', 'Tasks on ${_formatDate(_selectedDate)}'),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF3E4946),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+            : Text(
+                AppLanguage.text('Tổ Ấm Yêu Thương', 'Family Hub'),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                  color: primaryColor,
+                  letterSpacing: -0.5,
                 ),
               ),
         backgroundColor: const Color(0xFFEDF5F2),
