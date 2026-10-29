@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'Thinh/screens/splash_screen.dart';
-import 'Vinh/services/supabase_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

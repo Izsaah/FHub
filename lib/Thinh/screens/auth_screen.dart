@@ -109,11 +109,11 @@ class _AuthScreenState extends State<AuthScreen> {
             ],
           ),
           Row(
-            // children: [
-            //   _buildLangButton('VI', false),
-            //   const SizedBox(width: 6),
-            //   _buildLangButton('EN', true),
-            // ],
+            children: [
+              _buildLangButton('VN', false),
+              const SizedBox(width: 6),
+              _buildLangButton('EN', true),
+            ],
           ),
         ],
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../Long/services/family_data_service.dart';
+import '../../Thinh/theme/app_language.dart';
 import '../models/family.dart';
 import '../models/family_member.dart';
 import '../services/family_service.dart';
@@ -87,18 +88,20 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
     final String rolePart;
     switch (member?.role) {
       case FamilyMember.roleGrandparent:
-        rolePart = 'Ông / Bà';
+        rolePart = AppLanguage.text('Ông / Bà', 'Grandparent');
         break;
       case FamilyMember.roleChild:
-        rolePart = 'Con cái';
+        rolePart = AppLanguage.text('Con cái', 'Child');
         break;
       case FamilyMember.roleParent:
-        rolePart = 'Bố / Mẹ';
+        rolePart = AppLanguage.text('Bố / Mẹ', 'Parent');
         break;
       default:
-        rolePart = 'Thành viên';
+        rolePart = AppLanguage.text('Thành viên', 'Member');
     }
-    return isOwner ? 'Owner • $rolePart' : rolePart;
+    return isOwner
+        ? AppLanguage.text('Chủ nhà • $rolePart', 'Owner • $rolePart')
+        : rolePart;
   }
 
   Future<void> _selectActiveFamily(Family family) async {
@@ -107,7 +110,12 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
     setState(() => _selectedFamilyId = family.id);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Đã chọn gia đình hiển thị: "${family.name}"'),
+        content: Text(
+          AppLanguage.text(
+            'Đã chọn gia đình hiển thị: "${family.name}"',
+            'Active family set to: "${family.name}"',
+          ),
+        ),
         backgroundColor: primary,
         duration: const Duration(seconds: 2),
       ),
@@ -119,7 +127,12 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Đã sao chép mã mời: $code'),
+        content: Text(
+          AppLanguage.text(
+            'Đã sao chép mã mời: $code',
+            'Invitation code copied: $code',
+          ),
+        ),
         backgroundColor: primary,
       ),
     );
@@ -203,8 +216,11 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
                 Expanded(
                   child: Text(
                     isSingle
-                        ? 'Gia đình hiện tại của bạn'
-                        : 'Các gia đình đã tham gia (${_families.length})',
+                        ? AppLanguage.text('Gia đình hiện tại của bạn', 'Your current family')
+                        : AppLanguage.text(
+                            'Các gia đình đã tham gia (${_families.length})',
+                            'Joined families (${_families.length})',
+                          ),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -222,7 +238,9 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    isSingle ? '1 nhà' : 'A → Z (${_families.length})',
+                    isSingle
+                        ? AppLanguage.text('1 nhà', '1 family')
+                        : 'A → Z (${_families.length})',
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
@@ -235,8 +253,14 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
             const SizedBox(height: 6),
             Text(
               isSingle
-                  ? 'Bạn đang tham gia 1 gia đình. Bạn có thể tạo thêm hoặc tham gia các gia đình khác (Nội, Ngoại...) bên dưới.'
-                  : 'Chạm vào một gia đình để chọn làm gia đình hiển thị chính.',
+                  ? AppLanguage.text(
+                      'Bạn đang tham gia 1 gia đình. Bạn có thể tạo thêm hoặc tham gia các gia đình khác bên dưới.',
+                      'You have joined 1 family. You can create or join other families below.',
+                    )
+                  : AppLanguage.text(
+                      'Chạm vào một gia đình để chọn làm gia đình hiển thị chính.',
+                      'Tap a family to set it as active.',
+                    ),
               style: const TextStyle(
                 fontSize: 12.5,
                 color: mutedText,
@@ -244,143 +268,160 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            ..._families.map((fam) {
-              final isSelected = fam.id == _selectedFamilyId || isSingle;
-              final member = _memberships[fam.id];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () => _selectActiveFamily(fam),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFFEAF7F3)
-                          : const Color(0xFFF9FCFB),
+
+            // Giới hạn hiển thị tối đa 3 gia đình, nếu nhiều hơn 3 thì cuộn xuống với Scrollbar
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: _families.length > 3 ? 234.0 : double.infinity,
+              ),
+              child: Scrollbar(
+                thumbVisibility: _families.length > 3,
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  physics: _families.length > 3
+                      ? const AlwaysScrollableScrollPhysics()
+                      : const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  itemCount: _families.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final fam = _families[index];
+                    final isSelected = fam.id == _selectedFamilyId || isSingle;
+                    final member = _memberships[fam.id];
+                    return InkWell(
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isSelected ? primary : const Color(0xFFDCE9E5),
-                        width: isSelected ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 19,
-                          backgroundColor: isSelected
-                              ? primary
-                              : const Color(0xFFDCE9E5),
-                          child: Text(
-                            fam.name.isNotEmpty
-                                ? fam.name[0].toUpperCase()
-                                : 'G',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : primary,
-                            ),
+                      onTap: () => _selectActiveFamily(fam),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFFEAF7F3)
+                              : const Color(0xFFF9FCFB),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSelected ? primary : const Color(0xFFDCE9E5),
+                            width: isSelected ? 1.5 : 1,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 19,
+                              backgroundColor: isSelected
+                                  ? primary
+                                  : const Color(0xFFDCE9E5),
+                              child: Text(
+                                fam.name.isNotEmpty
+                                    ? fam.name[0].toUpperCase()
+                                    : 'G',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected ? Colors.white : primary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Flexible(
-                                    child: Text(
-                                      fam.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w800,
-                                        color: darkText,
-                                      ),
-                                    ),
-                                  ),
-                                  if (!isSingle && isSelected) ...[
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: primary,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Text(
-                                        'Đang chọn',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          fam.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
+                                            color: darkText,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                _roleLabel(member, fam),
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: mutedText,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (fam.joinCode.isNotEmpty)
-                          InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: () => _copyJoinCode(fam.joinCode),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: const Color(0xFFD2E2DD),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    fam.joinCode,
-                                    style: const TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: primary,
-                                    ),
+                                      if (!isSingle && isSelected) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: primary,
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            AppLanguage.text('Đang chọn', 'Active'),
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
-                                  const SizedBox(width: 4),
-                                  const Icon(
-                                    Icons.copy_rounded,
-                                    size: 13,
-                                    color: primary,
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    _roleLabel(member, fam),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: mutedText,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
-                      ],
-                    ),
-                  ),
+                            if (fam.joinCode.isNotEmpty)
+                              InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: () => _copyJoinCode(fam.joinCode),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: const Color(0xFFD2E2DD),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        fam.joinCode,
+                                        style: const TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: primary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(
+                                        Icons.copy_rounded,
+                                        size: 13,
+                                        color: primary,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              );
-            }),
+              ),
+            ),
           ],
         ),
       ),
@@ -389,134 +430,154 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasExisting = _families.isNotEmpty;
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, child) {
+        final hasExisting = _families.isNotEmpty;
 
-    return Scaffold(
-      backgroundColor: background,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 520),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _TopBar(
-                        title: 'Thiết lập gia đình',
-                        onBack: () => Navigator.of(context).maybePop(),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Hiển thị 1 hoặc nhiều gia đình hiện tại (nếu có)
-                      _buildExistingFamiliesSection(),
-
-                      Container(
-                        padding: const EdgeInsets.all(22),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: border),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.035),
-                              blurRadius: 18,
-                              offset: const Offset(0, 7),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 72,
-                              height: 72,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE0F4EE),
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              child: const Icon(
-                                Icons.groups_rounded,
-                                size: 38,
-                                color: primary,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              hasExisting
-                                  ? 'Thêm hoặc tham gia gia đình khác'
-                                  : 'Kết nối với gia đình',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                color: darkText,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Tạo một gia đình mới hoặc tham gia\n'
-                              'vào gia đình mà người thân đã tạo.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 14,
-                                height: 1.55,
-                                color: mutedText,
-                              ),
-                            ),
-                            const SizedBox(height: 22),
-                            _SetupOptionCard(
-                              icon: Icons.add_home_work_rounded,
-                              iconBackground: const Color(0xFFE4F6EF),
-                              iconColor: primary,
-                              title: 'Tạo gia đình mới',
-                              description:
-                                  'Bạn sẽ là người quản trị và có thể mời các thành viên.',
-                              onTap: _openCreateFamily,
-                            ),
-                            const SizedBox(height: 14),
-                            _SetupOptionCard(
-                              icon: Icons.group_add_rounded,
-                              iconBackground: const Color(0xFFFFF0DF),
-                              iconColor: const Color(0xFFE77D2B),
-                              title: 'Tham gia gia đình',
-                              description:
-                                  'Nhập mã gia đình được chia sẻ bởi người thân.',
-                              onTap: _openJoinFamily,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+        return Scaffold(
+          backgroundColor: background,
+          body: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const Icon(
-                            Icons.lock_outline_rounded,
-                            size: 15,
-                            color: Color(0xFF7D918B),
+                          _TopBar(
+                            title: AppLanguage.text('Thiết lập gia đình', 'Family Setup'),
+                            onBack: () => Navigator.of(context).maybePop(),
                           ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              'Thông tin gia đình được bảo mật',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                color: Colors.grey.shade600,
-                              ),
+                          const SizedBox(height: 20),
+
+                          // Hiển thị 1 hoặc nhiều gia đình hiện tại (nếu có)
+                          _buildExistingFamiliesSection(),
+
+                          Container(
+                            padding: const EdgeInsets.all(22),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(color: border),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.035),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 7),
+                                ),
+                              ],
                             ),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 72,
+                                  height: 72,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0F4EE),
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: const Icon(
+                                    Icons.groups_rounded,
+                                    size: 38,
+                                    color: primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  hasExisting
+                                      ? AppLanguage.text(
+                                          'Thêm hoặc tham gia gia đình khác',
+                                          'Create or join another family',
+                                        )
+                                      : AppLanguage.text(
+                                          'Kết nối với gia đình',
+                                          'Connect with your family',
+                                        ),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: darkText,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  AppLanguage.text(
+                                    'Tạo một gia đình mới hoặc tham gia\nvào gia đình mà người thân đã tạo.',
+                                    'Create a new family or join\nan existing one created by family.',
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    height: 1.55,
+                                    color: mutedText,
+                                  ),
+                                ),
+                                const SizedBox(height: 22),
+                                _SetupOptionCard(
+                                  icon: Icons.add_home_work_rounded,
+                                  iconBackground: const Color(0xFFE4F6EF),
+                                  iconColor: primary,
+                                  title: AppLanguage.text('Tạo gia đình mới', 'Create new family'),
+                                  description: AppLanguage.text(
+                                    'Bạn sẽ là người quản trị và có thể mời các thành viên.',
+                                    'You will be the owner and can invite members.',
+                                  ),
+                                  onTap: _openCreateFamily,
+                                ),
+                                const SizedBox(height: 14),
+                                _SetupOptionCard(
+                                  icon: Icons.group_add_rounded,
+                                  iconBackground: const Color(0xFFFFF0DF),
+                                  iconColor: const Color(0xFFE77D2B),
+                                  title: AppLanguage.text('Tham gia gia đình', 'Join a family'),
+                                  description: AppLanguage.text(
+                                    'Nhập mã gia đình được chia sẻ bởi người thân.',
+                                    'Enter the family code shared by your family member.',
+                                  ),
+                                  onTap: _openJoinFamily,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.lock_outline_rounded,
+                                size: 15,
+                                color: Color(0xFF7D918B),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  AppLanguage.text(
+                                    'Thông tin gia đình được bảo mật',
+                                    'Family information is protected',
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }
