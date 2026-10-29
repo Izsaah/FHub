@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../Danh/danh_payment_entry.dart';
+import '../../Long/services/family_data_service.dart';
 import '../models/family_member.dart';
 import '../services/family_service.dart';
 
@@ -39,13 +41,19 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
         name: _familyNameController.text.trim(),
         role: _selectedRole,
       );
+      DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
+      FamilyDataService().clearCache();
+      await FamilyDataService().selectFamily(family.id);
+
       if (!mounted) return;
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
           title: const Text(
             'Tạo gia đình thành công',
             style: TextStyle(fontWeight: FontWeight.w800, color: darkText),
@@ -59,16 +67,27 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                 style: const TextStyle(color: mutedText, height: 1.5),
               ),
               const SizedBox(height: 16),
-              const Text('Mã mời thành viên', style: TextStyle(fontWeight: FontWeight.w700, color: darkText)),
+              const Text(
+                'Mã mời thành viên',
+                style: TextStyle(fontWeight: FontWeight.w700, color: darkText),
+              ),
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: const Color(0xFFF2FAF7), borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF2FAF7),
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: SelectableText(
                   family.joinCode,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 22, letterSpacing: 2, fontWeight: FontWeight.w800, color: primary),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.w800,
+                    color: primary,
+                  ),
                 ),
               ),
             ],
@@ -79,19 +98,27 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                 await Clipboard.setData(ClipboardData(text: family.joinCode));
                 if (dialogContext.mounted) Navigator.of(dialogContext).pop();
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã sao chép mã gia đình.')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Đã sao chép mã gia đình.')),
+                  );
                   Navigator.of(context).pop(family);
                 }
               },
               icon: const Icon(Icons.copy_rounded),
-              label: const Text('Sao chép mã & tiếp tục', style: TextStyle(color: primary, fontWeight: FontWeight.w800)),
+              label: const Text(
+                'Sao chép mã & tiếp tục',
+                style: TextStyle(color: primary, fontWeight: FontWeight.w800),
+              ),
             ),
             TextButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();
                 if (mounted) Navigator.of(context).pop(family);
               },
-              child: const Text('Đóng', style: TextStyle(color: primary, fontWeight: FontWeight.w700)),
+              child: const Text(
+                'Đóng',
+                style: TextStyle(color: primary, fontWeight: FontWeight.w700),
+              ),
             ),
           ],
         ),
@@ -126,9 +153,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                       subtitle: 'Thiết lập không gian chung cho gia đình bạn',
                       onBack: () => Navigator.of(context).pop(),
                     ),
-
                     const SizedBox(height: 22),
-
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: _cardDecoration(),
@@ -139,16 +164,12 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                             icon: Icons.home_work_rounded,
                             title: 'Thông tin gia đình',
                           ),
-
                           const SizedBox(height: 18),
-
                           const _FieldLabel(
                             text: 'Tên gia đình',
                             requiredField: true,
                           ),
-
                           const SizedBox(height: 8),
-
                           TextFormField(
                             controller: _familyNameController,
                             textInputAction: TextInputAction.done,
@@ -165,16 +186,17 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                               if (value == null || value.trim().isEmpty) {
                                 return 'Vui lòng nhập tên gia đình';
                               }
-
                               if (value.trim().length < 3) {
                                 return 'Tên gia đình cần ít nhất 3 ký tự';
                               }
-
                               return null;
                             },
                           ),
                           const SizedBox(height: 16),
-                          const _FieldLabel(text: 'Vai vế của bạn', requiredField: true),
+                          const _FieldLabel(
+                            text: 'Vai vế của bạn',
+                            requiredField: true,
+                          ),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(
                             initialValue: _selectedRole,
@@ -183,20 +205,31 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                               prefixIcon: Icons.family_restroom_rounded,
                             ),
                             items: const [
-                              DropdownMenuItem(value: FamilyMember.roleGrandparent, child: Text('Ông / Bà')),
-                              DropdownMenuItem(value: FamilyMember.roleParent, child: Text('Bố / Mẹ')),
-                              DropdownMenuItem(value: FamilyMember.roleChild, child: Text('Con cái')),
+                              DropdownMenuItem(
+                                value: FamilyMember.roleGrandparent,
+                                child: Text('Ông / Bà'),
+                              ),
+                              DropdownMenuItem(
+                                value: FamilyMember.roleParent,
+                                child: Text('Bố / Mẹ'),
+                              ),
+                              DropdownMenuItem(
+                                value: FamilyMember.roleChild,
+                                child: Text('Con cái'),
+                              ),
                             ],
-                            onChanged: _isCreating ? null : (value) {
-                              if (value != null) setState(() => _selectedRole = value);
-                            },
+                            onChanged: _isCreating
+                                ? null
+                                : (value) {
+                                    if (value != null) {
+                                      setState(() => _selectedRole = value);
+                                    }
+                                  },
                           ),
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 16),
-
                     Container(
                       padding: const EdgeInsets.all(15),
                       decoration: BoxDecoration(
@@ -215,8 +248,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                           SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'Sau khi tạo, bạn sẽ nhận được mã gia đình '
-                              'để chia sẻ cho người thân.',
+                              'Sau khi tạo, bạn sẽ nhận được mã gia đình để chia sẻ cho người thân. Một tài khoản có thể tham gia nhiều gia đình cùng lúc.',
                               style: TextStyle(
                                 fontSize: 12.5,
                                 height: 1.45,
@@ -227,15 +259,24 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 22),
-
                     SizedBox(
                       height: 54,
                       child: ElevatedButton.icon(
                         onPressed: _isCreating ? null : _createFamily,
-                        icon: _isCreating ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.add_home_rounded),
-                        label: Text(_isCreating ? 'Đang tạo...' : 'Tạo gia đình'),
+                        icon: _isCreating
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.add_home_rounded),
+                        label: Text(
+                          _isCreating ? 'Đang tạo...' : 'Tạo gia đình',
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primary,
                           foregroundColor: Colors.white,
@@ -250,9 +291,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 12),
-
                     SizedBox(
                       height: 50,
                       child: OutlinedButton(
@@ -423,12 +462,14 @@ class _SectionTitle extends StatelessWidget {
           child: Icon(icon, color: const Color(0xFF07866F), size: 21),
         ),
         const SizedBox(width: 10),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF18332E),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF18332E),
+            ),
           ),
         ),
       ],
@@ -446,12 +487,14 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF36504A),
+        Flexible(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF36504A),
+            ),
           ),
         ),
         if (requiredField) ...[

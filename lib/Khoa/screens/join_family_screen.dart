@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../Danh/danh_payment_entry.dart';
+import '../../Long/services/family_data_service.dart';
 import '../models/family_member.dart';
 import '../services/family_service.dart';
 
@@ -39,14 +41,23 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
         joinCode: _codeController.text,
         role: _selectedRole,
       );
+      DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
+      FamilyDataService().clearCache();
+      await FamilyDataService().selectFamily(family.id);
+
       if (!mounted) return;
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-          title: const Text('Tham gia thành công', style: TextStyle(fontWeight: FontWeight.w800, color: darkText)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          title: const Text(
+            'Tham gia thành công',
+            style: TextStyle(fontWeight: FontWeight.w800, color: darkText),
+          ),
           content: Text(
             'Bạn đã tham gia gia đình "${family.name}" với vai vế ${_roleLabel(_selectedRole)}.',
             style: const TextStyle(color: mutedText, height: 1.5),
@@ -57,7 +68,10 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                 Navigator.of(dialogContext).pop();
                 if (mounted) Navigator.of(context).pop(family);
               },
-              child: const Text('Đã hiểu', style: TextStyle(color: primary, fontWeight: FontWeight.w800)),
+              child: const Text(
+                'Đã hiểu',
+                style: TextStyle(color: primary, fontWeight: FontWeight.w800),
+              ),
             ),
           ],
         ),
@@ -74,9 +88,12 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
 
   String _roleLabel(String role) {
     switch (role) {
-      case FamilyMember.roleGrandparent: return 'Ông / Bà';
-      case FamilyMember.roleChild: return 'Con cái';
-      default: return 'Bố / Mẹ';
+      case FamilyMember.roleGrandparent:
+        return 'Ông / Bà';
+      case FamilyMember.roleChild:
+        return 'Con cái';
+      default:
+        return 'Bố / Mẹ';
     }
   }
 
@@ -100,9 +117,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                       subtitle: 'Kết nối với gia đình của bạn',
                       onBack: () => Navigator.of(context).pop(),
                     ),
-
                     const SizedBox(height: 22),
-
                     Container(
                       padding: const EdgeInsets.fromLTRB(20, 23, 20, 22),
                       decoration: BoxDecoration(
@@ -132,9 +147,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               color: primary,
                             ),
                           ),
-
                           const SizedBox(height: 17),
-
                           const Text(
                             'Nhập mã gia đình',
                             style: TextStyle(
@@ -143,9 +156,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               color: darkText,
                             ),
                           ),
-
                           const SizedBox(height: 8),
-
                           const Text(
                             'Nhập mã được chia sẻ bởi quản trị viên\n'
                             'của gia đình bạn.',
@@ -156,16 +167,12 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               color: mutedText,
                             ),
                           ),
-
                           const SizedBox(height: 25),
-
                           const Align(
                             alignment: Alignment.centerLeft,
                             child: _RequiredLabel(text: 'Mã gia đình'),
                           ),
-
                           const SizedBox(height: 8),
-
                           TextFormField(
                             controller: _codeController,
                             textCapitalization: TextCapitalization.characters,
@@ -226,19 +233,15 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                             ),
                             validator: (value) {
                               final code = value?.trim() ?? '';
-
                               if (code.isEmpty) {
                                 return 'Vui lòng nhập mã gia đình';
                               }
-
                               if (code.length < 6) {
                                 return 'Mã gia đình chưa hợp lệ';
                               }
-
                               return null;
                             },
                           ),
-
                           const SizedBox(height: 16),
                           const Align(
                             alignment: Alignment.centerLeft,
@@ -248,26 +251,60 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                           DropdownButtonFormField<String>(
                             initialValue: _selectedRole,
                             decoration: InputDecoration(
-                              prefixIcon: const Icon(Icons.family_restroom_rounded, size: 20, color: Color(0xFF6E8B83)),
+                              prefixIcon: const Icon(
+                                Icons.family_restroom_rounded,
+                                size: 20,
+                                color: Color(0xFF6E8B83),
+                              ),
                               filled: true,
                               fillColor: const Color(0xFFF8FBFA),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFDCE9E5))),
-                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFDCE9E5))),
-                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: primary, width: 1.5)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 15,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFDCE9E5),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFDCE9E5),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: primary,
+                                  width: 1.5,
+                                ),
+                              ),
                             ),
                             items: const [
-                              DropdownMenuItem(value: FamilyMember.roleGrandparent, child: Text('Ông / Bà')),
-                              DropdownMenuItem(value: FamilyMember.roleParent, child: Text('Bố / Mẹ')),
-                              DropdownMenuItem(value: FamilyMember.roleChild, child: Text('Con cái')),
+                              DropdownMenuItem(
+                                value: FamilyMember.roleGrandparent,
+                                child: Text('Ông / Bà'),
+                              ),
+                              DropdownMenuItem(
+                                value: FamilyMember.roleParent,
+                                child: Text('Bố / Mẹ'),
+                              ),
+                              DropdownMenuItem(
+                                value: FamilyMember.roleChild,
+                                child: Text('Con cái'),
+                              ),
                             ],
-                            onChanged: _isJoining ? null : (value) {
-                              if (value != null) setState(() => _selectedRole = value);
-                            },
+                            onChanged: _isJoining
+                                ? null
+                                : (value) {
+                                    if (value != null) {
+                                      setState(() => _selectedRole = value);
+                                    }
+                                  },
                           ),
-
                           const SizedBox(height: 13),
-
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(13),
@@ -298,9 +335,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               ],
                             ),
                           ),
-
                           const SizedBox(height: 22),
-
                           SizedBox(
                             width: double.infinity,
                             height: 53,
@@ -341,9 +376,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 17),
-
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -362,12 +395,14 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                 color: Color(0xFFD8911B),
                               ),
                               SizedBox(width: 8),
-                              Text(
-                                'Không có mã gia đình?',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF6F592D),
+                              Expanded(
+                                child: Text(
+                                  'Không có mã gia đình?',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF6F592D),
+                                  ),
                                 ),
                               ),
                             ],
@@ -458,9 +493,7 @@ class _Header extends StatelessWidget {
             ),
           ),
         ),
-
         const SizedBox(width: 12),
-
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

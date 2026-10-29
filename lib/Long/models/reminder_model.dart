@@ -23,6 +23,31 @@ class ReminderModel {
     this.completedAt,
   });
 
+  static DateTime? _parseDateAndTime(dynamic rawDate, dynamic rawTime) {
+    if (rawDate == null) return null;
+    final dateStr = rawDate.toString().trim();
+    final timeStr = (rawTime?.toString().trim() ?? '08:00');
+    // 1. Try ISO format YYYY-MM-DDTHH:mm
+    final isoAttempt = DateTime.tryParse('${dateStr}T$timeStr');
+    if (isoAttempt != null) return isoAttempt;
+
+    // 2. Try DD/MM/YYYY + HH:mm (used by Vinh's ReminderModel)
+    final dateParts = dateStr.split('/');
+    if (dateParts.length == 3) {
+      final day = int.tryParse(dateParts[0]);
+      final month = int.tryParse(dateParts[1]);
+      final year = int.tryParse(dateParts[2]);
+      final timeParts = timeStr.split(':');
+      final hour = timeParts.isNotEmpty ? (int.tryParse(timeParts[0]) ?? 8) : 8;
+      final minute =
+          timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+      if (day != null && month != null && year != null) {
+        return DateTime(year, month, day, hour, minute);
+      }
+    }
+    return DateTime.tryParse(dateStr);
+  }
+
   factory ReminderModel.fromJson(Map<String, dynamic> json) {
     ReminderStatus parsedStatus = ReminderStatus.pending;
     if (json['status']?.toString().toUpperCase() == 'COMPLETED') {
@@ -32,10 +57,7 @@ class ReminderModel {
       parsedStatus = ReminderStatus.deleted;
     }
 
-    DateTime? parsedDate;
-    if (json['date'] != null && json['time'] != null) {
-      parsedDate = DateTime.tryParse('${json['date']}T${json['time']}');
-    }
+    final parsedDate = _parseDateAndTime(json['date'], json['time']);
 
     return ReminderModel(
       id: json['id']?.toString() ?? '',
