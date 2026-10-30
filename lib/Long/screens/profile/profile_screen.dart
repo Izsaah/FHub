@@ -20,6 +20,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _familyDataService = FamilyDataService();
+  final ScrollController _familyScrollController = ScrollController();
   late Future<Map<String, dynamic>> _profileDataFuture;
 
   @override
@@ -33,6 +34,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _familyScrollController.dispose();
     _familyDataService.selectedFamilyIdNotifier.removeListener(
       _onSelectedFamilyChanged,
     );
@@ -271,20 +273,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: families.length > 3 ? 180.0 : double.infinity,
-          ),
-          child: Scrollbar(
-            thumbVisibility: families.length > 3,
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: families.length > 3
-                  ? const AlwaysScrollableScrollPhysics()
-                  : const NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.zero,
-              itemCount: families.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 8),
+        Builder(
+          builder: (context) {
+            Widget buildList({
+              ScrollController? controller,
+              required ScrollPhysics physics,
+            }) {
+              return ListView.separated(
+                controller: controller,
+                shrinkWrap: true,
+                physics: physics,
+                padding: EdgeInsets.zero,
+                itemCount: families.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final fam = families[index];
                 final isSelected = fam.id == currentFamily?.id;
@@ -365,8 +366,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 );
               },
-            ),
-          ),
+            );
+            }
+
+            if (families.length > 3) {
+              return ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 180.0),
+                child: Scrollbar(
+                  controller: _familyScrollController,
+                  thumbVisibility: true,
+                  child: buildList(
+                    controller: _familyScrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                  ),
+                ),
+              );
+            }
+
+            return buildList(
+              physics: const NeverScrollableScrollPhysics(),
+            );
+          },
         ),
       ],
     );

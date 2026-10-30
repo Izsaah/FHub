@@ -1539,18 +1539,20 @@ void main() {
         ),
       );
 
-      // Verify app bar title
+      // Verify app bar title (Gemini 2.5 Flash removed, shows Trực tuyến)
       expect(find.text('Trợ lý AI Gia đình'), findsOneWidget);
-      expect(find.text('Gemini 2.5 Flash • Trực tuyến'), findsOneWidget);
+      expect(find.text('Trực tuyến'), findsOneWidget);
+      expect(find.textContaining('Gemini 2.5 Flash'), findsNothing);
 
-      // Verify 3 Quick reply chips exist
-      expect(find.text('📊 Báo cáo hôm nay'), findsOneWidget);
-      expect(find.text('🙋‍♂️ Tìm người phụ việc nhà'), findsOneWidget);
-      expect(find.text('🥛 Nhắc mua sữa'), findsOneWidget);
+      // Verify quick suggestion chips are removed
+      expect(find.text('📊 Báo cáo hôm nay'), findsNothing);
 
-      // Tap on quick chip "🙋‍♂️ Tìm người phụ việc nhà"
-      final quickChip = find.text('🙋‍♂️ Tìm người phụ việc nhà');
-      await tester.tap(quickChip);
+      // Send open task request via input field
+      await tester.enterText(
+        find.byType(TextField),
+        'Hôm nay mẹ muốn làm việc nhà, có đứa nào phụ không?',
+      );
+      await tester.tap(find.byIcon(Icons.send_rounded));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pump(const Duration(milliseconds: 100));

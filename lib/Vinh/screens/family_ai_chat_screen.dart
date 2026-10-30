@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
+import '../services/ai_speech_service.dart';
 import '../services/family_ai_assistant_service.dart';
 import '../services/family_memory_service.dart';
 import '../services/reminder_repository.dart';
@@ -8,7 +10,8 @@ import '../widgets/reminder_detail_bottom_sheet.dart';
 import '../widgets/task_mini_card.dart';
 
 /// Màn hình Chatbot AI Gia đình (Module 7 EPIC)
-/// Hỗ trợ Giao việc chung cho các con, Tự nhớ thói quen & Báo cáo tiến độ.
+/// Hỗ trợ Soạn nhiều việc cùng lúc, Giao việc chung, Tự nhớ thói quen, Báo cáo tiến độ,
+/// cùng cơ chế Nói (TTS) và Nghe (STT) trực quan, dễ tiếp cận cho mọi thành viên.
 class FamilyAiChatScreen extends StatefulWidget {
   final String familyId;
   final String currentUserId;
@@ -33,7 +36,12 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<AiChatMessage> _messages = [];
+
   bool _isThinking = false;
+  bool _isListening = false;
+  bool _autoSpeak = false;
+  String? _speakingMessageId;
+  String _liveTranscript = '';
 
   @override
   void initState() {
@@ -46,12 +54,20 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
       AiChatMessage(
         id: 'welcome',
         isUser: false,
-        text:
-            'Xin chào ${widget.currentUserName}! Em là Trợ lý AI Gia đình của bạn. Em có thể hỗ trợ:\n\n'
-            '• 🙋‍♂️ Giao việc mở cho các con (VD: "Hôm nay mẹ muốn làm việc nhà, có đứa nào phụ không?")\n'
-            '• 🥛 Tự nhớ thói quen mua sắm (VD: "Nhắc bố mua sữa")\n'
-            '• 📊 Báo cáo tiến độ làm việc nhà hôm nay\n\n'
-            'Bạn có thể gõ câu hỏi hoặc chạm vào các gợi ý nhanh bên dưới nhé! ❤️',
+        text: AppLanguage.text(
+          'Xin chào ${widget.currentUserName}! Em là Trợ lý AI Gia đình của bạn. Em có thể hỗ trợ:\n\n'
+              '• 📌 Soạn nhanh 1 hoặc nhiều công việc (VD: "Soạn các task dọn nhà, nấu cơm, rửa chén")\n'
+              '• 🙋‍♂️ Giao việc mở cho cả nhà (VD: "Hôm nay mẹ muốn làm việc nhà, có đứa nào phụ không?")\n'
+              '• 🥛 Tự nhớ thói quen mua sắm (VD: "Nhắc bố mua sữa")\n'
+              '• 📊 Báo cáo tiến độ làm việc nhà hôm nay\n\n'
+              'Bạn có thể nhập tin nhắn hoặc nhấn nút 🎙️ Micro bên dưới để nói trực tiếp với em nhé! ❤️',
+          'Hello ${widget.currentUserName}! I am your Family AI Assistant. I can help you:\n\n'
+              '• 📌 Create one or multiple tasks at once (e.g., "Create tasks clean house, cook dinner, wash dishes")\n'
+              '• 🙋‍♂️ Assign open tasks for the family\n'
+              '• 🥛 Remember shopping habits (e.g., "Remind dad to buy milk")\n'
+              '• 📊 Report today\'s family task progress\n\n'
+              'You can type a message or tap the 🎙️ Mic button below to speak directly with me! ❤️',
+        ),
         timestamp: DateTime.now(),
       ),
     );
@@ -72,17 +88,110 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
 
   @override
   void dispose() {
+    AiSpeechPlatform.instance.stopSpeaking();
+    AiSpeechPlatform.instance.stopListening();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
+  Future<void> _speakMessage(AiChatMessage msg) async {
+    if (_speakingMessageId == msg.id) {
+      await AiSpeechPlatform.instance.stopSpeaking();
+      if (mounted) {
+        setState(() => _speakingMessageId = null);
+      }
+      return;
+    }
+
+    setState(() => _speakingMessageId = msg.id);
+    await AiSpeechPlatform.instance.speak(
+      msg.text,
+      isEnglish: AppLanguage.isEnglish.value,
+      onDone: () {
+        if (mounted && _speakingMessageId == msg.id) {
+          setState(() => _speakingMessageId = null);
+        }
+      },
+    );
+  }
+
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _stopListening();
+      return;
+    }
+
+    await AiSpeechPlatform.instance.stopSpeaking();
+    setState(() {
+      _speakingMessageId = null;
+      _isListening = true;
+      _liveTranscript = _textController.text.trim();
+    });
+
+    final started = await AiSpeechPlatform.instance.startListening(
+      isEnglish: AppLanguage.isEnglish.value,
+      onResult: (recognizedText) {
+        if (!mounted) return;
+        setState(() {
+          _liveTranscript = recognizedText;
+          _textController.text = recognizedText;
+          _textController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _textController.text.length),
+          );
+        });
+      },
+      onDone: () {
+        if (!mounted) return;
+        setState(() => _isListening = false);
+      },
+      onError: (errMsg) {
+        if (!mounted) return;
+        setState(() => _isListening = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errMsg),
+            backgroundColor: const Color(0xFFBA1A1A),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      },
+    );
+
+    if (!started && mounted) {
+      setState(() => _isListening = false);
+    }
+  }
+
+  Future<void> _stopListening({bool clearText = false, bool sendImmediately = false}) async {
+    await AiSpeechPlatform.instance.stopListening();
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+      if (clearText) {
+        _liveTranscript = '';
+        _textController.clear();
+      }
+    });
+    if (sendImmediately && _textController.text.trim().isNotEmpty) {
+      await _handleSendMessage();
+    }
+  }
+
   Future<void> _handleSendMessage([String? predefinedText]) async {
+    if (_isListening) {
+      await AiSpeechPlatform.instance.stopListening();
+      if (mounted) {
+        setState(() => _isListening = false);
+      }
+    }
+
     final text = predefinedText ?? _textController.text.trim();
     if (text.isEmpty || _isThinking) return;
 
     if (predefinedText == null) {
       _textController.clear();
+      _liveTranscript = '';
     }
 
     final userMsg = AiChatMessage(
@@ -98,8 +207,8 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     });
     _scrollToBottom();
 
-    // Giả lập độ trễ suy nghĩ thông minh (400ms)
-    await Future.delayed(const Duration(milliseconds: 400));
+    // Độ trễ phản hồi tự nhiên (350ms)
+    await Future.delayed(const Duration(milliseconds: 350));
 
     final aiMsg = await FamilyAiAssistantService.instance.processMessage(
       familyId: widget.familyId,
@@ -116,6 +225,10 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         _messages.add(aiMsg);
       });
       _scrollToBottom();
+
+      if (_autoSpeak) {
+        _speakMessage(aiMsg);
+      }
     }
   }
 
@@ -132,7 +245,10 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '🎉 Bạn đã xung phong nhận việc "$reminderTitle" thành công!',
+              AppLanguage.text(
+                '🎉 Bạn đã xung phong nhận việc "$reminderTitle" thành công!',
+                '🎉 You claimed the task "$reminderTitle" successfully!',
+              ),
             ),
             backgroundColor: const Color(0xFF0D7A68),
           ),
@@ -155,199 +271,371 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF0D7A68);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
-      appBar: AppBar(
-        titleSpacing: 0,
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: Color(0xFF151D1B), size: 20),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Row(
-          children: [
-            Stack(
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, child) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFF6F8F7),
+          appBar: AppBar(
+            titleSpacing: 0,
+            backgroundColor: Colors.white,
+            elevation: 0.5,
+            leading: IconButton(
+              icon: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Color(0xFF151D1B),
+                size: 20,
+              ),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            title: Row(
               children: [
-                const CircleAvatar(
-                  radius: 20,
-                  backgroundColor: Color(0xFFE0F2EC),
-                  child: Icon(
-                    Icons.auto_awesome_rounded,
-                    color: primaryColor,
-                    size: 22,
-                  ),
-                ),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00C853),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
+                Stack(
+                  children: [
+                    const CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Color(0xFFE0F2EC),
+                      child: Icon(
+                        Icons.auto_awesome_rounded,
+                        color: primaryColor,
+                        size: 22,
+                      ),
                     ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00C853),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        AppLanguage.text(
+                          'Trợ lý AI Gia đình',
+                          'Family AI Assistant',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF151D1B),
+                        ),
+                      ),
+                      Text(
+                        AppLanguage.text('Trực tuyến', 'Online'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: Color(0xFF0D7A68),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Trợ lý AI Gia đình',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF151D1B),
-                    ),
-                  ),
-                  Text(
-                    'Gemini 2.5 Flash • Trực tuyến',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF0D7A68),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Tùy chọn AI',
-            icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF151D1B)),
-            onSelected: (val) {
-              if (val == 'clear_memory') {
-                FamilyMemoryService.instance.clearMemory(widget.familyId);
-                FamilyAiAssistantService.instance.reset(widget.familyId);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('🧹 Đã xóa bộ nhớ thói quen của gia đình!'),
-                  ),
-                );
-              } else if (val == 'clear_chat') {
-                setState(() {
-                  _messages.clear();
-                  _initWelcomeMessage();
-                });
-              }
-            },
-            itemBuilder: (ctx) => const [
-              PopupMenuItem(
-                value: 'clear_memory',
-                child: Row(
-                  children: [
-                    Icon(Icons.restart_alt_rounded,
-                        size: 18, color: Colors.orange),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Xóa bộ nhớ thói quen',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+            actions: [
+              // Nút bật/tắt Tự động đọc phản hồi (TTS Auto-Speak)
+              IconButton(
+                tooltip: AppLanguage.text(
+                  _autoSpeak ? 'Đang bật tự động đọc' : 'Bật tự động đọc phản hồi',
+                  _autoSpeak ? 'Auto-speak ON' : 'Turn on auto-speak',
+                ),
+                icon: Icon(
+                  _autoSpeak
+                      ? Icons.volume_up_rounded
+                      : Icons.volume_off_outlined,
+                  color: _autoSpeak ? primaryColor : const Color(0xFF6E7A75),
+                  size: 22,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _autoSpeak = !_autoSpeak;
+                  });
+                  if (!_autoSpeak) {
+                    AiSpeechPlatform.instance.stopSpeaking();
+                    setState(() => _speakingMessageId = null);
+                  }
+                  ScaffoldMessenger.of(context).clearSnackBars();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      duration: const Duration(seconds: 2),
+                      content: Text(
+                        _autoSpeak
+                            ? AppLanguage.text(
+                                '🔊 Đã bật chế độ AI tự động đọc phản hồi',
+                                '🔊 Auto-speak AI responses enabled',
+                              )
+                            : AppLanguage.text(
+                                '🔇 Đã tắt chế độ tự động đọc',
+                                '🔇 Auto-speak disabled',
+                              ),
                       ),
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
-              PopupMenuItem(
-                value: 'clear_chat',
-                child: Row(
-                  children: [
-                    Icon(Icons.cleaning_services_rounded,
-                        size: 18, color: Colors.grey),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Làm mới cuộc trò chuyện',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+              PopupMenuButton<String>(
+                tooltip: AppLanguage.text('Tùy chọn AI', 'AI Options'),
+                icon: const Icon(
+                  Icons.more_vert_rounded,
+                  color: Color(0xFF151D1B),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 6),
-        ],
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
-            child: Column(
-              children: [
-                // Danh sách tin nhắn chat
-                Expanded(
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 16),
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = _messages[index];
-                      return _buildMessageItem(msg);
-                    },
-                  ),
-                ),
-
-                // Hiệu ứng "AI đang soạn tin..."
-                if (_isThinking)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(primaryColor),
+                onSelected: (val) {
+                  if (val == 'clear_memory') {
+                    FamilyMemoryService.instance.clearMemory(widget.familyId);
+                    FamilyAiAssistantService.instance.reset(widget.familyId);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          AppLanguage.text(
+                            '🧹 Đã xóa bộ nhớ thói quen của gia đình!',
+                            '🧹 Cleared family habit memory!',
                           ),
+                        ),
+                      ),
+                    );
+                  } else if (val == 'clear_chat') {
+                    AiSpeechPlatform.instance.stopSpeaking();
+                    setState(() {
+                      _speakingMessageId = null;
+                      _messages.clear();
+                      _initWelcomeMessage();
+                    });
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'clear_memory',
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.restart_alt_rounded,
+                          size: 18,
+                          color: Colors.orange,
                         ),
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            'Trợ lý AI đang suy nghĩ...',
+                            AppLanguage.text(
+                              'Xóa bộ nhớ thói quen',
+                              'Clear habit memory',
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                              fontStyle: FontStyle.italic,
-                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
+                  PopupMenuItem(
+                    value: 'clear_chat',
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.cleaning_services_rounded,
+                          size: 18,
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text(
+                              'Làm mới cuộc trò chuyện',
+                              'Reset conversation',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 4),
+            ],
+          ),
+          body: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: Column(
+                  children: [
+                    // Danh sách tin nhắn chat
+                    Expanded(
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final msg = _messages[index];
+                          return _buildMessageItem(msg);
+                        },
+                      ),
+                    ),
 
-                // Thanh gợi ý câu hỏi nhanh (Quick Replies)
-                _buildQuickRepliesBar(),
+                    // Hiệu ứng "AI đang suy nghĩ..."
+                    if (_isThinking)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 6,
+                        ),
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(primaryColor),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                AppLanguage.text(
+                                  'Trợ lý AI đang xử lý...',
+                                  'AI Assistant is thinking...',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
 
-                // Khung nhập câu lệnh
-                _buildInputBar(),
+                    // Thanh trạng thái Đang Lắng Nghe Giọng Nói (STT Panel trực quan)
+                    if (_isListening) _buildListeningBanner(primaryColor),
+
+                    // Khung nhập câu lệnh (Nói & Nhắn tin)
+                    _buildInputBar(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildListeningBanner(Color primaryColor) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE6F6F2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: primaryColor.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: const BoxDecoration(
+              color: Color(0xFFD32F2F),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.graphic_eq_rounded,
+              color: Colors.white,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  AppLanguage.text(
+                    '🎙️ Đang lắng nghe bạn nói...',
+                    '🎙️ Listening to your voice...',
+                  ),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0D7A68),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _liveTranscript.isNotEmpty
+                      ? '"$_liveTranscript"'
+                      : AppLanguage.text(
+                          'Hãy nói câu lệnh (VD: "Soạn các task dọn nhà, nấu cơm, rửa chén")',
+                          'Speak your request (e.g., "Create tasks clean house, cook dinner")',
+                        ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF3E4946),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
               ],
             ),
           ),
-        ),
+          const SizedBox(width: 6),
+          TextButton(
+            onPressed: () => _stopListening(clearText: true),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFBA1A1A),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              AppLanguage.text('Hủy', 'Cancel'),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: 4),
+          FilledButton.icon(
+            onPressed: () => _stopListening(sendImmediately: true),
+            style: FilledButton.styleFrom(
+              backgroundColor: primaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: const Icon(Icons.check_rounded, size: 15),
+            label: Text(
+              AppLanguage.text('Gửi', 'Send'),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -356,6 +644,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     const primaryColor = Color(0xFF0D7A68);
     final effectiveWidth =
         MediaQuery.sizeOf(context).width.clamp(240.0, 680.0);
+    final isSpeakingThis = _speakingMessageId == msg.id;
 
     if (msg.isUser) {
       return Padding(
@@ -369,8 +658,10 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                 maxWidth: effectiveWidth * 0.76,
               ),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: const BoxDecoration(
                   color: primaryColor,
                   borderRadius: BorderRadius.only(
@@ -394,6 +685,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         ),
       );
     } else {
+      final attachedList = msg.allAttachedReminders;
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: Row(
@@ -402,8 +694,11 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
             const CircleAvatar(
               radius: 16,
               backgroundColor: Color(0xFFE0F2EC),
-              child: Icon(Icons.auto_awesome_rounded,
-                  size: 16, color: primaryColor),
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                size: 16,
+                color: primaryColor,
+              ),
             ),
             const SizedBox(width: 8),
             Flexible(
@@ -415,8 +710,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: const BorderRadius.only(
@@ -425,7 +719,12 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                           bottomLeft: Radius.circular(18),
                           bottomRight: Radius.circular(18),
                         ),
-                        border: Border.all(color: const Color(0xFFE2EBE7)),
+                        border: Border.all(
+                          color: isSpeakingThis
+                              ? primaryColor
+                              : const Color(0xFFE2EBE7),
+                          width: isSpeakingThis ? 1.5 : 1.0,
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.03),
@@ -434,22 +733,74 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                           ),
                         ],
                       ),
-                      child: Text(
-                        msg.text,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          height: 1.4,
-                          color: Color(0xFF151D1B),
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            msg.text,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              height: 1.4,
+                              color: Color(0xFF151D1B),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // Nút Nghe đọc (Text-to-Speech) ngay dưới mỗi phản hồi của AI
+                          InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _speakMessage(msg),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSpeakingThis
+                                    ? const Color(0xFFE0F2EC)
+                                    : const Color(0xFFF3F7F5),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isSpeakingThis
+                                        ? Icons.stop_circle_outlined
+                                        : Icons.volume_up_rounded,
+                                    size: 15,
+                                    color: primaryColor,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    isSpeakingThis
+                                        ? AppLanguage.text(
+                                            'Dừng đọc',
+                                            'Stop reading',
+                                          )
+                                        : AppLanguage.text(
+                                            'Nghe phản hồi',
+                                            'Listen',
+                                          ),
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: primaryColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    if (msg.attachedReminder != null)
+                    for (final rem in attachedList)
                       TaskMiniCard(
-                        reminder: msg.attachedReminder!,
+                        reminder: rem,
                         onTap: () {
                           ReminderDetailBottomSheet.show(
                             context,
-                            reminder: msg.attachedReminder!,
+                            reminder: rem,
                             currentUserId: widget.currentUserId,
                             currentUserName: widget.currentUserName,
                             repository: widget.repository,
@@ -457,11 +808,8 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                             onReminderUpdated: () => setState(() {}),
                           );
                         },
-                        onClaim: msg.attachedReminder!.isOpenTask
-                            ? () => _handleClaimTask(
-                                  msg.attachedReminder!.id,
-                                  msg.attachedReminder!.title,
-                                )
+                        onClaim: rem.isOpenTask
+                            ? () => _handleClaimTask(rem.id, rem.title)
                             : null,
                       ),
                   ],
@@ -474,94 +822,52 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     }
   }
 
-  Widget _buildQuickRepliesBar() {
-    return Container(
-      height: 44,
-      margin: const EdgeInsets.only(bottom: 6),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: [
-          _buildQuickChip(
-            icon: Icons.pie_chart_outline_rounded,
-            label: '📊 Báo cáo hôm nay',
-            text: 'Tình hình ở nhà hôm nay sao rồi?',
-          ),
-          const SizedBox(width: 8),
-          _buildQuickChip(
-            icon: Icons.groups_rounded,
-            label: '🙋‍♂️ Tìm người phụ việc nhà',
-            text: 'Hôm nay mẹ muốn làm việc nhà, có đứa nào phụ không?',
-          ),
-          const SizedBox(width: 8),
-          _buildQuickChip(
-            icon: Icons.local_drink_rounded,
-            label: '🥛 Nhắc mua sữa',
-            text: 'Nhắc bố mua sữa',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickChip({
-    required IconData icon,
-    required String label,
-    required String text,
-  }) {
-    return ActionChip(
-      avatar: Icon(icon, size: 16, color: const Color(0xFF0D7A68)),
-      label: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 12.5,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF151D1B),
-        ),
-      ),
-      backgroundColor: Colors.white,
-      side: BorderSide(color: Colors.grey.shade300),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      onPressed: () => _handleSendMessage(text),
-    );
-  }
-
   Widget _buildInputBar() {
     const primaryColor = Color(0xFF0D7A68);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Color(0xFFE2EBE7))),
       ),
       child: Row(
         children: [
-          // Nút Voice Command
-          IconButton(
-            icon: const Icon(Icons.mic_none_rounded, color: primaryColor),
-            tooltip: 'Nói lệnh thoại',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    '🎙️ Đang lắng nghe giọng nói... (Thử gõ text hoặc bấm câu gợi ý bên trên)',
-                  ),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
+          // Nút Micro Nhận Diện Giọng Nói (Speech-to-Text)
+          Material(
+            color: _isListening
+                ? const Color(0xFFFFEBEE)
+                : const Color(0xFFE6F4F0),
+            shape: const CircleBorder(),
+            child: IconButton(
+              icon: Icon(
+                _isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                color: _isListening ? const Color(0xFFD32F2F) : primaryColor,
+                size: 22,
+              ),
+              tooltip: AppLanguage.text(
+                _isListening ? 'Dừng nghe' : 'Nói bằng giọng nói',
+                _isListening ? 'Stop listening' : 'Voice input',
+              ),
+              onPressed: _toggleListening,
+            ),
           ),
+          const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _textController,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _handleSendMessage(),
               decoration: InputDecoration(
-                hintText: 'Nhắn cho Trợ lý AI (VD: "Nhắc bố mua sữa")...',
+                hintText: AppLanguage.text(
+                  'Nhập hoặc bấm 🎙️ để nói (VD: "Soạn task dọn nhà, nấu cơm")...',
+                  'Type or tap 🎙️ to speak (e.g., "Create tasks clean house")...',
+                ),
                 hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 filled: true,
                 fillColor: const Color(0xFFF2F6F5),
                 border: OutlineInputBorder(
@@ -574,8 +880,12 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
           const SizedBox(width: 6),
           IconButton.filled(
             style: IconButton.styleFrom(backgroundColor: primaryColor),
-            icon:
-                const Icon(Icons.send_rounded, size: 18, color: Colors.white),
+            icon: const Icon(
+              Icons.send_rounded,
+              size: 18,
+              color: Colors.white,
+            ),
+            tooltip: AppLanguage.text('Gửi tin nhắn', 'Send message'),
             onPressed: () => _handleSendMessage(),
           ),
         ],
