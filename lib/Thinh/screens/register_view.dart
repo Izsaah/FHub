@@ -40,7 +40,7 @@ class _RegisterViewState extends State<RegisterView> {
   String? _confirmPasswordError;
   String? _formError;
 
-  final AuthService _authService = AuthService();
+  late final AuthService _authService = AuthService();
 
   String _t(String vietnamese, String english) =>
       AppLanguage.text(vietnamese, english);
@@ -192,6 +192,13 @@ class _RegisterViewState extends State<RegisterView> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, _) => _buildRegisterForm(),
+    );
+  }
+
+  Widget _buildRegisterForm() {
     return Scaffold(
       appBar: AppBar(
         title: Text(
