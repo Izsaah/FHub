@@ -47,7 +47,11 @@ class GeminiChatService {
     if (!dotenv.isInitialized) {
       try {
         await dotenv.load(fileName: ".env");
-      } catch (_) {}
+      } catch (_) {
+        try {
+          await dotenv.load(fileName: "assets/.env");
+        } catch (_) {}
+      }
     }
     final apiKey = (dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null)?.trim() ?? '';
     // Người dùng chỉ cần nhét API Key. Nếu không cấu hình model, tự động chọn gemini-1.5-flash

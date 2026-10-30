@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
@@ -34,6 +35,13 @@ class _CalendarPageState extends State<CalendarPage> {
   DateTime _currentMonth =
       DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
+  Timer? _deleteSnackBarTimer;
+
+  @override
+  void dispose() {
+    _deleteSnackBarTimer?.cancel();
+    super.dispose();
+  }
 
   String _formatDate(DateTime dt) {
     final d = dt.day.toString().padLeft(2, '0');
@@ -217,13 +225,17 @@ class _CalendarPageState extends State<CalendarPage> {
           familyMembers: widget.familyMembers,
         );
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          final messenger = ScaffoldMessenger.of(context);
+          messenger.clearSnackBars();
+          final controller = messenger.showSnackBar(
             SnackBar(
+              duration: const Duration(seconds: 10),
               content: Text('Đã xóa "${reminder.title}".'),
               action: SnackBarAction(
                 label: 'HOÀN TÁC',
                 textColor: const Color(0xFFaaffe9),
                 onPressed: () async {
+                  _deleteSnackBarTimer?.cancel();
                   try {
                     await widget.repository.restoreReminder(
                       reminderId: reminder.id,
@@ -238,6 +250,12 @@ class _CalendarPageState extends State<CalendarPage> {
               ),
             ),
           );
+          _deleteSnackBarTimer?.cancel();
+          _deleteSnackBarTimer = Timer(const Duration(seconds: 10), () {
+            try {
+              controller.close();
+            } catch (_) {}
+          });
           setState(() {});
         }
       } catch (e) {

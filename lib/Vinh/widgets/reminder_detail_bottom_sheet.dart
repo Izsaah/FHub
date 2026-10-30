@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -246,13 +247,17 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         if (context.mounted) {
           final messenger = ScaffoldMessenger.of(context);
           Navigator.of(context).pop();
-          messenger.showSnackBar(
+          messenger.clearSnackBars();
+          Timer? dismissTimer;
+          final controller = messenger.showSnackBar(
             SnackBar(
-              content: const Text('Đã xóa lời nhắc thành công.'),
+              duration: const Duration(seconds: 10),
+              content: Text('Đã xóa "${reminder.title}".'),
               action: SnackBarAction(
                 label: 'HOÀN TÁC',
                 textColor: const Color(0xFFaaffe9),
                 onPressed: () async {
+                  dismissTimer?.cancel();
                   try {
                     await repository.restoreReminder(
                       reminderId: reminder.id,
@@ -265,6 +270,11 @@ class ReminderDetailBottomSheet extends StatelessWidget {
               ),
             ),
           );
+          dismissTimer = Timer(const Duration(seconds: 10), () {
+            try {
+              controller.close();
+            } catch (_) {}
+          });
           onReminderUpdated?.call();
         }
       } catch (e) {

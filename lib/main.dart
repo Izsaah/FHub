@@ -1,11 +1,25 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'firebase_options.dart';
 import 'Thinh/screens/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Nap cau hinh moi truong (.env)
+  try {
+    await dotenv.load(fileName: '.env');
+    debugPrint('.env loaded successfully.');
+  } catch (_) {
+    try {
+      await dotenv.load(fileName: 'assets/.env');
+      debugPrint('assets/.env loaded successfully.');
+    } catch (e) {
+      debugPrint('Failed to load .env: $e');
+    }
+  }
 
   // Khởi tạo Firebase (Auth & Firestore)
   try {

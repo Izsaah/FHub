@@ -28,6 +28,13 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
   Map<String, FamilyMember> _memberships = {};
   String? _selectedFamilyId;
   bool _isLoading = true;
+  final ScrollController _familyScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _familyScrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -270,20 +277,20 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
             const SizedBox(height: 14),
 
             // Giới hạn hiển thị tối đa 3 gia đình, nếu nhiều hơn 3 thì cuộn xuống với Scrollbar
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: _families.length > 3 ? 234.0 : double.infinity,
-              ),
-              child: Scrollbar(
-                thumbVisibility: _families.length > 3,
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  physics: _families.length > 3
-                      ? const AlwaysScrollableScrollPhysics()
-                      : const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  itemCount: _families.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 10),
+            Builder(
+              builder: (context) {
+                Widget buildList({
+                  ScrollController? controller,
+                  required ScrollPhysics physics,
+                }) {
+                  return ListView.separated(
+                    controller: controller,
+                    shrinkWrap: true,
+                    physics: physics,
+                    padding: EdgeInsets.zero,
+                    itemCount: _families.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final fam = _families[index];
                     final isSelected = fam.id == _selectedFamilyId || isSingle;
@@ -419,8 +426,27 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
                       ),
                     );
                   },
-                ),
-              ),
+                );
+                }
+
+                if (_families.length > 3) {
+                  return ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 234.0),
+                    child: Scrollbar(
+                      controller: _familyScrollController,
+                      thumbVisibility: true,
+                      child: buildList(
+                        controller: _familyScrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                      ),
+                    ),
+                  );
+                }
+
+                return buildList(
+                  physics: const NeverScrollableScrollPhysics(),
+                );
+              },
             ),
           ],
         ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -78,6 +79,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   bool _isSearchOpen = false;
   String _searchQuery = '';
   final _searchController = TextEditingController();
+  Timer? _deleteSnackBarTimer;
 
   String _formatDate(DateTime dt) {
     final d = dt.day.toString().padLeft(2, '0');
@@ -87,6 +89,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
   @override
   void dispose() {
+    _deleteSnackBarTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -526,13 +529,22 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           familyMembers: targetMembers,
         );
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          final messenger = ScaffoldMessenger.of(context);
+          messenger.clearSnackBars();
+          final controller = messenger.showSnackBar(
             SnackBar(
-              content: Text('Đã xóa "${reminder.title}".'),
+              duration: const Duration(seconds: 10),
+              content: Text(
+                AppLanguage.text(
+                  'Đã xóa "${reminder.title}".',
+                  'Deleted "${reminder.title}".',
+                ),
+              ),
               action: SnackBarAction(
-                label: 'HOÀN TÁC',
+                label: AppLanguage.text('HOÀN TÁC', 'UNDO'),
                 textColor: const Color(0xFFaaffe9),
                 onPressed: () async {
+                  _deleteSnackBarTimer?.cancel();
                   try {
                     await _repository.restoreReminder(
                       reminderId: reminder.id,
@@ -547,6 +559,12 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               ),
             ),
           );
+          _deleteSnackBarTimer?.cancel();
+          _deleteSnackBarTimer = Timer(const Duration(seconds: 10), () {
+            try {
+              controller.close();
+            } catch (_) {}
+          });
           setState(() {});
         }
       } catch (e) {
