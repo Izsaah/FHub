@@ -438,21 +438,43 @@ class FamilyJackpotService extends ChangeNotifier {
     }
   }
 
-  /// Lắng nghe lịch sử biến động số dư ví của gia đình hiện tại theo thời gian thực
+  /// Lắng nghe lịch sử biến động số dư ví của gia đình hiện tại theo thời gian thực (giới hạn 15 ngày)
   Stream<List<WalletTransactionModel>> watchWalletTransactions([String? familyId]) {
     final targetFamilyId = (familyId != null && familyId.isNotEmpty)
         ? familyId
         : (_currentFamilyId ?? 'f1');
+    final cutoffDate = DateTime.now().subtract(const Duration(days: 15));
     return _firestore
         .collection('families')
         .doc(targetFamilyId)
         .collection('wallet_transactions')
         .orderBy('createdAt', descending: true)
-        .limit(50)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((doc) => WalletTransactionModel.fromMap(doc.id, doc.data()))
-            .toList());
+        .map((snap) {
+          final txs = <WalletTransactionModel>[];
+          final oldDocIds = <String>[];
+          for (final doc in snap.docs) {
+            final tx = WalletTransactionModel.fromMap(doc.id, doc.data());
+            if (tx.createdAt.isAfter(cutoffDate)) {
+              txs.add(tx);
+            } else {
+              oldDocIds.add(doc.id);
+            }
+          }
+          // Dọn dẹp tự động các bản ghi cũ hơn 15 ngày để bảo vệ dung lượng database
+          if (oldDocIds.isNotEmpty) {
+            for (final oldId in oldDocIds) {
+              _firestore
+                  .collection('families')
+                  .doc(targetFamilyId)
+                  .collection('wallet_transactions')
+                  .doc(oldId)
+                  .delete()
+                  .catchError((_) {});
+            }
+          }
+          return txs;
+        });
   }
 
   /// Nạp thêm tiền vào Hũ Niềm Vui Gia Đình

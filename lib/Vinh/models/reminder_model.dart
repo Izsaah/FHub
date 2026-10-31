@@ -201,6 +201,14 @@ class ReminderModel {
     );
   }
 
+  Map<String, dynamic> toMap() => toJson();
+
+  factory ReminderModel.fromMap(String id, Map<String, dynamic> data) {
+    final map = Map<String, dynamic>.from(data);
+    map['id'] = id;
+    return ReminderModel.fromJson(map);
+  }
+
   factory ReminderModel.fromJson(Map<String, dynamic> json) {
     String rawDate = (json['date'] ?? '').toString();
     // Normalize yyyy-MM-dd to dd/MM/yyyy if coming from Postgres

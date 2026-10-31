@@ -1278,9 +1278,18 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                       children: [
                         Icon(Icons.receipt_long_rounded, color: DanhColors.brand800, size: 22),
                         SizedBox(width: 8),
-                        Text(
-                          'Lịch Sử Biến Động Ví & Quỹ',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Lịch Sử Biến Động Ví & Quỹ',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+                            ),
+                            Text(
+                              'Lưu trữ tự động trong 15 ngày gần nhất',
+                              style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
+                            ),
+                          ],
                         ),
                       ],
                     ),

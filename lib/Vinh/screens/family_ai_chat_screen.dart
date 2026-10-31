@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../Thinh/theme/app_language.dart';
@@ -44,10 +45,72 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
   String? _speakingMessageId;
   String _liveTranscript = '';
 
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+
+  CollectionReference<Map<String, dynamic>> get _chatCollection => _firestore
+      .collection('families')
+      .doc(widget.familyId)
+      .collection('ai_chats')
+      .doc(widget.currentUserId)
+      .collection('messages');
+
   @override
   void initState() {
     super.initState();
-    _initWelcomeMessage();
+    _loadChatHistory();
+  }
+
+  Future<void> _loadChatHistory() async {
+    try {
+      final snap = await _chatCollection
+          .orderBy('timestamp', descending: false)
+          .get()
+          .timeout(const Duration(seconds: 4));
+
+      final cutoffDate = DateTime.now().subtract(const Duration(days: 15));
+      final List<AiChatMessage> loaded = [];
+      final List<String> oldDocIds = [];
+
+      for (final doc in snap.docs) {
+        final msg = AiChatMessage.fromMap(doc.id, doc.data());
+        if (msg.timestamp.isAfter(cutoffDate)) {
+          loaded.add(msg);
+        } else {
+          oldDocIds.add(doc.id);
+        }
+      }
+
+      // Tự động dọn dẹp các tin nhắn cũ hơn 15 ngày để giữ cơ sở dữ liệu nhẹ và an toàn
+      for (final oldId in oldDocIds) {
+        _chatCollection.doc(oldId).delete().catchError((_) {});
+      }
+
+      if (mounted) {
+        setState(() {
+          _messages.clear();
+          if (loaded.isNotEmpty) {
+            _messages.addAll(loaded);
+          } else {
+            _initWelcomeMessage();
+          }
+        });
+        _scrollToBottom();
+      }
+    } catch (_) {
+      if (mounted && _messages.isEmpty) {
+        setState(() {
+          _initWelcomeMessage();
+        });
+      }
+    }
+  }
+
+  Future<void> _persistMessage(AiChatMessage msg) async {
+    try {
+      await _chatCollection.doc(msg.id).set(msg.toMap());
+    } catch (e) {
+      debugPrint('Error saving AI chat message to Firestore: $e');
+    }
   }
 
   void _initWelcomeMessage() {
@@ -207,6 +270,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
       _isThinking = true;
     });
     _scrollToBottom();
+    _persistMessage(userMsg);
 
     // Độ trễ phản hồi tự nhiên (350ms)
     await Future.delayed(const Duration(milliseconds: 350));
@@ -226,6 +290,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         _messages.add(aiMsg);
       });
       _scrollToBottom();
+      _persistMessage(aiMsg);
 
       if (_autoSpeak) {
         _speakMessage(aiMsg);
@@ -282,13 +347,15 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
 
       final idx = _messages.indexWhere((m) => m.id == msg.id);
       if (idx != -1 && mounted) {
+        final updated = msg.copyWith(
+          isSuggestionAccepted: true,
+          attachedReminder: created,
+          attachedReminders: [created],
+        );
         setState(() {
-          _messages[idx] = msg.copyWith(
-            isSuggestionAccepted: true,
-            attachedReminder: created,
-            attachedReminders: [created],
-          );
+          _messages[idx] = updated;
         });
+        _persistMessage(updated);
       }
 
       if (mounted) {
@@ -1022,9 +1089,11 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                     onPressed: () {
                       final idx = _messages.indexWhere((m) => m.id == msg.id);
                       if (idx != -1) {
+                        final updated = msg.copyWith(isSuggestionDismissed: true);
                         setState(() {
-                          _messages[idx] = msg.copyWith(isSuggestionDismissed: true);
+                          _messages[idx] = updated;
                         });
+                        _persistMessage(updated);
                       }
                     },
                   ),

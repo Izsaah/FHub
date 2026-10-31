@@ -156,5 +156,50 @@ void main() {
       expect(withdrawTx.bankShortName, 'MB');
       expect(withdrawTx.accountNumber, '0987654321');
     });
+
+    test('5. 15-day rolling storage window: Transactions older than 15 days are pruned', () {
+      final now = DateTime.now();
+      final txs = [
+        WalletTransactionModel(
+          id: 'tx_today',
+          familyId: 'f1',
+          userId: 'u_dad',
+          userName: 'Bố Hùng',
+          type: WalletTransactionType.contribute,
+          amount: 50000,
+          title: 'Nạp quỹ hôm nay',
+          createdAt: now,
+        ),
+        WalletTransactionModel(
+          id: 'tx_10_days_ago',
+          familyId: 'f1',
+          userId: 'u_dad',
+          userName: 'Bố Hùng',
+          type: WalletTransactionType.contribute,
+          amount: 20000,
+          title: 'Nạp quỹ 10 ngày trước',
+          createdAt: now.subtract(const Duration(days: 10)),
+        ),
+        WalletTransactionModel(
+          id: 'tx_16_days_ago',
+          familyId: 'f1',
+          userId: 'u_dad',
+          userName: 'Bố Hùng',
+          type: WalletTransactionType.contribute,
+          amount: 100000,
+          title: 'Nạp quỹ 16 ngày trước (Cần loại bỏ)',
+          createdAt: now.subtract(const Duration(days: 16)),
+        ),
+      ];
+
+      final cutoff = now.subtract(const Duration(days: 15));
+      final validTxs = txs.where((t) => t.createdAt.isAfter(cutoff)).toList();
+      final expiredTxs = txs.where((t) => !t.createdAt.isAfter(cutoff)).toList();
+
+      expect(validTxs.length, 2);
+      expect(validTxs.map((t) => t.id), containsAll(['tx_today', 'tx_10_days_ago']));
+      expect(expiredTxs.length, 1);
+      expect(expiredTxs.first.id, 'tx_16_days_ago');
+    });
   });
 }

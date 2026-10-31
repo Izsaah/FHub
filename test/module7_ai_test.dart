@@ -201,5 +201,78 @@ void main() {
       );
       expect(tiredRes.text, contains('Dạ thương Danh quá!'));
     });
+
+    test('User asking for their role in the family returns personalized role and permissions', () async {
+      final repo = InMemoryReminderRepository();
+
+      // Case parent
+      final parentRes = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'u_dad',
+        currentUserName: 'Bố Hùng',
+        familyMembers: members,
+        repository: repo,
+        userMessage: 'à mà bạn có thể cho tôi biết vai trò của tôi trong gia đình không ?',
+      );
+      expect(parentRes.text, contains('Phụ huynh'));
+      expect(parentRes.text, contains('Bố Mẹ'));
+      expect(parentRes.text, contains('Nổ Hũ'));
+
+      // Case child
+      final childRes = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'u_child',
+        currentUserName: 'Danh',
+        familyMembers: members,
+        repository: repo,
+        userMessage: 'vai trò của tôi trong gia đình là gì?',
+      );
+      expect(childRes.text, contains('Con cái'));
+      expect(childRes.text, contains('sao thưởng'));
+    });
+
+    test('User asking to cook a lavish feast does NOT auto-create a task titled feast', () async {
+      final repo = InMemoryReminderRepository();
+
+      final res = await ai.processMessage(
+        familyId: 'f1',
+        currentUserId: 'u_dad',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+        userMessage: 'Hôm nay tôi muốn nấu một bữa tiệc thịnh soạn',
+      );
+
+      // Verify no task was directly written to repo
+      final repoTasks = await repo.getReminders(familyId: 'f1');
+      expect(repoTasks.isEmpty, isTrue);
+
+      // Verify suggestions were provided with a non-intrusive suggestedReminder
+      expect(res.text, contains('bữa tiệc'));
+      expect(res.suggestedReminder, isNotNull);
+      expect(res.suggestedReminder?.title, contains('bữa tiệc'));
+    });
+
+    test('AiChatMessage serialization toMap and fromMap works seamlessly', () {
+      final now = DateTime.now();
+      final msg = AiChatMessage(
+        id: 'msg_123',
+        isUser: false,
+        text: 'Xin chào gia đình!',
+        timestamp: now,
+        isSuggestionAccepted: true,
+      );
+
+      final map = msg.toMap();
+      expect(map['id'], 'msg_123');
+      expect(map['isUser'], false);
+      expect(map['text'], 'Xin chào gia đình!');
+      expect(map['isSuggestionAccepted'], true);
+
+      final restored = AiChatMessage.fromMap('msg_123', map);
+      expect(restored.id, 'msg_123');
+      expect(restored.text, 'Xin chào gia đình!');
+      expect(restored.isSuggestionAccepted, true);
+    });
   });
 }
