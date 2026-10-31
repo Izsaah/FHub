@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../Long/services/family_data_service.dart';
 import '../models/subscription_plan_model.dart';
 import '../services/payment_service.dart';
 import '../theme/danh_colors.dart';
@@ -15,6 +16,22 @@ class PremiumPlanScreen extends StatefulWidget {
 
 class _PremiumPlanScreenState extends State<PremiumPlanScreen> {
   final PaymentService _paymentService = PaymentService();
+  String _familyName = 'Gia đình';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFamilyName();
+  }
+
+  Future<void> _loadFamilyName() async {
+    try {
+      final fam = await FamilyDataService().getCurrentFamily();
+      if (fam != null && fam.name.trim().isNotEmpty && mounted) {
+        setState(() => _familyName = fam.name.trim());
+      }
+    } catch (_) {}
+  }
 
   Future<void> _onPressPay() async {
     final success = await Navigator.push<bool>(
@@ -27,7 +44,6 @@ class _PremiumPlanScreenState extends State<PremiumPlanScreen> {
       Navigator.pop(context, true);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -52,9 +68,9 @@ class _PremiumPlanScreenState extends State<PremiumPlanScreen> {
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Tổ Ấm Yêu Thương',
-                  style: TextStyle(
+                Text(
+                  _familyName,
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
                     color: DanhColors.brand800,
@@ -189,105 +205,105 @@ class _PremiumPlanScreenState extends State<PremiumPlanScreen> {
                                   color: DanhColors.brand50,
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(
-                                  Icons.check_rounded,
-                                  color: DanhColors.brand800,
-                                  size: 16,
+                              child: const Icon(
+                                Icons.check_rounded,
+                                color: DanhColors.brand800,
+                                size: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                benefit,
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  color: DanhColors.textSecondary,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  benefit,
-                                  style: const TextStyle(
-                                    fontSize: 13.5,
-                                    color: DanhColors.textSecondary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+
+              // Nút bấm hành động
+              if (isPremium)
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: DanhColors.brand800,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    elevation: 2,
+                    shadowColor: DanhColors.brand800.withValues(alpha: 0.3),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  icon: const Icon(Icons.verified_rounded, color: DanhColors.gold, size: 22),
+                  label: const Text(
+                    '✓ Đang Là Premium • Quản Lý Gói Cước',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ManageSubscriptionScreen()),
+                    );
+                  },
+                )
+              else
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: DanhColors.brand800,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    elevation: 2,
+                    shadowColor: DanhColors.brand800.withValues(alpha: 0.3),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: _onPressPay,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.qr_code_2_rounded, color: DanhColors.gold, size: 22),
+                      SizedBox(width: 8),
+                      Text(
+                        'Thanh Toán VietQR (49.000 đ)',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.3,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 28),
-
-                // Nút bấm hành động
-                if (isPremium)
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: DanhColors.brand800,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      elevation: 2,
-                      shadowColor: DanhColors.brand800.withValues(alpha: 0.3),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    icon: const Icon(Icons.verified_rounded, color: DanhColors.gold, size: 22),
-                    label: const Text(
-                      '✓ Đang Là Premium • Quản Lý Gói Cước',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (_) => const ManageSubscriptionScreen()),
-                      );
-                    },
-                  )
-                else
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: DanhColors.brand800,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      elevation: 2,
-                      shadowColor: DanhColors.brand800.withValues(alpha: 0.3),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    onPressed: _onPressPay,
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.qr_code_2_rounded, color: DanhColors.gold, size: 22),
-                        SizedBox(width: 8),
-                        Text(
-                          'Thanh Toán VietQR (49.000 đ)',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                Center(
-                  child: Text(
-                    isPremium
-                        ? 'Gói đang hoạt động: ${sub.planName} (Hạn dùng: ${sub.formattedExpiry})'
-                        : 'Quét mã VietQR bằng ứng dụng ngân hàng bất kỳ để kích hoạt',
-                    style: const TextStyle(fontSize: 11.5, color: DanhColors.textMuted),
-                  ),
+              const SizedBox(height: 12),
+              Center(
+                child: Text(
+                  isPremium
+                      ? 'Gói đang hoạt động: ${sub.planName} (Hạn dùng: ${sub.formattedExpiry})'
+                      : 'Quét mã VietQR bằng ứng dụng ngân hàng bất kỳ để kích hoạt',
+                  style: const TextStyle(fontSize: 11.5, color: DanhColors.textMuted),
                 ),
-                const SizedBox(height: 16),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+            ],
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
 }

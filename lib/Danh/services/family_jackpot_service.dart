@@ -7,6 +7,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import '../../Long/services/family_data_service.dart';
 import '../models/family_jackpot_model.dart';
 import '../models/user_bank_info.dart';
+import '../models/wallet_transaction_model.dart';
 import 'jackpot_algorithm.dart';
 import 'payment_service.dart';
 
@@ -127,11 +128,11 @@ class FamilyJackpotService extends ChangeNotifier {
           snapshot.data() as Map<String, dynamic>,
         );
 
-        // Hợp nhất danh sách thành viên gia đình để không bao giờ bị mất thành viên khi đồng bộ
+        // Hợp nhất danh sách thành viên: ưu tiên tên đã load từ profile thật
         final mergedMembers = <String, String>{
-          ..._cachedFamilyMembers,
-          ..._jackpot.memberNames,
           ...incoming.memberNames,
+          ..._jackpot.memberNames,
+          ..._cachedFamilyMembers,
         };
         if (_auth.currentUser != null && _auth.currentUser!.uid != 'u1') {
           mergedMembers.remove('u1');
@@ -190,30 +191,13 @@ class FamilyJackpotService extends ChangeNotifier {
         }
       } catch (_) {}
 
-      // 1. Đọc từ Firestore family_members (nếu có)
-      final snap = await _firestore
-          .collection('family_members')
-          .where('familyId', isEqualTo: familyId)
-          .where('status', isEqualTo: 'ACTIVE')
-          .get();
-
-      for (final doc in snap.docs) {
-        final d = doc.data();
-        final uid = d['userId'] as String? ?? '';
-        final role = d['role'] as String? ?? 'Thành viên';
-        final isOwner = d['isOwner'] as bool? ?? false;
-        if (uid.isNotEmpty) {
-          loaded[uid] = isOwner ? 'Chủ gia đình ($role)' : role;
-        }
-      }
-
-      // 2. Đồng bộ thêm danh sách thành viên từ FamilyDataService (hiển thị ở tab Gia đình)
+      // 1. Ưu tiên lấy trực tiếp danh sách thành viên từ FamilyDataService (đã đọc từ collection users)
       try {
-        final serviceMembers = await FamilyDataService().getFamilyMembers();
+        final serviceMembers = await FamilyDataService().getFamilyMembers(familyId: familyId);
         for (final m in serviceMembers) {
           final uid = m.user.id;
           final name = m.user.name.trim();
-          if (uid.isNotEmpty && name.isNotEmpty && !loaded.containsKey(uid)) {
+          if (uid.isNotEmpty && name.isNotEmpty && name != 'Thành viên' && name != 'Người dùng') {
             if (uid == 'u1' && _auth.currentUser != null && _auth.currentUser!.uid != 'u1') {
               continue;
             }
@@ -222,10 +206,72 @@ class FamilyJackpotService extends ChangeNotifier {
         }
       } catch (_) {}
 
+      // 2. Đọc thêm từ collection family_members để tránh bỏ sót thành viên
+      try {
+        final snap = await _firestore
+            .collection('family_members')
+            .where('familyId', isEqualTo: familyId)
+            .where('status', isEqualTo: 'ACTIVE')
+            .get();
+
+        for (final doc in snap.docs) {
+          final d = doc.data();
+          final uid = d['userId'] as String? ?? '';
+          if (uid.isEmpty) continue;
+          if (uid == 'u1' && _auth.currentUser != null && _auth.currentUser!.uid != 'u1') continue;
+
+          // Nếu đã có tên thật từ FamilyDataService -> giữ nguyên
+          if (loaded.containsKey(uid) && loaded[uid]!.isNotEmpty) continue;
+
+          // Thử đọc tên từ users collection
+          try {
+            final userDoc = await _firestore.collection('users').doc(uid).get();
+            final rawName = userDoc.data()?['name']?.toString();
+            final userName = rawName?.trim();
+            if (userName != null && userName.isNotEmpty && userName != 'Người dùng') {
+              loaded[uid] = userName;
+              continue;
+            }
+          } catch (_) {}
+
+          // Fallback tên vai trò tiếng Việt rõ ràng, tránh hiển thị thô "PARENT"
+          final rawRole = (d['role'] as String? ?? 'PARENT').toUpperCase();
+          final isOwner = d['isOwner'] as bool? ?? false;
+          String fallbackRole;
+          if (isOwner) {
+            fallbackRole = 'Chủ gia đình';
+          } else if (rawRole.contains('PARENT') || rawRole.contains('BỐ') || rawRole.contains('MẸ')) {
+            fallbackRole = 'Bố / Mẹ';
+          } else if (rawRole.contains('CHILD') || rawRole.contains('CON')) {
+            fallbackRole = 'Con';
+          } else if (rawRole.contains('GRAND') || rawRole.contains('ÔNG') || rawRole.contains('BÀ')) {
+            fallbackRole = 'Ông / Bà';
+          } else {
+            fallbackRole = 'Thành viên';
+          }
+          loaded[uid] = fallbackRole;
+        }
+      } catch (_) {}
+
       // 3. Đảm bảo user hiện tại luôn có mặt với tên hiển thị chính xác
       final myUid = currentUserId;
       if (myUid.isNotEmpty) {
         loaded[myUid] = currentUserName;
+      }
+
+      // 4. Đánh số phân biệt nếu có thành viên bị trùng tên fallback (ví dụ 2 bố mẹ -> "Bố / Mẹ (1)", "Bố / Mẹ (2)")
+      final nameCounts = <String, int>{};
+      for (final n in loaded.values) {
+        nameCounts[n] = (nameCounts[n] ?? 0) + 1;
+      }
+      final seenCount = <String, int>{};
+      for (final uid in loaded.keys.toList()) {
+        final rawName = loaded[uid]!;
+        if ((nameCounts[rawName] ?? 0) > 1 && uid != myUid) {
+          final idx = (seenCount[rawName] ?? 0) + 1;
+          seenCount[rawName] = idx;
+          loaded[uid] = '$rawName ($idx)';
+        }
       }
 
       if (loaded.isNotEmpty) {
@@ -352,6 +398,85 @@ class FamilyJackpotService extends ChangeNotifier {
     }
   }
 
+  /// Ghi lại giao dịch vào Sổ cái Biến động Ví của Gia đình (Family-scoped Ledger)
+  Future<void> _recordTransaction({
+    required WalletTransactionType type,
+    required int amount,
+    required String title,
+    String? description,
+    String? bankShortName,
+    String? accountNumber,
+    String? targetUserId,
+    String? targetUserName,
+  }) async {
+    final fId = _currentFamilyId;
+    if (fId == null || fId.isEmpty || amount <= 0) return;
+    try {
+      final txDoc = _firestore
+          .collection('families')
+          .doc(fId)
+          .collection('wallet_transactions')
+          .doc();
+
+      final tx = WalletTransactionModel(
+        id: txDoc.id,
+        familyId: fId,
+        userId: targetUserId ?? currentUserId,
+        userName: targetUserName ?? currentUserName,
+        type: type,
+        amount: amount,
+        title: title,
+        description: description,
+        bankShortName: bankShortName,
+        accountNumber: accountNumber,
+        createdAt: DateTime.now(),
+      );
+
+      await txDoc.set(tx.toMap());
+    } catch (e) {
+      debugPrint('FamilyJackpotService._recordTransaction error: $e');
+    }
+  }
+
+  /// Lắng nghe lịch sử biến động số dư ví của gia đình hiện tại theo thời gian thực (giới hạn 15 ngày)
+  Stream<List<WalletTransactionModel>> watchWalletTransactions([String? familyId]) {
+    final targetFamilyId = (familyId != null && familyId.isNotEmpty)
+        ? familyId
+        : (_currentFamilyId ?? 'f1');
+    final cutoffDate = DateTime.now().subtract(const Duration(days: 15));
+    return _firestore
+        .collection('families')
+        .doc(targetFamilyId)
+        .collection('wallet_transactions')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) {
+          final txs = <WalletTransactionModel>[];
+          final oldDocIds = <String>[];
+          for (final doc in snap.docs) {
+            final tx = WalletTransactionModel.fromMap(doc.id, doc.data());
+            if (tx.createdAt.isAfter(cutoffDate)) {
+              txs.add(tx);
+            } else {
+              oldDocIds.add(doc.id);
+            }
+          }
+          // Dọn dẹp tự động các bản ghi cũ hơn 15 ngày để bảo vệ dung lượng database
+          if (oldDocIds.isNotEmpty) {
+            for (final oldId in oldDocIds) {
+              _firestore
+                  .collection('families')
+                  .doc(targetFamilyId)
+                  .collection('wallet_transactions')
+                  .doc(oldId)
+                  .delete()
+                  .catchError((_) {});
+            }
+          }
+          return txs;
+        });
+  }
+
   /// Nạp thêm tiền vào Hũ Niềm Vui Gia Đình
   Future<void> contributeMoney({
     required int amount,
@@ -398,6 +523,16 @@ class FamilyJackpotService extends ChangeNotifier {
 
     notifyListeners();
     await _saveToFirestore();
+
+    // Ghi vào Sổ cái biến động ví gia đình
+    await _recordTransaction(
+      type: WalletTransactionType.contribute,
+      amount: amount,
+      title: 'Nạp quỹ Hũ Niềm Vui',
+      description: 'Đóng góp bởi $name',
+      targetUserId: uid,
+      targetUserName: name,
+    );
   }
 
   /// Bắt đầu 30s Nổ Hũ (Chỉ người nạp nhiều nhất mới được gọi)
@@ -501,9 +636,9 @@ class FamilyJackpotService extends ChangeNotifier {
         finalShakes[currentUserId] = _localMyShakeCount;
       }
 
-      // Tìm người lắc nhiều nhất ngay lập tức
+      // Tìm người lắc nhiều nhất ngay lập tức (chỉ ghi nhận khi có ít nhất 1 lần lắc > 0)
       String? topShaker;
-      int maxShakes = -1;
+      int maxShakes = 0;
       finalShakes.forEach((uid, cnt) {
         if (cnt > maxShakes) {
           maxShakes = cnt;
@@ -557,6 +692,18 @@ class FamilyJackpotService extends ChangeNotifier {
       final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
       result.prizes.forEach((uid, wonAmount) {
         updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonAmount;
+        if (wonAmount > 0) {
+          final isTop1 = uid == result.firstPrizeWinnerId;
+          final mName = _jackpot.memberNames[uid] ?? 'Thành viên';
+          _recordTransaction(
+            type: WalletTransactionType.prize,
+            amount: wonAmount,
+            title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
+            description: 'Phần thưởng chia từ quỹ Hũ',
+            targetUserId: uid,
+            targetUserName: mName,
+          );
+        }
       });
 
       _jackpot = _jackpot.copyWith(
@@ -588,19 +735,64 @@ class FamilyJackpotService extends ChangeNotifier {
   }
 
   /// Rút tiền từ Ví thành viên về Số tài khoản ngân hàng cá nhân
+  /// Sử dụng Firestore Atomic Transaction để chống xung đột rút tiền đồng thời (Race Condition)
   Future<bool> withdrawToBank(int amount) async {
-    final currentBal = myWalletBalance;
-    if (amount <= 0 || amount > currentBal) return false;
+    final uid = currentUserId;
+    if (uid.isEmpty || amount <= 0) return false;
     if (!myBankInfo.isValid) return false;
+    final fId = _currentFamilyId;
+    if (fId == null || fId.isEmpty) return false;
 
-    final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
-    updatedWallets[currentUserId] = currentBal - amount;
+    try {
+      final docRef = _firestore
+          .collection('families')
+          .doc(fId)
+          .collection('jackpot')
+          .doc('current');
 
-    _jackpot = _jackpot.copyWith(memberWallets: updatedWallets);
+      // Atomic Transaction: Đảm bảo kiểm tra số dư và trừ ví không bao giờ bị xung đột đồng thời
+      await _firestore.runTransaction((transaction) async {
+        final snap = await transaction.get(docRef);
+        if (!snap.exists || snap.data() == null) {
+          throw Exception('Hũ không tồn tại');
+        }
+        final data = snap.data()!;
+        final rawWallets = (data['memberWallets'] as Map<String, dynamic>?) ?? {};
+        final currentBal = (rawWallets[uid] as num?)?.toInt() ?? 0;
+        if (amount > currentBal) {
+          throw Exception('Số tiền rút ($amount đ) vượt quá số dư ví ($currentBal đ)');
+        }
 
-    notifyListeners();
-    await _saveToFirestore();
-    return true;
+        final updated = Map<String, dynamic>.from(rawWallets);
+        updated[uid] = currentBal - amount;
+
+        transaction.update(docRef, {
+          'memberWallets': updated,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      });
+
+      // Cập nhật state local ngay
+      final localWallets = Map<String, int>.from(_jackpot.memberWallets);
+      localWallets[uid] = (localWallets[uid] ?? 0) - amount;
+      _jackpot = _jackpot.copyWith(memberWallets: localWallets);
+      notifyListeners();
+
+      // Ghi Sổ cái Lịch sử biến động ví gia đình (Family-scoped Ledger)
+      await _recordTransaction(
+        type: WalletTransactionType.withdraw,
+        amount: amount,
+        title: 'Rút tiền về ${myBankInfo.bankShortName}',
+        description: 'Chuyển về STK: ${myBankInfo.accountNumber}',
+        bankShortName: myBankInfo.bankShortName,
+        accountNumber: myBankInfo.accountNumber,
+      );
+
+      return true;
+    } catch (e) {
+      debugPrint('FamilyJackpotService.withdrawToBank error: $e');
+      return false;
+    }
   }
 
   /// Đặt lại Hũ mới sau khi nổ hũ xong

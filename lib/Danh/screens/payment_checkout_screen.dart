@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/payment_config.dart';
@@ -68,13 +69,14 @@ class _PaymentCheckoutScreenState extends State<PaymentCheckoutScreen> {
               'Phát hiện chuyển thiếu tiền: Đã nhận ${result.amountIn} đ (Yêu cầu ${result.expectedAmount} đ). Vui lòng chuyển đủ!';
         });
       } else if (!silent && mounted) {
+        final msg = kIsWeb
+            ? 'Trên Web (Chrome), chính sách CORS của trình duyệt có thể hạn chế đọc tự động từ SePay. Bạn hãy bấm "Mô phỏng thanh toán thành công" ngay bên dưới để kích hoạt gói tức thì!'
+            : 'Chưa nhận được giao dịch cho mã $_orderCode. Hãy bấm "Mô phỏng giao dịch" trên SePay với đúng mã $_orderCode!';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Chưa nhận được giao dịch cho mã $_orderCode. Hãy bấm "Mô phỏng giao dịch" trên SePay với đúng mã $_orderCode!',
-            ),
+            content: Text(msg),
             backgroundColor: DanhColors.warning,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -470,11 +472,11 @@ class _PaymentCheckoutScreenState extends State<PaymentCheckoutScreen> {
                     height: 18,
                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                   )
-                : const Icon(Icons.bolt_rounded, size: 20, color: DanhColors.gold),
+                : const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
             label: Text(
               _isSimulating
                   ? 'Đang kích hoạt gói...'
-                  : '⚡ Mô phỏng thanh toán thành công (Test nhanh)',
+                  : 'Mô phỏng thanh toán thành công (Thử nghiệm)',
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
             onPressed: _isSimulating ? null : _handleManualSimulate,
