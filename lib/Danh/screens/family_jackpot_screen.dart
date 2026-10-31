@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/family_jackpot_model.dart';
 import '../models/user_bank_info.dart';
+import '../models/wallet_transaction_model.dart';
 import '../services/family_jackpot_service.dart';
 import '../services/payment_config.dart';
 import '../services/payment_service.dart';
@@ -108,6 +109,11 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               ),
             ),
             actions: [
+              IconButton(
+                tooltip: 'Lịch sử ví gia đình',
+                icon: const Icon(Icons.receipt_long_rounded, color: DanhColors.brand800),
+                onPressed: _openWalletHistoryModal,
+              ),
               IconButton(
                 tooltip: 'Ví Thưởng & Rút Tiền',
                 icon: const Icon(Icons.account_balance_wallet_rounded, color: DanhColors.brand800),
@@ -278,20 +284,40 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     ),
                   ],
                 ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE65100),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    elevation: 0,
-                  ),
-                  icon: const Icon(Icons.account_balance_rounded, size: 14),
-                  label: const Text(
-                    'Rút Về STK',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                  onPressed: _openBankAndWithdrawModal,
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFE65100),
+                        side: const BorderSide(color: Color(0xFFE65100), width: 1.2),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        minimumSize: Size.zero,
+                      ),
+                      icon: const Icon(Icons.receipt_long_rounded, size: 13),
+                      label: const Text(
+                        'Lịch Sử',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: _openWalletHistoryModal,
+                    ),
+                    const SizedBox(width: 6),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFE65100),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
+                      ),
+                      icon: const Icon(Icons.account_balance_rounded, size: 14),
+                      label: const Text(
+                        'Rút Tiền',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: _openBankAndWithdrawModal,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1159,6 +1185,155 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   }
 
   /// MODAL VÍ THƯỞNG & CÀI ĐẶT STK NGÂN HÀNG ĐỂ RÚT TIỀN
+  /// MODAL LỊCH SỬ BIẾN ĐỘNG VÍ GIA ĐÌNH (Family-scoped Ledger)
+  void _openWalletHistoryModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          height: MediaQuery.of(ctx).size.height * 0.75,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: DanhColors.borderLight)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.receipt_long_rounded, color: DanhColors.brand800, size: 22),
+                        SizedBox(width: 8),
+                        Text(
+                          'Lịch Sử Biến Động Ví & Quỹ',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Danh sách giao dịch Realtime theo đúng familyId
+              Expanded(
+                child: StreamBuilder<List<WalletTransactionModel>>(
+                  stream: _jackpotService.watchWalletTransactions(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: DanhColors.brand800));
+                    }
+                    final list = snapshot.data ?? [];
+                    if (list.isEmpty) {
+                      return const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.inbox_outlined, size: 48, color: Colors.black26),
+                            SizedBox(height: 12),
+                            Text(
+                              'Chưa có biến động số dư nào trong gia đình này.',
+                              style: TextStyle(color: DanhColors.textMuted, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      itemCount: list.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1, color: DanhColors.borderLight),
+                      itemBuilder: (context, index) {
+                        final tx = list[index];
+                        final isPositive = tx.isPositive;
+                        final color = isPositive ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+                        final prefix = isPositive ? '+' : '-';
+                        final timeStr = '${tx.createdAt.hour.toString().padLeft(2, '0')}:${tx.createdAt.minute.toString().padLeft(2, '0')} • ${tx.createdAt.day.toString().padLeft(2, '0')}/${tx.createdAt.month.toString().padLeft(2, '0')}';
+
+                        IconData iconData;
+                        Color iconBg;
+                        if (tx.type == WalletTransactionType.contribute) {
+                          iconData = Icons.arrow_downward_rounded;
+                          iconBg = const Color(0xFFE8F5E9);
+                        } else if (tx.type == WalletTransactionType.prize) {
+                          iconData = Icons.emoji_events_rounded;
+                          iconBg = const Color(0xFFFFF8E1);
+                        } else {
+                          iconData = Icons.arrow_upward_rounded;
+                          iconBg = const Color(0xFFFFEBEE);
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: iconBg,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(iconData, color: color, size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      tx.title,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: DanhColors.textPrimary),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${tx.userName} • $timeStr',
+                                      style: const TextStyle(fontSize: 12, color: DanhColors.textMuted),
+                                    ),
+                                    if (tx.description != null && tx.description!.isNotEmpty)
+                                      Text(
+                                        tx.description!,
+                                        style: const TextStyle(fontSize: 11.5, color: DanhColors.textSecondary),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                '$prefix${tx.amount} đ',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: color,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _openBankAndWithdrawModal() {
     final currentBank = _jackpotService.myBankInfo;
     String selectedBankCode = currentBank.bankCode.isNotEmpty ? currentBank.bankCode : 'MB';

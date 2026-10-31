@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
+import '../models/reminder_model.dart';
 import '../services/ai_speech_service.dart';
 import '../services/family_ai_assistant_service.dart';
 import '../services/family_memory_service.dart';
@@ -260,6 +261,54 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleAcceptSuggestedTask(
+    AiChatMessage msg,
+    ReminderModel suggestion,
+  ) async {
+    try {
+      HapticFeedback.mediumImpact();
+      final created = await widget.repository.createReminder(
+        reminder: suggestion,
+        currentUserId: widget.currentUserId,
+        familyMembers: widget.familyMembers,
+      );
+
+      final idx = _messages.indexWhere((m) => m.id == msg.id);
+      if (idx != -1 && mounted) {
+        setState(() {
+          _messages[idx] = msg.copyWith(
+            isSuggestionAccepted: true,
+            attachedReminder: created,
+            attachedReminders: [created],
+          );
+        });
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                '✅ Đã tạo lời nhắc "${created.title}" vào lịch gia đình!',
+                '✅ Created reminder "${created.title}" into family schedule!',
+              ),
+            ),
+            backgroundColor: const Color(0xFF0D7A68),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: $e'),
             backgroundColor: const Color(0xFFBA1A1A),
           ),
         );
@@ -794,6 +843,8 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                         ],
                       ),
                     ),
+                    if (msg.suggestedReminder != null)
+                      _buildSuggestionCard(msg, msg.suggestedReminder!),
                     for (final rem in attachedList)
                       TaskMiniCard(
                         reminder: rem,
@@ -820,6 +871,189 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         ),
       );
     }
+  }
+
+  Widget _buildSuggestionCard(AiChatMessage msg, ReminderModel suggestion) {
+    const primaryColor = Color(0xFF0D7A68);
+    final isAccepted = msg.isSuggestionAccepted;
+    final isDismissed = msg.isSuggestionDismissed;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isAccepted
+            ? const Color(0xFFE8F5E9)
+            : (isDismissed ? const Color(0xFFF5F5F5) : const Color(0xFFF0FDF4)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isAccepted
+              ? const Color(0xFF2E7D32).withValues(alpha: 0.4)
+              : (isDismissed
+                  ? Colors.grey.shade300
+                  : primaryColor.withValues(alpha: 0.35)),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isAccepted
+                      ? const Color(0xFFC8E6C9)
+                      : (isDismissed ? Colors.grey.shade200 : const Color(0xFFFFF3E0)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isAccepted
+                          ? Icons.check_circle_rounded
+                          : (isDismissed
+                              ? Icons.do_not_disturb_alt_rounded
+                              : Icons.lightbulb_rounded),
+                      size: 13,
+                      color: isAccepted
+                          ? const Color(0xFF2E7D32)
+                          : (isDismissed
+                              ? Colors.grey.shade600
+                              : const Color(0xFFE65100)),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isAccepted
+                          ? AppLanguage.text('ĐÃ LƯU VÀO LỊCH', 'SAVED TO SCHEDULE')
+                          : (isDismissed
+                              ? AppLanguage.text('ĐÃ BỎ QUA', 'DISMISSED')
+                              : AppLanguage.text('GỢI Ý TẠO VIỆC', 'TASK SUGGESTION')),
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                        color: isAccepted
+                            ? const Color(0xFF2E7D32)
+                            : (isDismissed
+                                ? Colors.grey.shade600
+                                : const Color(0xFFE65100)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${suggestion.time} • ${suggestion.date}',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            suggestion.title,
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.bold,
+              color: isDismissed ? Colors.grey.shade600 : const Color(0xFF151D1B),
+              decoration: isDismissed ? TextDecoration.lineThrough : null,
+            ),
+          ),
+          if (suggestion.voiceNoteDescription != null &&
+              suggestion.voiceNoteDescription!.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.notes_rounded, size: 14, color: Color(0xFF0D7A68)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      suggestion.voiceNoteDescription!,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Color(0xFF455A64),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (!isAccepted && !isDismissed) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF546E7A),
+                      side: BorderSide(color: Colors.grey.shade300),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    label: Text(
+                      AppLanguage.text('Bỏ qua', 'Dismiss'),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    onPressed: () {
+                      final idx = _messages.indexWhere((m) => m.id == msg.id);
+                      if (idx != -1) {
+                        setState(() {
+                          _messages[idx] = msg.copyWith(isSuggestionDismissed: true);
+                        });
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    icon: const Icon(Icons.check_rounded, size: 16),
+                    label: Text(
+                      AppLanguage.text('Chấp nhận tạo việc', 'Accept Task'),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () => _handleAcceptSuggestedTask(msg, suggestion),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildInputBar() {
