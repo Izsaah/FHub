@@ -18,7 +18,7 @@ class _LoginFormViewState extends State<LoginFormView> {
   static final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final AuthService _authService = AuthService();
+  late final AuthService _authService = AuthService();
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _emailError;
@@ -179,6 +179,13 @@ class _LoginFormViewState extends State<LoginFormView> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, _) => _buildLoginForm(context),
+    );
+  }
+
+  Widget _buildLoginForm(BuildContext context) {
     return Column(
       children: [
         Container(
