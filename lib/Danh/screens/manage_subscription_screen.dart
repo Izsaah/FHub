@@ -362,7 +362,7 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
                     MaterialPageRoute(builder: (_) => const PremiumPlanScreen()),
                   );
                 },
-                icon: DanhSvgs.lightning(size: 20),
+                icon: const Icon(Icons.workspace_premium_rounded, size: 20),
                 label: const Text(
                   'Nâng Cấp Lên Family Hub Premium',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),

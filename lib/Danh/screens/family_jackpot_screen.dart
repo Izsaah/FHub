@@ -224,7 +224,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 DanhSvgs.crown(size: 16),
                 const SizedBox(width: 6),
                 Text(
-                  'Đại gia đình (Nạp nhiều nhất): ${jackpot.topContributorName}',
+                  'Người nạp nhiều nhất: ${jackpot.topContributorName}',
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
@@ -285,37 +285,48 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                   ],
                 ),
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFE65100),
-                        side: const BorderSide(color: Color(0xFFE65100), width: 1.2),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        minimumSize: Size.zero,
+                    SizedBox(
+                      height: 32,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFF3E0),
+                          foregroundColor: const Color(0xFFE65100),
+                          side: const BorderSide(color: Color(0xFFFFB74D), width: 1.2),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.receipt_long_rounded, size: 14),
+                        label: const Text(
+                          'Lịch Sử',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        ),
+                        onPressed: _openWalletHistoryModal,
                       ),
-                      icon: const Icon(Icons.receipt_long_rounded, size: 13),
-                      label: const Text(
-                        'Lịch Sử',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: _openWalletHistoryModal,
                     ),
-                    const SizedBox(width: 6),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE65100),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 32,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE65100),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          elevation: 0,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.account_balance_wallet_rounded, size: 14),
+                        label: const Text(
+                          'Rút Tiền',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        ),
+                        onPressed: _openBankAndWithdrawModal,
                       ),
-                      icon: const Icon(Icons.account_balance_rounded, size: 14),
-                      label: const Text(
-                        'Rút Tiền',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: _openBankAndWithdrawModal,
                     ),
                   ],
                 ),
@@ -376,7 +387,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         _buildContributionsList(jackpot),
         const SizedBox(height: 24),
 
-        // Nút Bắt Đầu Nổ Hũ (30 Giây)
+        // Nút Bắt Đầu Nổ Hũ (30 Giây) - Chỉ người nạp nhiều nhất mới được phát lệnh
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
@@ -389,13 +400,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               elevation: (isTopContributor && jackpot.totalPoolAmount > 0) ? 4 : 0,
             ),
-            icon: DanhSvgs.lightning(size: 22),
+            icon: (isTopContributor && jackpot.totalPoolAmount > 0)
+                ? const Icon(Icons.play_circle_fill_rounded, size: 22)
+                : const Icon(Icons.lock_clock_rounded, size: 22),
             label: Text(
               jackpot.totalPoolAmount <= 0
                   ? 'Hãy Nạp Tiền Vào Hũ Trước Khi Lắc'
                   : (isTopContributor
-                      ? '⚡ BẮT ĐẦU NỔ HŨ (30 GIÂY LẮC)'
-                      : 'Chờ Đại Gia Đình Bấm Nổ Hũ'),
+                      ? 'BẮT ĐẦU NỔ HŨ (30 GIÂY LẮC)'
+                      : 'Chờ ${jackpot.topContributorName} phát động Nổ Hũ'),
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
             onPressed: () {
@@ -414,7 +427,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Chỉ ${jackpot.topContributorName} (người nạp nhiều nhất) mới có quyền phát lệnh Nổ Hũ!',
+                      'Chỉ người đóng góp nhiều nhất (${jackpot.topContributorName}) mới có quyền phát lệnh Nổ Hũ!',
                     ),
                     backgroundColor: DanhColors.warning,
                   ),
@@ -437,6 +450,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   /// 3. Bấm nút "Lắc Ngay (+1 Lượt)" trên màn hình
   Widget _buildShakingSection(FamilyJackpotModel jackpot) {
     final remaining = jackpot.remainingSeconds;
+    final isUrgent = remaining <= 5 && remaining > 0;
 
     return Focus(
       autofocus: true,
@@ -456,22 +470,65 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFFF9800), width: 2),
-              boxShadow: DanhColors.fhubCardShadow,
+              border: Border.all(
+                color: isUrgent ? const Color(0xFFD32F2F) : const Color(0xFFFF9800),
+                width: isUrgent ? 2.5 : 2,
+              ),
+              boxShadow: isUrgent
+                  ? const [
+                      BoxShadow(
+                        color: Color(0x44D32F2F),
+                        blurRadius: 18,
+                        spreadRadius: 2,
+                        offset: Offset(0, 4),
+                      ),
+                    ]
+                  : DanhColors.fhubCardShadow,
             ),
             child: Column(
               children: [
+                if (isUrgent) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFEBEE),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFEF5350), width: 1.2),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.whatshot_rounded, color: Color(0xFFD32F2F), size: 18),
+                        const SizedBox(width: 6),
+                        Text(
+                          '🔥 $remaining GIÂY CUỐI - LẮC NHANH TAY!',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFFD32F2F),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.timer_outlined, color: Color(0xFFE65100), size: 28),
+                    Icon(
+                      isUrgent ? Icons.whatshot_rounded : Icons.timer_outlined,
+                      color: isUrgent ? const Color(0xFFD32F2F) : const Color(0xFFE65100),
+                      size: isUrgent ? 32 : 28,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       '$remaining Giây',
-                      style: const TextStyle(
-                        fontSize: 32,
+                      style: TextStyle(
+                        fontSize: isUrgent ? 36 : 32,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFFE65100),
+                        color: isUrgent ? const Color(0xFFD32F2F) : const Color(0xFFE65100),
                       ),
                     ),
                   ],
@@ -480,18 +537,22 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 LinearProgressIndicator(
                   value: remaining / 30.0,
                   backgroundColor: Colors.grey.shade200,
-                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFE65100)),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    isUrgent ? const Color(0xFFD32F2F) : const Color(0xFFE65100),
+                  ),
                   minHeight: 8,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'CẦM ĐIỆN THOẠI LẮC THẬT MẠNH!\n(Trên Laptop: Lắc chuột vào vòng tròn, nhấn phím Space hoặc bấm nút bên dưới)',
+                Text(
+                  isUrgent
+                      ? 'HẾT GIỜ TỚI NƠI RỒI! LẮC NHIỆT TÌNH LÊN CẢ NHÀ ƠI!'
+                      : 'CẦM ĐIỆN THOẠI LẮC THẬT MẠNH!\n(Trên Laptop: Lắc chuột vào vòng tròn, nhấn phím Space hoặc bấm nút bên dưới)',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.bold,
-                    color: DanhColors.textPrimary,
+                    color: isUrgent ? const Color(0xFFD32F2F) : DanhColors.textPrimary,
                     height: 1.4,
                   ),
                 ),
@@ -522,22 +583,26 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         width: 100,
                         height: 100,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFF3E0),
+                          color: isUrgent ? const Color(0xFFFFEBEE) : const Color(0xFFFFF3E0),
                           shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFFFFB74D), width: 2.5),
-                          boxShadow: const [
+                          border: Border.all(
+                            color: isUrgent ? const Color(0xFFEF5350) : const Color(0xFFFFB74D),
+                            width: isUrgent ? 3 : 2.5,
+                          ),
+                          boxShadow: [
                             BoxShadow(
-                              color: Color(0x22E65100),
-                              blurRadius: 12,
-                              offset: Offset(0, 4),
+                              color: isUrgent ? const Color(0x55D32F2F) : const Color(0x22E65100),
+                              blurRadius: isUrgent ? 18 : 12,
+                              spreadRadius: isUrgent ? 3 : 0,
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Icon(
-                            Icons.vibration_rounded,
+                            isUrgent ? Icons.whatshot_rounded : Icons.vibration_rounded,
                             size: 52,
-                            color: Color(0xFFE65100),
+                            color: isUrgent ? const Color(0xFFD32F2F) : const Color(0xFFE65100),
                           ),
                         ),
                       ),
@@ -560,15 +625,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE65100),
+                      backgroundColor: isUrgent ? const Color(0xFFD32F2F) : const Color(0xFFE65100),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
-                    icon: const Icon(Icons.touch_app_rounded),
-                    label: const Text(
-                      'Lắc Ngay (+1 Lượt / Phím Space)',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    icon: Icon(isUrgent ? Icons.whatshot_rounded : Icons.touch_app_rounded),
+                    label: Text(
+                      isUrgent ? 'LẮC NGAY BÂY GIỜ! ($remaining GIÂY CUỐI)' : 'Lắc Ngay (+1 Lượt / Phím Space)',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     onPressed: _onManualShake,
                   ),
@@ -1132,8 +1197,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: const Icon(Icons.flash_on_rounded, size: 18),
-                          label: const Text('⚡ Mô Phỏng Nạp Thành Công (Test Nhanh)'),
+                          icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                          label: const Text('Mô Phỏng Nạp Thành Công (Thử Nghiệm)'),
                           onPressed: () => completeDeposit(ctx, simulated: true),
                         ),
                       ),

@@ -70,7 +70,7 @@ class _PaymentCheckoutScreenState extends State<PaymentCheckoutScreen> {
         });
       } else if (!silent && mounted) {
         final msg = kIsWeb
-            ? 'Trên Web (Chrome), chính sách CORS của trình duyệt có thể hạn chế đọc tự động từ SePay. Bạn hãy bấm "⚡ Mô phỏng thanh toán thành công" ngay bên dưới để kích hoạt gói tức thì!'
+            ? 'Trên Web (Chrome), chính sách CORS của trình duyệt có thể hạn chế đọc tự động từ SePay. Bạn hãy bấm "Mô phỏng thanh toán thành công" ngay bên dưới để kích hoạt gói tức thì!'
             : 'Chưa nhận được giao dịch cho mã $_orderCode. Hãy bấm "Mô phỏng giao dịch" trên SePay với đúng mã $_orderCode!';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -472,11 +472,11 @@ class _PaymentCheckoutScreenState extends State<PaymentCheckoutScreen> {
                     height: 18,
                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                   )
-                : const Icon(Icons.bolt_rounded, size: 20, color: DanhColors.gold),
+                : const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
             label: Text(
               _isSimulating
                   ? 'Đang kích hoạt gói...'
-                  : '⚡ Mô phỏng thanh toán thành công (Test nhanh)',
+                  : 'Mô phỏng thanh toán thành công (Thử nghiệm)',
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
             onPressed: _isSimulating ? null : _handleManualSimulate,
