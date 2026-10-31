@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import '../../Long/services/family_data_service.dart';
 import '../models/subscription_plan_model.dart';
 import '../models/family_subscription_model.dart';
 
@@ -34,6 +35,14 @@ class PaymentService extends ChangeNotifier {
   Future<void> _autoResolveFamilyId() async {
     if (_currentFamilyId.isNotEmpty) return;
     try {
+      // 1. Ưu tiên lấy gia đình hiện tại từ FamilyDataService
+      final fam = await FamilyDataService().getCurrentFamily();
+      if (fam != null && fam.id.isNotEmpty) {
+        setFamilyId(fam.id);
+        return;
+      }
+
+      // 2. Tra cứu theo Firestore membership
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null && uid.isNotEmpty) {
         final snap = await _firestore

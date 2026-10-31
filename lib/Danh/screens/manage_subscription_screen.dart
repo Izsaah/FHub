@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../../Long/services/family_data_service.dart';
 import '../services/family_jackpot_service.dart';
 import '../services/payment_service.dart';
 import '../theme/danh_colors.dart';
@@ -23,11 +24,13 @@ class ManageSubscriptionScreen extends StatefulWidget {
 class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
   final PaymentService _paymentService = PaymentService();
   int _memberCount = 1;
+  String _familyName = 'Gia đình';
 
   @override
   void initState() {
     super.initState();
     _paymentService.addListener(_onServiceUpdate);
+    _loadFamilyInfo();
     _loadMemberCount();
   }
 
@@ -39,6 +42,15 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
 
   void _onServiceUpdate() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadFamilyInfo() async {
+    try {
+      final fam = await FamilyDataService().getCurrentFamily();
+      if (fam != null && fam.name.trim().isNotEmpty && mounted) {
+        setState(() => _familyName = fam.name.trim());
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadMemberCount() async {
@@ -95,19 +107,19 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
           icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: DanhColors.brand800),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Tổ Ấm Yêu Thương',
-              style: TextStyle(
+              _familyName,
+              style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
                 color: DanhColors.brand800,
                 letterSpacing: -0.5,
               ),
             ),
-            Text(
+            const Text(
               'Quản lý gói dịch vụ',
               style: TextStyle(
                 fontSize: 12,
