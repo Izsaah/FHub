@@ -1545,10 +1545,26 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Mã VietQR hoàn tiền tương ứng của bạn',
-                  style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFFD54F)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: Color(0xFFE65100), size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Mã QR Nhận Tiền: Người giữ quỹ gia đình (hoặc chính bạn) dùng App ngân hàng quét mã này để hoàn tiền thưởng về STK của bạn.',
+                          style: TextStyle(fontSize: 11.5, color: Color(0xFFE65100), height: 1.35),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
 
@@ -1964,3 +1980,4 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
   }
 }
+
