@@ -127,11 +127,11 @@ class FamilyJackpotService extends ChangeNotifier {
           snapshot.data() as Map<String, dynamic>,
         );
 
-        // Hợp nhất danh sách thành viên gia đình để không bao giờ bị mất thành viên khi đồng bộ
+        // Hợp nhất danh sách thành viên: ưu tiên tên đã load từ profile thật
         final mergedMembers = <String, String>{
-          ..._cachedFamilyMembers,
-          ..._jackpot.memberNames,
           ...incoming.memberNames,
+          ..._jackpot.memberNames,
+          ..._cachedFamilyMembers,
         };
         if (_auth.currentUser != null && _auth.currentUser!.uid != 'u1') {
           mergedMembers.remove('u1');
@@ -190,30 +190,13 @@ class FamilyJackpotService extends ChangeNotifier {
         }
       } catch (_) {}
 
-      // 1. Đọc từ Firestore family_members (nếu có)
-      final snap = await _firestore
-          .collection('family_members')
-          .where('familyId', isEqualTo: familyId)
-          .where('status', isEqualTo: 'ACTIVE')
-          .get();
-
-      for (final doc in snap.docs) {
-        final d = doc.data();
-        final uid = d['userId'] as String? ?? '';
-        final role = d['role'] as String? ?? 'Thành viên';
-        final isOwner = d['isOwner'] as bool? ?? false;
-        if (uid.isNotEmpty) {
-          loaded[uid] = isOwner ? 'Chủ gia đình ($role)' : role;
-        }
-      }
-
-      // 2. Đồng bộ thêm danh sách thành viên từ FamilyDataService (hiển thị ở tab Gia đình)
+      // 1. Ưu tiên lấy trực tiếp danh sách thành viên từ FamilyDataService (đã đọc từ collection users)
       try {
-        final serviceMembers = await FamilyDataService().getFamilyMembers();
+        final serviceMembers = await FamilyDataService().getFamilyMembers(familyId: familyId);
         for (final m in serviceMembers) {
           final uid = m.user.id;
           final name = m.user.name.trim();
-          if (uid.isNotEmpty && name.isNotEmpty && !loaded.containsKey(uid)) {
+          if (uid.isNotEmpty && name.isNotEmpty && name != 'Thành viên' && name != 'Người dùng') {
             if (uid == 'u1' && _auth.currentUser != null && _auth.currentUser!.uid != 'u1') {
               continue;
             }
@@ -222,10 +205,72 @@ class FamilyJackpotService extends ChangeNotifier {
         }
       } catch (_) {}
 
+      // 2. Đọc thêm từ collection family_members để tránh bỏ sót thành viên
+      try {
+        final snap = await _firestore
+            .collection('family_members')
+            .where('familyId', isEqualTo: familyId)
+            .where('status', isEqualTo: 'ACTIVE')
+            .get();
+
+        for (final doc in snap.docs) {
+          final d = doc.data();
+          final uid = d['userId'] as String? ?? '';
+          if (uid.isEmpty) continue;
+          if (uid == 'u1' && _auth.currentUser != null && _auth.currentUser!.uid != 'u1') continue;
+
+          // Nếu đã có tên thật từ FamilyDataService -> giữ nguyên
+          if (loaded.containsKey(uid) && loaded[uid]!.isNotEmpty) continue;
+
+          // Thử đọc tên từ users collection
+          try {
+            final userDoc = await _firestore.collection('users').doc(uid).get();
+            final rawName = userDoc.data()?['name']?.toString();
+            final userName = rawName?.trim();
+            if (userName != null && userName.isNotEmpty && userName != 'Người dùng') {
+              loaded[uid] = userName;
+              continue;
+            }
+          } catch (_) {}
+
+          // Fallback tên vai trò tiếng Việt rõ ràng, tránh hiển thị thô "PARENT"
+          final rawRole = (d['role'] as String? ?? 'PARENT').toUpperCase();
+          final isOwner = d['isOwner'] as bool? ?? false;
+          String fallbackRole;
+          if (isOwner) {
+            fallbackRole = 'Chủ gia đình';
+          } else if (rawRole.contains('PARENT') || rawRole.contains('BỐ') || rawRole.contains('MẸ')) {
+            fallbackRole = 'Bố / Mẹ';
+          } else if (rawRole.contains('CHILD') || rawRole.contains('CON')) {
+            fallbackRole = 'Con';
+          } else if (rawRole.contains('GRAND') || rawRole.contains('ÔNG') || rawRole.contains('BÀ')) {
+            fallbackRole = 'Ông / Bà';
+          } else {
+            fallbackRole = 'Thành viên';
+          }
+          loaded[uid] = fallbackRole;
+        }
+      } catch (_) {}
+
       // 3. Đảm bảo user hiện tại luôn có mặt với tên hiển thị chính xác
       final myUid = currentUserId;
       if (myUid.isNotEmpty) {
         loaded[myUid] = currentUserName;
+      }
+
+      // 4. Đánh số phân biệt nếu có thành viên bị trùng tên fallback (ví dụ 2 bố mẹ -> "Bố / Mẹ (1)", "Bố / Mẹ (2)")
+      final nameCounts = <String, int>{};
+      for (final n in loaded.values) {
+        nameCounts[n] = (nameCounts[n] ?? 0) + 1;
+      }
+      final seenCount = <String, int>{};
+      for (final uid in loaded.keys.toList()) {
+        final rawName = loaded[uid]!;
+        if ((nameCounts[rawName] ?? 0) > 1 && uid != myUid) {
+          final idx = (seenCount[rawName] ?? 0) + 1;
+          seenCount[rawName] = idx;
+          loaded[uid] = '$rawName ($idx)';
+        }
       }
 
       if (loaded.isNotEmpty) {
@@ -501,9 +546,9 @@ class FamilyJackpotService extends ChangeNotifier {
         finalShakes[currentUserId] = _localMyShakeCount;
       }
 
-      // Tìm người lắc nhiều nhất ngay lập tức
+      // Tìm người lắc nhiều nhất ngay lập tức (chỉ ghi nhận khi có ít nhất 1 lần lắc > 0)
       String? topShaker;
-      int maxShakes = -1;
+      int maxShakes = 0;
       finalShakes.forEach((uid, cnt) {
         if (cnt > maxShakes) {
           maxShakes = cnt;

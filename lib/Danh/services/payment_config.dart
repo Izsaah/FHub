@@ -1,5 +1,3 @@
-import '../../firebase_options.dart';
-
 /// Cấu hình ngân hàng nhận tiền và Cổng thanh toán SePay Sandbox
 class PaymentConfig {
   PaymentConfig._();
@@ -15,10 +13,10 @@ class PaymentConfig {
   // Số tiền gói Premium mặc định (Tháng)
   static const int defaultAmount = 49000;
 
-  static String get apiKey => DefaultFirebaseOptions.defaultAuthDomain;
+  // Cấu hình SePay Sandbox API Key
+  static const String apiKey =
+      'ZMSQWHDK3RPRBDC08DX9FVJ8TG9UEJYYS2M5A4VGWH7EOLOE6BXPXL1QNWTVMNOK';
 
-  // Cấu hình SePay Sandbox API
-  // static String get apiKey => DefaultFirebaseOptions.sepayApiKey;
   static const String sepaySandboxEndpoint =
       'https://userapi-sandbox.sepay.vn/v2/transactions';
 

@@ -18,18 +18,23 @@ class JackpotDistributionResult {
 }
 
 /// Thuật toán chia giải thưởng Hũ Niềm Vui Gia Đình
-/// - Rút thăm có trọng số (Weighted Lottery): Mỗi thành viên có vé cơ bản + mỗi lần lắc thêm 1 cơ hội (+1 vé).
-///   Người lắc nhiều nhất có xác suất trúng cao nhất nhưng vẫn có kịch tính "Ý Trời"!
+/// - Nguyên tắc Lắc Tay: Mỗi lần lắc = đúng +1 vé cơ hội may mắn.
+/// - Phân loại người chơi:
+///   + Những thành viên CÓ LẮC (shakeCount > 0): Tham gia quay thưởng vé có trọng số cho các giải cao nhất.
+///     * Nếu chỉ có đúng 1 người lắc: Người đó 100% trúng Giải Nhất (không bao giờ bị người không lắc cướp giải).
+///     * Nếu nhiều người cùng lắc: Tỷ lệ trúng tỷ lệ thuận với số lần lắc của mỗi người. Người lắc nhiều nhất
+///       có xác suất cao nhất, nhưng người lắc ít hơn vẫn có cơ hội lật kèo may mắn ("Ý Trời")!
+///     * Nếu người lắc nhiều nhất bị người lắc ít hơn lật kèo -> Bật poster kỷ niệm "Ý Trời".
+///   + Những thành viên KHÔNG LẮC (shakeCount == 0): Xếp sau những người có lắc, nhận các giải an ủi
+///     và phần dư còn lại của quỹ để đảm bảo "chia đủ số tiền cho tất cả thành viên trong gia đình".
 /// - Phân bổ giải thưởng theo bậc thang luỹ tiến từ tổng quỹ A:
 ///   + Giải 1 (Cao nhất): 3/4 của A (75% A), phần còn lại là R1 = 1/4 A
-///   + Giải 2: 3/5 của phần còn lại R1, dư ra "2 phần còn lại" R2 = 2/5 R1
+///   + Giải 2: 3/5 của phần còn lại R1, dư ra 2 phần còn lại R2 = 2/5 R1
 ///   + Giải 3: 3/4 của 2 phần còn lại R2, dư ra R3 = 1/4 R2
 ///   + Các thành viên tiếp theo: Chia bậc thang phần dư còn lại, người cuối nhận trọn phần dư
 ///     để ĐẢM BẢO TỔNG TIỀN CHIA RA BẰNG ĐÚNG 100% TỔNG QUỸ A (không thừa, không thiếu 1 đồng).
 class JackpotAlgorithm {
   JackpotAlgorithm._();
-
-  static const int _baseTicketsPerMember = 8;
 
   static JackpotDistributionResult calculate({
     required int totalAmount, // Quỹ A
@@ -43,60 +48,83 @@ class JackpotAlgorithm {
 
     final rand = Random();
 
-    // 1. Xác định người lắc nhiều nhất nhà (Quán Quân Lắc Tay)
-    String? topShakerId;
-    int maxShakes = -1;
+    // 1. Phân loại: Thành viên có lắc (active) và thành viên không lắc (idle)
+    final List<String> activeParticipants = [];
+    final List<String> idleParticipants = [];
+
     for (final uid in uniqueParticipants) {
+      final count = max(0, shakeCounts[uid] ?? 0);
+      if (count > 0) {
+        activeParticipants.add(uid);
+      } else {
+        idleParticipants.add(uid);
+      }
+    }
+
+    // 2. Xác định quán quân lắc tay (Top Shaker - người lắc nhiều nhất)
+    String? topShakerId;
+    int maxShakes = 0;
+    for (final uid in activeParticipants) {
       final s = shakeCounts[uid] ?? 0;
       if (s > maxShakes) {
         maxShakes = s;
         topShakerId = uid;
       }
     }
-    if (maxShakes <= 0) topShakerId = null;
-
-    // 2. Rút thăm thứ hạng không hoàn lại theo số vé cơ hội:
-    // Mỗi người có _baseTicketsPerMember vé nền + 1 vé cho mỗi lần lắc điện thoại.
-    final Map<String, int> ticketPool = {
-      for (final uid in uniqueParticipants)
-        uid: _baseTicketsPerMember + max(0, shakeCounts[uid] ?? 0),
-    };
 
     final List<String> rankedUids = [];
-    final remainingCandidates = List<String>.from(uniqueParticipants);
 
-    while (remainingCandidates.isNotEmpty) {
-      int totalTickets = 0;
-      for (final uid in remainingCandidates) {
-        totalTickets += ticketPool[uid] ?? 1;
-      }
+    // 3. Rút thăm thứ hạng cho các thành viên CÓ LẮC ĐIỆN THOẠI:
+    // - Mỗi lần lắc = đúng +1 vé may mắn (shakeCount vé).
+    // - Nếu chỉ có 1 người lắc: Người đó nắm 100% vé -> ĐƯƠNG NHIÊN ĐẠT GIẢI NHẤT!
+    // - Nếu nhiều người cùng lắc: Quay thăm ngẫu nhiên không hoàn lại theo trọng số vé.
+    if (activeParticipants.isNotEmpty) {
+      if (activeParticipants.length == 1) {
+        rankedUids.add(activeParticipants.first);
+      } else {
+        final remainingActives = List<String>.from(activeParticipants);
 
-      int winningTicket = rand.nextInt(max(1, totalTickets));
-      String chosenUid = remainingCandidates.first;
+        while (remainingActives.isNotEmpty) {
+          int totalTickets = 0;
+          for (final uid in remainingActives) {
+            totalTickets += max(1, shakeCounts[uid] ?? 1);
+          }
 
-      for (final uid in remainingCandidates) {
-        final weight = ticketPool[uid] ?? 1;
-        if (winningTicket < weight) {
-          chosenUid = uid;
-          break;
+          int winningTicket = rand.nextInt(max(1, totalTickets));
+          String chosenUid = remainingActives.first;
+
+          for (final uid in remainingActives) {
+            final weight = max(1, shakeCounts[uid] ?? 1);
+            if (winningTicket < weight) {
+              chosenUid = uid;
+              break;
+            }
+            winningTicket -= weight;
+          }
+
+          rankedUids.add(chosenUid);
+          remainingActives.remove(chosenUid);
         }
-        winningTicket -= weight;
       }
+    }
 
-      rankedUids.add(chosenUid);
-      remainingCandidates.remove(chosenUid);
+    // 4. Các thành viên KHÔNG LẮC (0 lượt lắc) xếp sau người có lắc,
+    // xáo trộn ngẫu nhiên để chia các phần dư / giải an ủi còn lại của quỹ hũ
+    if (idleParticipants.isNotEmpty) {
+      final shuffledIdles = List<String>.from(idleParticipants)..shuffle(rand);
+      rankedUids.addAll(shuffledIdles);
     }
 
     final String? firstPrizeWinnerId = rankedUids.isNotEmpty ? rankedUids.first : null;
 
-    // Kiểm tra xem người lắc nhiều nhất có bị trượt Giải Nhất không (kích hoạt Poster Ý Trời)
+    // Kích hoạt Poster Ý Trời: Có lắc tay (maxShakes > 0) và là Quán quân lắc nhưng trượt Giải Nhất
     final bool isTopShakerUnlucky = (topShakerId != null &&
         firstPrizeWinnerId != null &&
         topShakerId != firstPrizeWinnerId &&
         maxShakes > 0);
 
-    // 3. Phân chia tiền thưởng bậc thang từ quỹ A:
-    // Giải 1: 3/4 của A -> Giải 2: 3/5 phần còn lại -> Giải 3+: 3/4 của phần còn lại -> Người cuối nhận hết phần dư
+    // 5. Phân chia tiền thưởng bậc thang từ tổng quỹ A:
+    // Giải 1: 3/4 của A -> Giải 2: 3/5 phần còn lại -> Giải 3+: 3/4 của 2 phần còn lại -> Người cuối nhận hết phần dư
     final Map<String, int> prizes = {};
     final int n = rankedUids.length;
     int remaining = totalAmount;
@@ -126,7 +154,7 @@ class JackpotAlgorithm {
       remaining -= roundedPrize;
     }
 
-    // Đảm bảo cân đối tuyệt đối 100% tổng quỹ A
+    // Đảm bảo cân đối tuyệt đối 100% tổng quỹ A (chống chênh lệch làm tròn)
     final int sumPrizes = prizes.values.fold(0, (acc, v) => acc + v);
     final int diff = totalAmount - sumPrizes;
     if (diff != 0 && rankedUids.isNotEmpty) {
