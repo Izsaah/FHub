@@ -19,96 +19,101 @@ class ReminderScopeFilterChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFEDF5F2),
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: ChoiceChip(
-              visualDensity: const VisualDensity(horizontal: -2, vertical: -3),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              avatar: Icon(
-                Icons.groups_rounded,
-                size: 16,
-                color: !filterOnlyMine ? primaryColor : unselectedTextColor,
-              ),
-              label: Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    AppLanguage.text('👨‍👩‍👧 Cả nhà', '👨‍👩‍👧 All Family'),
-                    maxLines: 1,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12.5,
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, child) {
+        return Container(
+          color: const Color(0xFFEDF5F2),
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: ChoiceChip(
+                  visualDensity: const VisualDensity(horizontal: -2, vertical: -3),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  avatar: Icon(
+                    Icons.groups_rounded,
+                    size: 16,
+                    color: !filterOnlyMine ? primaryColor : unselectedTextColor,
+                  ),
+                  label: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        AppLanguage.text('👨‍👩‍👧 Cả nhà', '👨‍👩‍👧 All Family'),
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12.5,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              selected: !filterOnlyMine,
-              selectedColor: selectedBgColor,
-              backgroundColor: Colors.white,
-              labelStyle: TextStyle(
-                color: !filterOnlyMine ? primaryColor : unselectedTextColor,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: !filterOnlyMine ? primaryColor : borderColor,
-                ),
-              ),
-              onSelected: (selected) {
-                if (selected) {
-                  onScopeChanged(false);
-                }
-              },
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ChoiceChip(
-              visualDensity: const VisualDensity(horizontal: -2, vertical: -3),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              avatar: Icon(
-                Icons.person_rounded,
-                size: 16,
-                color: filterOnlyMine ? primaryColor : unselectedTextColor,
-              ),
-              label: Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    AppLanguage.text('👤 Việc của tôi', '👤 My Tasks'),
-                    maxLines: 1,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12.5,
+                  selected: !filterOnlyMine,
+                  selectedColor: selectedBgColor,
+                  backgroundColor: Colors.white,
+                  labelStyle: TextStyle(
+                    color: !filterOnlyMine ? primaryColor : unselectedTextColor,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: !filterOnlyMine ? primaryColor : borderColor,
                     ),
                   ),
+                  onSelected: (selected) {
+                    if (selected) {
+                      onScopeChanged(false);
+                    }
+                  },
                 ),
               ),
-              selected: filterOnlyMine,
-              selectedColor: selectedBgColor,
-              backgroundColor: Colors.white,
-              labelStyle: TextStyle(
-                color: filterOnlyMine ? primaryColor : unselectedTextColor,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: filterOnlyMine ? primaryColor : borderColor,
+              const SizedBox(width: 12),
+              Expanded(
+                child: ChoiceChip(
+                  visualDensity: const VisualDensity(horizontal: -2, vertical: -3),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  avatar: Icon(
+                    Icons.person_rounded,
+                    size: 16,
+                    color: filterOnlyMine ? primaryColor : unselectedTextColor,
+                  ),
+                  label: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        AppLanguage.text('👤 Việc của tôi', '👤 My Tasks'),
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  selected: filterOnlyMine,
+                  selectedColor: selectedBgColor,
+                  backgroundColor: Colors.white,
+                  labelStyle: TextStyle(
+                    color: filterOnlyMine ? primaryColor : unselectedTextColor,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: filterOnlyMine ? primaryColor : borderColor,
+                    ),
+                  ),
+                  onSelected: (selected) {
+                    if (selected) {
+                      onScopeChanged(true);
+                    }
+                  },
                 ),
               ),
-              onSelected: (selected) {
-                if (selected) {
-                  onScopeChanged(true);
-                }
-              },
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../services/member_color_helper.dart';
@@ -111,10 +112,15 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       if (context.mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🎉 Đã hoàn thành công việc!'),
-            backgroundColor: Color(0xFF0D7A68),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                '🎉 Đã hoàn thành công việc!',
+                '🎉 Task completed successfully!',
+              ),
+            ),
+            backgroundColor: const Color(0xFF0D7A68),
+            duration: const Duration(seconds: 3),
           ),
         );
         onReminderUpdated?.call();
@@ -144,7 +150,10 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!',
+              AppLanguage.text(
+                '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!',
+                '🎉 Successfully claimed "${reminder.title}"!',
+              ),
             ),
             backgroundColor: const Color(0xFF0D7A68),
           ),
@@ -177,11 +186,16 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         }
       }
 
-      HapticFeedback.mediumImpact();
-      await repository.claimAndCompleteOpenTask(
+      HapticFeedback.heavyImpact();
+      await repository.claimOpenTask(
         reminderId: reminder.id,
         currentUserId: currentUserId,
         currentUserName: currentUserName,
+      );
+
+      await repository.completeReminder(
+        reminderId: reminder.id,
+        currentUserId: currentUserId,
         proofImageUrl: proofUrl,
       );
 
@@ -190,9 +204,12 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '🎉 Bạn đã hoàn thành việc chung "${reminder.title}" xuất sắc!',
+              AppLanguage.text(
+                '🎉 Đã nhận & hoàn thành việc "${reminder.title}"!',
+                '🎉 Claimed and completed "${reminder.title}"!',
+              ),
             ),
-            backgroundColor: const Color(0xFF005F50),
+            backgroundColor: const Color(0xFF0D7A68),
           ),
         );
         onReminderUpdated?.call();
@@ -216,87 +233,89 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        title: const Text(
-          'Xóa lời nhắc',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          AppLanguage.text('Xóa lời nhắc?', 'Delete reminder?'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text('Bạn có chắc chắn muốn xóa lời nhắc này không?'),
+        content: Text(
+          AppLanguage.text(
+            'Bạn có chắc chắn muốn xóa lời nhắc "${reminder.title}"? (Hành động này có thể hoàn tác trong 10 giây).',
+            'Are you sure you want to delete "${reminder.title}"? (This action can be undone within 10 seconds).',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Hủy'),
+            child: Text(AppLanguage.text('Hủy', 'Cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFBA1A1A),
             ),
             onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Xóa'),
+            child: Text(AppLanguage.text('Xóa', 'Delete')),
           ),
         ],
       ),
     );
 
     if (confirmed == true && context.mounted) {
+      Navigator.of(context).pop();
       try {
         await repository.deleteReminder(
           reminderId: reminder.id,
           currentUserId: currentUserId,
           familyMembers: familyMembers,
         );
-        if (context.mounted) {
-          final messenger = ScaffoldMessenger.of(context);
-          Navigator.of(context).pop();
-          messenger.clearSnackBars();
-          Timer? dismissTimer;
-          final controller = messenger.showSnackBar(
-            SnackBar(
-              duration: const Duration(seconds: 10),
-              content: Text('Đã xóa "${reminder.title}".'),
-              action: SnackBarAction(
-                label: 'HOÀN TÁC',
-                textColor: const Color(0xFFaaffe9),
-                onPressed: () async {
-                  dismissTimer?.cancel();
-                  try {
-                    await repository.restoreReminder(
-                      reminderId: reminder.id,
-                      currentUserId: currentUserId,
-                      familyMembers: familyMembers,
-                    );
-                    onReminderUpdated?.call();
-                  } catch (_) {}
-                },
+
+        if (!context.mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.clearSnackBars();
+        messenger.showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 10),
+            content: Text(
+              AppLanguage.text(
+                'Đã xóa "${reminder.title}".',
+                'Deleted "${reminder.title}".',
               ),
             ),
-          );
-          dismissTimer = Timer(const Duration(seconds: 10), () {
-            try {
-              controller.close();
-            } catch (_) {}
-          });
-          onReminderUpdated?.call();
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(e.toString()),
-              backgroundColor: const Color(0xFFBA1A1A),
+            action: SnackBarAction(
+              label: AppLanguage.text('HOÀN TÁC', 'UNDO'),
+              textColor: const Color(0xFFaaffe9),
+              onPressed: () async {
+                try {
+                  await repository.restoreReminder(
+                    reminderId: reminder.id,
+                    currentUserId: currentUserId,
+                    familyMembers: familyMembers,
+                  );
+                  onReminderUpdated?.call();
+                } catch (_) {}
+              },
             ),
-          );
-        }
+          ),
+        );
+        onReminderUpdated?.call();
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
       }
     }
   }
 
   Future<void> _handleEdit(BuildContext context) async {
-    final navigator = Navigator.of(context);
-    navigator.pop();
-    await navigator.push<ReminderModel>(
+    Navigator.of(context).pop();
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (ctx) => CreateReminderScreen(
+        builder: (_) => CreateReminderScreen(
           familyId: reminder.familyId,
+          familyName: familyName,
           currentUserId: currentUserId,
           currentUserName: currentUserName,
           familyMembers: familyMembers,
@@ -330,7 +349,12 @@ class ReminderDetailBottomSheet extends StatelessWidget {
             width: width,
             color: const Color(0xFFE0F2EC),
             alignment: Alignment.center,
-            child: const Text('Không thể tải ảnh nghiệm thu'),
+            child: Text(
+              AppLanguage.text(
+                'Không thể tải ảnh nghiệm thu',
+                'Unable to load proof photo',
+              ),
+            ),
           ),
         );
       } catch (_) {}
@@ -348,7 +372,12 @@ class ReminderDetailBottomSheet extends StatelessWidget {
           width: width,
           color: const Color(0xFFE0F2EC),
           alignment: Alignment.center,
-          child: const Text('Ảnh nghiệm thu đã lưu'),
+          child: Text(
+            AppLanguage.text(
+              'Ảnh nghiệm thu đã lưu',
+              'Proof photo saved',
+            ),
+          ),
         ),
       );
     }
@@ -371,7 +400,12 @@ class ReminderDetailBottomSheet extends StatelessWidget {
           width: width,
           color: const Color(0xFFE0F2EC),
           alignment: Alignment.center,
-          child: const Text('Ảnh nghiệm thu đã lưu'),
+          child: Text(
+            AppLanguage.text(
+              'Ảnh nghiệm thu đã lưu',
+              'Proof photo saved',
+            ),
+          ),
         ),
       );
     }
@@ -380,7 +414,12 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       width: width,
       color: const Color(0xFFE0F2EC),
       alignment: Alignment.center,
-      child: const Text('Ảnh nghiệm thu đã lưu'),
+      child: Text(
+        AppLanguage.text(
+          'Ảnh nghiệm thu đã lưu',
+          'Proof photo saved',
+        ),
+      ),
     );
   }
 
@@ -410,12 +449,15 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          '📸 Bằng chứng nghiệm thu',
+                          AppLanguage.text(
+                            '📸 Bằng chứng nghiệm thu',
+                            '📸 Verification Proof Photo',
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
@@ -439,466 +481,526 @@ class ReminderDetailBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF0D7A68);
-    final isCompleted = reminder.isCompleted;
-    final isOpenTask = reminder.isOpenTask;
-    final screenSize = MediaQuery.of(context).size;
-    final horizontalPad = screenSize.width < 360 ? 16.0 : 24.0;
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, child) {
+        const primaryColor = Color(0xFF0D7A68);
+        final isCompleted = reminder.isCompleted;
+        final isOpenTask = reminder.isOpenTask;
+        final screenSize = MediaQuery.of(context).size;
+        final horizontalPad = screenSize.width < 360 ? 16.0 : 24.0;
 
-    return Align(
-      alignment: Alignment.bottomCenter,
-      heightFactor: 1.0,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 600,
-          maxHeight: screenSize.height * 0.90,
-        ),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: EdgeInsets.fromLTRB(horizontalPad, 16, horizontalPad, 28),
-          child: SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Thanh kéo mở
-                  Center(
-                    child: Container(
-                      width: 48,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Tiêu đề & nút Sửa / Xóa
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+        return Align(
+          alignment: Alignment.bottomCenter,
+          heightFactor: 1.0,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 600,
+              maxHeight: screenSize.height * 0.90,
+            ),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding:
+                  EdgeInsets.fromLTRB(horizontalPad, 16, horizontalPad, 28),
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              reminder.title,
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: isCompleted
-                                    ? Colors.grey.shade600
-                                    : const Color(0xFF151D1B),
-                                decoration: isCompleted
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                              ),
+                      // Thanh kéo mở
+                      Center(
+                        child: Container(
+                          width: 48,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Tiêu đề & nút Sửa / Xóa
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  reminder.title,
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: isCompleted
+                                        ? Colors.grey.shade600
+                                        : const Color(0xFF151D1B),
+                                    decoration: isCompleted
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                  ),
+                                ),
+                                if (reminder.creatorName != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    AppLanguage.text(
+                                      'Giao bởi: ${reminder.creatorName}',
+                                      'Assigned by: ${reminder.creatorName}',
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF6E7A75),
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                            if (reminder.creatorName != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'Giao bởi: ${reminder.creatorName}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF6E7A75),
-                                  fontStyle: FontStyle.italic,
+                          ),
+                          if (canEdit && !isCompleted)
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined,
+                                  color: Color(0xFF0D7A68)),
+                              tooltip: AppLanguage.text(
+                                'Chỉnh sửa lời nhắc',
+                                'Edit reminder',
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _handleEdit(context),
+                            ),
+                          if (canDelete)
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline,
+                                  color: Color(0xFFBA1A1A)),
+                              tooltip: AppLanguage.text(
+                                'Xóa lời nhắc',
+                                'Delete reminder',
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _handleDelete(context),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Chi tiết: Gia đình, Người nhận, Giờ, Ngày, Lặp lại, Nghiệm thu, Trạng thái
+                      _buildDetailRow(
+                        icon: Icons.home_work_outlined,
+                        label: AppLanguage.text('Gia đình', 'Family'),
+                        valueWidget: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE4F6EF),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.home_rounded,
+                                size: 15,
+                                color: Color(0xFF005F50),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  (familyName != null &&
+                                          familyName!.trim().isNotEmpty)
+                                      ? familyName!.trim()
+                                      : ((reminder.familyName != null &&
+                                              reminder.familyName!
+                                                  .trim()
+                                                  .isNotEmpty)
+                                          ? reminder.familyName!.trim()
+                                          : (reminder.familyId.isNotEmpty
+                                              ? reminder.familyId
+                                              : AppLanguage.text(
+                                                  'Gia đình của tôi',
+                                                  'My Family',
+                                                ))),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF005F50),
+                                  ),
                                 ),
                               ),
                             ],
-                          ],
-                        ),
-                      ),
-                      if (canEdit && !isCompleted)
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined,
-                              color: Color(0xFF0D7A68)),
-                          tooltip: 'Chỉnh sửa lời nhắc',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () => _handleEdit(context),
-                        ),
-                      if (canDelete)
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              color: Color(0xFFBA1A1A)),
-                          tooltip: 'Xóa lời nhắc',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () => _handleDelete(context),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Chi tiết: Gia đình, Người nhận, Giờ, Ngày, Lặp lại, Nghiệm thu, Trạng thái
-                  _buildDetailRow(
-                    icon: Icons.home_work_outlined,
-                    label: 'Gia đình',
-                    valueWidget: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE4F6EF),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.home_rounded,
-                            size: 15,
-                            color: Color(0xFF005F50),
                           ),
-                          const SizedBox(width: 6),
-                          Flexible(
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildDetailRow(
+                        icon: Icons.person_outline,
+                        label: AppLanguage.text('Giao cho', 'Assignee'),
+                        valueWidget: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isOpenTask
+                                ? const Color(0xFFE0F7FA)
+                                : MemberColorHelper.getBackgroundColor(
+                                    reminder.assignedToName),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isOpenTask)
+                                const Icon(Icons.groups_rounded,
+                                    size: 14, color: Color(0xFF00796B))
+                              else
+                                CircleAvatar(
+                                  radius: 10,
+                                  backgroundColor:
+                                      MemberColorHelper.getPrimaryColor(
+                                          reminder.assignedToName),
+                                  child: Text(
+                                    reminder.assignedToName.isNotEmpty
+                                        ? reminder.assignedToName[0]
+                                        : '?',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  isOpenTask
+                                      ? AppLanguage.text(
+                                          '👨‍👩‍👧 Cả nhà (Việc chung)',
+                                          '👨‍👩‍👧 All Family (Shared)',
+                                        )
+                                      : reminder.assignedToName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: isOpenTask
+                                        ? const Color(0xFF00796B)
+                                        : MemberColorHelper.getPrimaryColor(
+                                            reminder.assignedToName),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildDetailRow(
+                        icon: Icons.access_time,
+                        label: AppLanguage.text('Giờ', 'Time'),
+                        value: reminder.time,
+                      ),
+                      const SizedBox(height: 10),
+                      _buildDetailRow(
+                        icon: Icons.calendar_today_outlined,
+                        label: AppLanguage.text('Ngày', 'Date'),
+                        value: reminder.displayDate,
+                      ),
+                      if (reminder.isRecurring) ...[
+                        const SizedBox(height: 10),
+                        _buildDetailRow(
+                          icon: Icons.repeat_rounded,
+                          label: AppLanguage.text('Lặp lại', 'Repeat'),
+                          value: reminder.repeatRule == 'DAILY'
+                              ? AppLanguage.text('Hàng ngày', 'Daily')
+                              : AppLanguage.text('Hàng tuần', 'Weekly'),
+                        ),
+                      ],
+                      if (reminder.requiresProofImage) ...[
+                        const SizedBox(height: 10),
+                        _buildDetailRow(
+                          icon: Icons.camera_alt_outlined,
+                          label: AppLanguage.text('Nghiệm thu', 'Proof photo'),
+                          valueWidget: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: reminder.hasProofImage
+                                  ? const Color(0xFFE8F5E9)
+                                  : const Color(0xFFEDE7F6),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                             child: Text(
-                              (familyName != null &&
-                                      familyName!.trim().isNotEmpty)
-                                  ? familyName!.trim()
-                                  : ((reminder.familyName != null &&
-                                          reminder.familyName!
-                                              .trim()
-                                              .isNotEmpty)
-                                      ? reminder.familyName!.trim()
-                                      : (reminder.familyId.isNotEmpty
-                                          ? reminder.familyId
-                                          : 'Gia đình của tôi')),
+                              reminder.hasProofImage
+                                  ? AppLanguage.text(
+                                      '✅ Đã có ảnh nghiệm thu',
+                                      '✅ Proof photo attached',
+                                    )
+                                  : AppLanguage.text(
+                                      '📸 Bắt buộc chụp ảnh hoàn thành',
+                                      '📸 Completion photo required',
+                                    ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: reminder.hasProofImage
+                                    ? const Color(0xFF2E7D32)
+                                    : const Color(0xFF5E35B1),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      _buildDetailRow(
+                        icon: Icons.info_outline,
+                        label: AppLanguage.text('Trạng thái', 'Status'),
+                        valueWidget: _buildStatusBadge(reminder),
+                      ),
+
+                      // Xem ảnh nghiệm thu
+                      if (reminder.hasProofImage) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          AppLanguage.text(
+                            'Ảnh bằng chứng nghiệm thu hoàn thành:',
+                            'Completion verification proof photo:',
+                          ),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF151D1B),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () => _showProofPreview(
+                              context, reminder.proofImageUrl!),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Stack(
+                              alignment: Alignment.bottomRight,
+                              children: [
+                                _buildProofImage(
+                                  reminder.proofImageUrl!,
+                                  height: 180,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                ),
+                                Container(
+                                  margin: const EdgeInsets.all(10),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.7),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.zoom_in,
+                                          color: Colors.white, size: 16),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        AppLanguage.text('Phóng to', 'Zoom in'),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      // Lời nhắc giọng nói
+                      if (reminder.hasVoiceNote) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          AppLanguage.text(
+                            'Lời nhắc giọng nói:',
+                            'Voice Reminder:',
+                          ),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF151D1B),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        VoiceReminderPlayer(
+                          reminder: reminder,
+                          isCompact: false,
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+
+                      // Nút hành động: Xung phong nhận việc / Hoàn thành
+                      if (isOpenTask && !isCompleted) ...[
+                        SizedBox(
+                          height: 52,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF005F50),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            icon: Icon(
+                              reminder.requiresProofImage
+                                  ? Icons.camera_alt_rounded
+                                  : Icons.check_circle_outline_rounded,
+                              size: 22,
+                            ),
+                            label: Text(
+                              reminder.requiresProofImage
+                                  ? AppLanguage.text(
+                                      'Làm ngay & Chụp ảnh',
+                                      'Do now & Take photo',
+                                    )
+                                  : AppLanguage.text(
+                                      'Làm ngay & Hoàn thành',
+                                      'Do now & Complete',
+                                    ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF005F50),
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
+                            onPressed: () => _handleClaimAndComplete(context),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildDetailRow(
-                    icon: Icons.person_outline,
-                    label: 'Giao cho',
-                    valueWidget: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isOpenTask
-                            ? const Color(0xFFE0F7FA)
-                            : MemberColorHelper.getBackgroundColor(
-                                reminder.assignedToName),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isOpenTask)
-                            const Icon(Icons.groups_rounded,
-                                size: 14, color: Color(0xFF00796B))
-                          else
-                            CircleAvatar(
-                              radius: 10,
-                              backgroundColor:
-                                  MemberColorHelper.getPrimaryColor(
-                                      reminder.assignedToName),
-                              child: Text(
-                                reminder.assignedToName.isNotEmpty
-                                    ? reminder.assignedToName[0]
-                                    : '?',
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 48,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF005F50),
+                              side: const BorderSide(color: Color(0xFF005F50)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
                               ),
                             ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              isOpenTask
-                                  ? '👨‍👩‍👧 Cả nhà (Việc chung)'
-                                  : reminder.assignedToName,
+                            icon:
+                                const Icon(Icons.front_hand_rounded, size: 20),
+                            label: Text(
+                              AppLanguage.text(
+                                'Nhận việc để làm sau',
+                                'Claim task for later',
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
-                                color: isOpenTask
-                                    ? const Color(0xFF00796B)
-                                    : MemberColorHelper.getPrimaryColor(
-                                        reminder.assignedToName),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildDetailRow(
-                    icon: Icons.access_time,
-                    label: 'Giờ',
-                    value: reminder.time,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildDetailRow(
-                    icon: Icons.calendar_today_outlined,
-                    label: 'Ngày',
-                    value: reminder.displayDate,
-                  ),
-                  if (reminder.isRecurring) ...[
-                    const SizedBox(height: 10),
-                    _buildDetailRow(
-                      icon: Icons.repeat_rounded,
-                      label: 'Lặp lại',
-                      value: reminder.repeatRule == 'DAILY'
-                          ? 'Hàng ngày'
-                          : 'Hàng tuần',
-                    ),
-                  ],
-                  if (reminder.requiresProofImage) ...[
-                    const SizedBox(height: 10),
-                    _buildDetailRow(
-                      icon: Icons.camera_alt_outlined,
-                      label: 'Nghiệm thu',
-                      valueWidget: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: reminder.hasProofImage
-                              ? const Color(0xFFE8F5E9)
-                              : const Color(0xFFEDE7F6),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          reminder.hasProofImage
-                              ? '✅ Đã có ảnh nghiệm thu'
-                              : '📸 Bắt buộc chụp ảnh hoàn thành',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: reminder.hasProofImage
-                                ? const Color(0xFF2E7D32)
-                                : const Color(0xFF5E35B1),
+                            onPressed: () => _handleClaim(context),
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  _buildDetailRow(
-                    icon: Icons.info_outline,
-                    label: 'Trạng thái',
-                    valueWidget: _buildStatusBadge(reminder),
-                  ),
-
-                  // Xem ảnh nghiệm thu
-                  if (reminder.hasProofImage) ...[
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Ảnh bằng chứng nghiệm thu hoàn thành:',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF151D1B),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    GestureDetector(
-                      onTap: () =>
-                          _showProofPreview(context, reminder.proofImageUrl!),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Stack(
-                          alignment: Alignment.bottomRight,
-                          children: [
-                            _buildProofImage(
-                              reminder.proofImageUrl!,
-                              height: 180,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                            Container(
-                              margin: const EdgeInsets.all(10),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.7),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.zoom_in,
-                                      color: Colors.white, size: 16),
-                                  SizedBox(width: 4),
-                                  Text('Phóng to',
-                                      style: TextStyle(
-                                          color: Colors.white, fontSize: 11)),
-                                ],
+                      ] else if (canComplete)
+                        SizedBox(
+                          height: 52,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  // Lời nhắc giọng nói
-                  if (reminder.hasVoiceNote) ...[
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Lời nhắc giọng nói:',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF151D1B),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    VoiceReminderPlayer(
-                      reminder: reminder,
-                      isCompact: false,
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-
-                  // Nút hành động: Xung phong nhận việc / Hoàn thành
-                  if (isOpenTask && !isCompleted) ...[
-                    SizedBox(
-                      height: 52,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF005F50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        icon: Icon(
-                          reminder.requiresProofImage
-                              ? Icons.camera_alt_rounded
-                              : Icons.check_circle_outline_rounded,
-                          size: 22,
-                        ),
-                        label: Text(
-                          reminder.requiresProofImage
-                              ? 'Làm ngay & Chụp ảnh'
-                              : 'Làm ngay & Hoàn thành',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        onPressed: () => _handleClaimAndComplete(context),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF005F50),
-                          side: const BorderSide(color: Color(0xFF005F50)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        icon: const Icon(Icons.front_hand_rounded, size: 20),
-                        label: const Text(
-                          'Nhận việc để làm sau',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        onPressed: () => _handleClaim(context),
-                      ),
-                    ),
-                  ] else if (canComplete)
-                    SizedBox(
-                      height: 52,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        icon: Icon(
-                          reminder.requiresProofImage
-                              ? Icons.camera_alt_rounded
-                              : Icons.check,
-                          size: 22,
-                        ),
-                        label: Text(
-                          reminder.requiresProofImage
-                              ? 'Chụp ảnh nghiệm thu & Hoàn thành'
-                              : 'Đánh dấu đã hoàn thành',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        onPressed: () => _handleComplete(context),
-                      ),
-                    )
-                  else if (isCompleted)
-                    Container(
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE7F0EC),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.check_circle, color: primaryColor),
-                          SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              'Đã hoàn thành',
+                            icon: Icon(
+                              reminder.requiresProofImage
+                                  ? Icons.camera_alt_rounded
+                                  : Icons.check,
+                              size: 22,
+                            ),
+                            label: Text(
+                              reminder.requiresProofImage
+                                  ? AppLanguage.text(
+                                      'Chụp ảnh nghiệm thu & Hoàn thành',
+                                      'Take photo proof & Complete',
+                                    )
+                                  : AppLanguage.text(
+                                      'Đánh dấu đã hoàn thành',
+                                      'Mark completed',
+                                    ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: primaryColor,
-                                fontWeight: FontWeight.w600,
+                              style: const TextStyle(
                                 fontSize: 16,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
+                            onPressed: () => _handleComplete(context),
                           ),
-                        ],
-                      ),
-                    )
-                  else
-                    Text(
-                      'Chỉ ${reminder.assignedToName} mới có thể đánh dấu hoàn thành',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 13,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                ],
+                        )
+                      else if (isCompleted)
+                        Container(
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE7F0EC),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.check_circle,
+                                  color: primaryColor),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  AppLanguage.text(
+                                    'Đã hoàn thành',
+                                    'Completed',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: primaryColor,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Text(
+                          AppLanguage.text(
+                            'Chỉ ${reminder.assignedToName} mới có thể đánh dấu hoàn thành',
+                            'Only ${reminder.assignedToName} can mark as completed',
+                          ),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -945,24 +1047,27 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   Widget _buildStatusBadge(ReminderModel reminder) {
     Color bg = const Color(0xFFFFF1E0);
     Color fg = const Color(0xFF8A5100);
-    String label = 'CHỜ THỰC HIỆN';
+    String label = AppLanguage.text('CHỜ THỰC HIỆN', 'PENDING');
 
     if (reminder.isCompleted) {
       bg = const Color(0xFFE7F0EC);
       fg = const Color(0xFF0D7A68);
-      label = 'ĐÃ HOÀN THÀNH';
+      label = AppLanguage.text('ĐÃ HOÀN THÀNH', 'COMPLETED');
     } else if (reminder.isOverdue) {
       bg = const Color(0xFFFFEBEE);
       fg = const Color(0xFFBA1A1A);
-      label = 'QUÁ HẠN';
+      label = AppLanguage.text('QUÁ HẠN', 'OVERDUE');
     } else if (reminder.isOpen) {
       bg = const Color(0xFFE0F2EC);
       fg = const Color(0xFF006A6A);
-      label = 'VIỆC CHUNG (ĐANG MỞ)';
+      label = AppLanguage.text(
+        'VIỆC CHUNG (ĐANG MỞ)',
+        'SHARED TASK (OPEN)',
+      );
     } else if (reminder.isPending) {
       bg = const Color(0xFFFFF1E0);
       fg = const Color(0xFF8A5100);
-      label = 'CHỜ THỰC HIỆN';
+      label = AppLanguage.text('CHỜ THỰC HIỆN', 'PENDING');
     }
 
     return Container(

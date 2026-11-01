@@ -24,7 +24,9 @@ import 'views/reminder_calendar_view.dart';
 import 'views/reminder_list_view.dart';
 
 /// Coordinator Screen quản lý màn hình chính của tính năng Lời nhắc (Reminders).
-/// Điều phối giữa List View và Calendar View, tìm kiếm, lọc theo người và ngày.
+/// Điều phối giữa List View và Calendar View, tìm kiếm, lọc theo ngày và cá nhân.
+/// Hỗ trợ realtime đồng bộ khi gia đình bị xóa/rời, đa ngôn ngữ VN/EN, và phản hồi mượt mà trên mọi thiết bị.
+/// Chỉ cho phép sử dụng tính năng khi đang tham gia gia đình hợp lệ.
 class ReminderListScreen extends StatefulWidget {
   final String? familyId;
   final List<FamilyOption>? families;
@@ -68,7 +70,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   String get _currentFamilyName =>
       _familyNamesById[_familyId] ??
       (_families.where((f) => f.id == _familyId).map((f) => f.name).firstOrNull ??
-          'Gia đình của tôi');
+          AppLanguage.text('Gia đình của tôi', 'My Family'));
 
   bool _isCalendarView = false;
   DateTime _currentMonth =
@@ -81,6 +83,10 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   final _searchController = TextEditingController();
   Timer? _deleteSnackBarTimer;
 
+  // Realtime listeners
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _familyMembersSub;
+  String? _lastMembersSubSignature;
+
   String _formatDate(DateTime dt) {
     final d = dt.day.toString().padLeft(2, '0');
     final m = dt.month.toString().padLeft(2, '0');
@@ -88,15 +94,12 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   }
 
   @override
-  void dispose() {
-    _deleteSnackBarTimer?.cancel();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
   void initState() {
     super.initState();
+    // 1. Lắng nghe thay đổi gia đình toàn cục từ FamilyDataService
+    FamilyDataService().selectedFamilyIdNotifier.addListener(_onGlobalFamilyNotifierChanged);
+
+    // 2. Khởi tạo dữ liệu người dùng & gia đình
     if (widget.families != null &&
         widget.families!.isNotEmpty &&
         widget.currentUserId != null) {
@@ -108,7 +111,6 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           _families.any((f) => f.id == widget.familyId)) {
         _familyId = widget.familyId!;
       } else {
-        // Mặc định chọn family đầu tiên theo bảng chữ cái (Alphabet A -> Z)
         _familyId = _families.first.id;
       }
       _currentUserId = widget.currentUserId!;
@@ -132,9 +134,9 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       _hasFamily = true;
       _familyId = widget.familyId!;
       _families = [
-        FamilyOption(id: _familyId, name: 'Gia đình của tôi'),
+        FamilyOption(id: _familyId, name: AppLanguage.text('Gia đình của tôi', 'My Family')),
       ];
-      _familyNamesById = {_familyId: 'Gia đình của tôi'};
+      _familyNamesById = {_familyId: AppLanguage.text('Gia đình của tôi', 'My Family')};
       _membersByFamilyId = {
         _familyId: List<FamilyMember>.from(widget.familyMembers!),
       };
@@ -145,6 +147,121 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       _isLoading = false;
     } else {
       _resolveContext();
+    }
+
+    // 3. Đăng ký lắng nghe sự kiện thay đổi family_members từ Firestore theo thời gian thực (Realtime)
+    _listenToFirestoreFamilyMembers();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReminderListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.familyId != widget.familyId ||
+        oldWidget.currentUserId != widget.currentUserId ||
+        oldWidget.families != widget.families) {
+      _resolveContext();
+    }
+  }
+
+  @override
+  void dispose() {
+    FamilyDataService().selectedFamilyIdNotifier.removeListener(_onGlobalFamilyNotifierChanged);
+    _familyMembersSub?.cancel();
+    _deleteSnackBarTimer?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _listenToFirestoreFamilyMembers() {
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          _familyMembersSub?.cancel();
+          _lastMembersSubSignature = null;
+          _familyMembersSub = FirebaseFirestore.instance
+              .collection('family_members')
+              .where('userId', isEqualTo: user.uid)
+              .snapshots()
+              .listen((snapshot) {
+            final parts = <String>[];
+            for (final doc in snapshot.docs) {
+              final d = doc.data();
+              final fid = (d['familyId'] ?? d['family_id'])?.toString() ?? '';
+              if (fid.isEmpty) continue;
+              final status = (d['status'] ?? 'ACTIVE').toString().toUpperCase();
+              final role = (d['role'] ?? '').toString();
+              parts.add('$fid:$status:$role');
+            }
+            parts.sort();
+            final sig = parts.join('|');
+            if (_lastMembersSubSignature == sig) return;
+            final isFirst = _lastMembersSubSignature == null;
+            _lastMembersSubSignature = sig;
+            if (isFirst && !_isLoading) {
+              final activeIds = snapshot.docs
+                  .where((d) =>
+                      (d.data()['status'] ?? 'ACTIVE')
+                          .toString()
+                          .toUpperCase() ==
+                      'ACTIVE')
+                  .map((d) =>
+                      (d.data()['familyId'] ?? d.data()['family_id'])
+                          ?.toString() ??
+                      '')
+                  .where((id) => id.isNotEmpty)
+                  .toSet();
+              final currentIds = _families.map((f) => f.id).toSet();
+              if (activeIds.length == currentIds.length &&
+                  activeIds.containsAll(currentIds)) {
+                return;
+              }
+            }
+            // Khi người dùng tham gia / rời / bị xóa khỏi gia đình -> cập nhật realtime
+            if (mounted) {
+              _resolveContext();
+            }
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
+  void _onGlobalFamilyNotifierChanged() {
+    final newFamilyId = FamilyDataService().selectedFamilyIdNotifier.value;
+    if (newFamilyId == null || newFamilyId.isEmpty) {
+      // Chỉ reload khi trạng thái hiện tại vẫn đang giữ gia đình cũ
+      if (_hasFamily || _familyId.isNotEmpty) {
+        _resolveContext();
+      }
+    } else if (newFamilyId != _familyId) {
+      if (_families.any((f) => f.id == newFamilyId)) {
+        final fam = _families.firstWhere((f) => f.id == newFamilyId);
+        _selectFamily(fam, syncToService: false);
+      } else {
+        _resolveContext(forcedFamilyId: newFamilyId);
+      }
+    }
+  }
+
+  Future<void> _manualRefresh() async {
+    HapticFeedback.lightImpact();
+    FamilyDataService().clearCache();
+    await _resolveContext();
+    if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Đã cập nhật dữ liệu mới nhất!',
+              'Data updated successfully!',
+            ),
+          ),
+          duration: const Duration(seconds: 2),
+          backgroundColor: const Color(0xFF005F50),
+        ),
+      );
     }
   }
 
@@ -164,7 +281,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
       for (final mDoc in membersSnap.docs) {
         final mData = mDoc.data();
-        final status = (mData['status'] ?? 'ACTIVE').toString();
+        final status = (mData['status'] ?? 'ACTIVE').toString().toUpperCase();
         if (status != 'ACTIVE') continue;
 
         final memberUid =
@@ -191,7 +308,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         }
 
         if (memberName.isEmpty) {
-          memberName = memberUid == currentUid ? currentUname : 'Thành viên';
+          memberName = memberUid == currentUid ? currentUname : AppLanguage.text('Thành viên', 'Member');
         }
 
         members.add(FamilyMember(
@@ -209,42 +326,53 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     return members;
   }
 
-  Future<void> _resolveContext() async {
+  Future<void> _resolveContext({String? forcedFamilyId}) async {
     try {
       String? userId = widget.currentUserId;
       String? userName = widget.currentUserName;
-      List<FamilyOption> resolvedFamilies = widget.families != null
-          ? List<FamilyOption>.from(widget.families!)
-          : [];
-      Map<String, List<FamilyMember>> resolvedMembersByFam =
-          widget.membersByFamilyId != null
-              ? Map<String, List<FamilyMember>>.from(widget.membersByFamilyId!)
-              : {};
+      List<FamilyOption> resolvedFamilies = [];
+      Map<String, List<FamilyMember>> resolvedMembersByFam = {};
 
-      // 1. Resolve Current User from Firebase Auth
+      // 1. Resolve Current User from Firebase Auth (Tài khoản chính đang sử dụng)
       if (Firebase.apps.isNotEmpty) {
         try {
           final fbAuth = FirebaseAuth.instance;
           final fbUser = fbAuth.currentUser;
           if (fbUser != null) {
-            userId ??= fbUser.uid;
-            userName ??=
+            userId = fbUser.uid;
+            userName =
                 (fbUser.displayName != null && fbUser.displayName!.isNotEmpty)
-                    ? fbUser.displayName
-                    : (fbUser.email?.split('@').first ?? 'Người dùng');
+                    ? fbUser.displayName!
+                    : (fbUser.email?.split('@').first ?? AppLanguage.text('Người dùng', 'User'));
+
+            // Tải thêm tên từ users collection nếu có
+            try {
+              final userDoc = await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(fbUser.uid)
+                  .get()
+                  .timeout(const Duration(seconds: 2));
+              if (userDoc.exists && userDoc.data() != null) {
+                final uName = userDoc.data()!['name']?.toString() ??
+                    userDoc.data()!['displayName']?.toString();
+                if (uName != null && uName.trim().isNotEmpty) {
+                  userName = uName.trim();
+                }
+              }
+            } catch (_) {}
           }
         } catch (_) {}
       }
 
-      userId ??= 'current_user';
-      userName ??= 'Tôi';
+      userId ??= widget.currentUserId ?? 'current_user';
+      userName ??= widget.currentUserName ?? AppLanguage.text('Tôi', 'Me');
 
-      // 2. Resolve ALL Families (1 người có thể tham gia N gia đình) and Members from Cloud Firestore
-      if (Firebase.apps.isNotEmpty && resolvedFamilies.isEmpty) {
+      // 2. Resolve Active Families - CHỈ LẤY GIA ĐÌNH MÀ USER ĐANG LÀ THÀNH VIÊN ACTIVE
+      if (Firebase.apps.isNotEmpty) {
         final firestore = FirebaseFirestore.instance;
         final Map<String, String> familyIdToRole = {};
 
-        // 2a. Lấy tất cả các family_members đang ACTIVE của người dùng
+        // 2a. Lấy tất cả các membership có trạng thái ACTIVE của user
         try {
           final memberDocs = await firestore
               .collection('family_members')
@@ -253,7 +381,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               .timeout(const Duration(seconds: 3));
           for (final doc in memberDocs.docs) {
             final data = doc.data();
-            final status = (data['status'] ?? 'ACTIVE').toString();
+            final status = (data['status'] ?? 'ACTIVE').toString().toUpperCase();
             if (status != 'ACTIVE') continue;
             final fid = (data['familyId'] ?? data['family_id'])?.toString();
             if (fid != null && fid.isNotEmpty) {
@@ -262,38 +390,9 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           }
         } catch (_) {}
 
-        // 2b. Kiểm tra thêm trường familyId trong users/{userId} (nếu có)
-        try {
-          final userDoc = await firestore
-              .collection('users')
-              .doc(userId)
-              .get()
-              .timeout(const Duration(seconds: 3));
-          if (userDoc.exists && userDoc.data() != null) {
-            final uName = userDoc.data()!['name']?.toString();
-            if (uName != null && uName.isNotEmpty && widget.currentUserName == null) {
-              userName = uName;
-            }
-            final fid = userDoc.data()!['familyId']?.toString();
-            if (fid != null &&
-                fid.isNotEmpty &&
-                !familyIdToRole.containsKey(fid)) {
-              familyIdToRole[fid] = 'Member';
-            }
-          }
-        } catch (_) {}
-
-        if (widget.familyId != null &&
-            widget.familyId!.isNotEmpty &&
-            !familyIdToRole.containsKey(widget.familyId)) {
-          familyIdToRole[widget.familyId!] = 'Member';
-        }
-
-        // 2c. Tải thông tin chi tiết (tên gia đình, mã mời) của từng family
+        // 2b. Tải thông tin chi tiết của từng family còn tồn tại và KHÔNG bị xóa (deleting != true)
         for (final entry in familyIdToRole.entries) {
           final fid = entry.key;
-          String famName = 'Gia đình';
-          String? joinCode;
           try {
             final famDoc = await firestore
                 .collection('families')
@@ -301,69 +400,81 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 .get()
                 .timeout(const Duration(seconds: 3));
             if (famDoc.exists && famDoc.data() != null) {
-              famName = famDoc.data()!['name']?.toString() ?? 'Gia đình';
-              joinCode = (famDoc.data()!['joinCode'] ??
-                      famDoc.data()!['join_code'])
-                  ?.toString();
+              final famData = famDoc.data()!;
+              if (famData['deleting'] == true) continue;
+              final famName = famData['name']?.toString() ?? AppLanguage.text('Gia đình', 'Family');
+              final joinCode = (famData['joinCode'] ?? famData['join_code'])?.toString();
+              resolvedFamilies.add(
+                FamilyOption(
+                  id: fid,
+                  name: famName,
+                  joinCode: joinCode,
+                  role: entry.value,
+                ),
+              );
             }
           } catch (_) {}
-
-          resolvedFamilies.add(
-            FamilyOption(
-              id: fid,
-              name: famName,
-              joinCode: joinCode,
-              role: entry.value,
-            ),
-          );
         }
 
-        // 2d. Sắp xếp danh sách gia đình theo thứ tự bảng chữ cái (A -> Z)
+        // 2c. Sắp xếp danh sách gia đình theo thứ tự bảng chữ cái (A -> Z)
         resolvedFamilies = FamilyOption.sortAlphabetically(resolvedFamilies);
 
-        // 2e. Tải danh sách thành viên cho các gia đình của người dùng
+        // 2d. Tải danh sách thành viên cho các gia đình của người dùng
         for (final fam in resolvedFamilies) {
-          if (!resolvedMembersByFam.containsKey(fam.id)) {
-            final members = await _loadMembersForFamilyFromFirestore(
-              firestore,
-              fam.id,
-              userId,
-              userName!,
-            );
-            resolvedMembersByFam[fam.id] = members;
-          }
+          final members = await _loadMembersForFamilyFromFirestore(
+            firestore,
+            fam.id,
+            userId,
+            userName,
+          );
+          resolvedMembersByFam[fam.id] = members;
         }
       }
 
-      if (resolvedFamilies.isEmpty &&
-          widget.familyId != null &&
-          widget.familyId!.isNotEmpty) {
-        resolvedFamilies = [
-          FamilyOption(id: widget.familyId!, name: 'Gia đình của tôi'),
-        ];
-        if (widget.familyMembers != null) {
-          resolvedMembersByFam[widget.familyId!] =
-              List<FamilyMember>.from(widget.familyMembers!);
+      // Xử lý fallback cho test / mock nếu không có Firebase
+      if (resolvedFamilies.isEmpty && Firebase.apps.isEmpty) {
+        if (widget.families != null && widget.families!.isNotEmpty) {
+          resolvedFamilies = List<FamilyOption>.from(widget.families!);
+          if (widget.membersByFamilyId != null) {
+            resolvedMembersByFam =
+                Map<String, List<FamilyMember>>.from(widget.membersByFamilyId!);
+          }
+        } else if (widget.familyId != null && widget.familyId!.isNotEmpty) {
+          resolvedFamilies = [
+            FamilyOption(id: widget.familyId!, name: AppLanguage.text('Gia đình của tôi', 'My Family')),
+          ];
+          if (widget.familyMembers != null) {
+            resolvedMembersByFam[widget.familyId!] =
+                List<FamilyMember>.from(widget.familyMembers!);
+          }
         }
       }
 
       resolvedFamilies = FamilyOption.sortAlphabetically(resolvedFamilies);
 
-      // Mặc định chọn family đầu tiên theo bảng chữ cái (hoặc familyId được truyền vào nếu hợp lệ)
+      // 3. Quyết định Active Family:
+      // - Nếu không còn gia đình nào (User đã xóa hoặc out hết): hasFamily = false -> Hiện Empty State
+      // - Nếu gia đình hiện tại bị xóa, tự động chuyển về gia đình đầu tiên còn lại hoặc forcedFamilyId
+      final bool hasFamily = resolvedFamilies.isNotEmpty;
       String selectedFamilyId = '';
-      if (widget.familyId != null &&
-          widget.familyId!.isNotEmpty &&
-          resolvedFamilies.any((f) => f.id == widget.familyId)) {
-        selectedFamilyId = widget.familyId!;
-      } else if (_familyId.isNotEmpty &&
-          resolvedFamilies.any((f) => f.id == _familyId)) {
-        selectedFamilyId = _familyId;
-      } else if (resolvedFamilies.isNotEmpty) {
-        selectedFamilyId = resolvedFamilies.first.id;
-      }
 
-      final bool hasFamily = selectedFamilyId.isNotEmpty &&
-          !selectedFamilyId.startsWith('family_current_user');
+      if (hasFamily) {
+        final globalSelected = FamilyDataService().selectedFamilyIdNotifier.value;
+        if (forcedFamilyId != null &&
+            forcedFamilyId.isNotEmpty &&
+            resolvedFamilies.any((f) => f.id == forcedFamilyId)) {
+          selectedFamilyId = forcedFamilyId;
+        } else if (globalSelected != null &&
+            globalSelected.isNotEmpty &&
+            resolvedFamilies.any((f) => f.id == globalSelected)) {
+          selectedFamilyId = globalSelected;
+        } else if (_familyId.isNotEmpty &&
+            resolvedFamilies.any((f) => f.id == _familyId)) {
+          selectedFamilyId = _familyId;
+        } else {
+          selectedFamilyId = resolvedFamilies.first.id;
+        }
+      }
 
       final resolvedMembers = resolvedMembersByFam[selectedFamilyId] ??
           (widget.familyMembers != null
@@ -385,17 +496,42 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           _repository = widget.repository ?? FirebaseReminderRepository();
           _isLoading = false;
         });
+
+        // Đồng bộ ngược lại vào FamilyDataService & dọn con trỏ familyId cũ nếu không còn gia đình
+        if (hasFamily && selectedFamilyId.isNotEmpty) {
+          if (FamilyDataService().selectedFamilyId != selectedFamilyId) {
+            FamilyDataService().selectFamily(selectedFamilyId);
+          }
+        } else {
+          if (Firebase.apps.isNotEmpty) {
+            try {
+              final fbUser = FirebaseAuth.instance.currentUser;
+              if (fbUser != null) {
+                FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(fbUser.uid)
+                    .update({
+                  'familyId': FieldValue.delete(),
+                  'family_id': FieldValue.delete(),
+                }).catchError((_) {});
+              }
+            } catch (_) {}
+          }
+          if (FamilyDataService().selectedFamilyId != null) {
+            FamilyDataService().resetAll();
+          }
+        }
       }
     } catch (e) {
       debugPrint('ReminderListScreen _resolveContext error: $e');
       final fallbackUserId = widget.currentUserId ?? 'current_user';
-      final fallbackUserName = widget.currentUserName ?? 'Tôi';
-      final hasFamily = widget.familyId != null && widget.familyId!.isNotEmpty;
+      final fallbackUserName = widget.currentUserName ?? AppLanguage.text('Tôi', 'Me');
 
       if (mounted) {
         setState(() {
-          _hasFamily = hasFamily;
-          _familyId = widget.familyId ?? '';
+          _hasFamily = false;
+          _familyId = '';
+          _families = [];
           _currentUserId = fallbackUserId;
           _currentUserName = fallbackUserName;
           _familyMembers = widget.familyMembers ?? [];
@@ -406,14 +542,16 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     }
   }
 
-  Future<void> _selectFamily(FamilyOption family) async {
+  Future<void> _selectFamily(FamilyOption family, {bool syncToService = true}) async {
     if (_familyId == family.id) return;
     HapticFeedback.selectionClick();
     setState(() {
       _familyId = family.id;
       _familyMembers = _membersByFamilyId[family.id] ?? [];
     });
-    FamilyDataService().selectFamily(family.id);
+    if (syncToService) {
+      FamilyDataService().selectFamily(family.id);
+    }
 
     if (_familyMembers.isEmpty && Firebase.apps.isNotEmpty) {
       final loaded = await _loadMembersForFamilyFromFirestore(
@@ -433,22 +571,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     }
   }
 
-  void _switchUser(FamilyMember member) {
-    setState(() {
-      _currentUserId = member.id;
-      _currentUserName = member.name;
-    });
-    widget.onUserChanged?.call(member.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content:
-            Text('Đã chuyển góc nhìn sang ${member.name} (${member.role})'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-  }
-
   Future<void> _openCreateReminder() async {
+    if (!_hasFamily || _familyId.trim().isEmpty) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => CreateReminderScreen(
@@ -485,10 +609,14 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     final targetMembers = _getMembersForReminder(reminder);
     if (!_canDeleteReminder(reminder)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-              'Chỉ người tạo hoặc Bố Mẹ/Chủ nhà mới có thể xóa lời nhắc này.'),
-          backgroundColor: Color(0xFFBA1A1A),
+            AppLanguage.text(
+              'Chỉ người tạo hoặc Bố Mẹ/Chủ nhà mới có thể xóa lời nhắc này.',
+              'Only the creator or Parents/Owner can delete this reminder.',
+            ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
         ),
       );
       return;
@@ -500,22 +628,27 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        title: const Text(
-          'Xóa lời nhắc',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          AppLanguage.text('Xóa lời nhắc', 'Delete reminder'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text('Bạn có chắc chắn muốn xóa lời nhắc này?'),
+        content: Text(
+          AppLanguage.text(
+            'Bạn có chắc chắn muốn xóa lời nhắc "${reminder.title}"? (Hành động này có thể hoàn tác trong 10 giây).',
+            'Are you sure you want to delete "${reminder.title}"? (Can be undone within 10 seconds).',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Hủy'),
+            child: Text(AppLanguage.text('Hủy', 'Cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFBA1A1A),
             ),
             onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Xóa'),
+            child: Text(AppLanguage.text('Xóa', 'Delete')),
           ),
         ],
       ),
@@ -590,7 +723,6 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           currentUserName: _currentUserName,
         );
         if (proofUrl == null) {
-          // User canceled without taking photo
           return;
         }
       }
@@ -602,11 +734,12 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         proofImageUrl: proofUrl,
       );
       if (mounted) {
-        const successMsg = 'Đã hoàn thành công việc!';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(successMsg),
-            backgroundColor: Color(0xFF005F50),
+          SnackBar(
+            content: Text(
+              AppLanguage.text('Đã hoàn thành công việc!', 'Task completed successfully!'),
+            ),
+            backgroundColor: const Color(0xFF005F50),
           ),
         );
         setState(() {});
@@ -635,7 +768,10 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!',
+              AppLanguage.text(
+                '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!',
+                '🎉 You claimed "${reminder.title}" successfully!',
+              ),
             ),
             backgroundColor: const Color(0xFF005F50),
           ),
@@ -664,7 +800,6 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           currentUserName: _currentUserName,
         );
         if (proofUrl == null) {
-          // Người dùng hủy chụp ảnh
           return;
         }
       }
@@ -680,7 +815,10 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '🎉 Bạn đã hoàn thành việc chung "${reminder.title}" xuất sắc!',
+              AppLanguage.text(
+                '🎉 Bạn đã hoàn thành việc chung "${reminder.title}" xuất sắc!',
+                '🎉 You completed the shared task "${reminder.title}"!',
+              ),
             ),
             backgroundColor: const Color(0xFF005F50),
           ),
@@ -700,6 +838,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   }
 
   void _openAiAssistant() {
+    if (!_hasFamily || _familyId.trim().isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => FamilyAiChatScreen(
@@ -768,12 +907,12 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                     size: 22,
                   ),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Chọn gia đình hiển thị',
+                      AppLanguage.text('Chọn gia đình hiển thị', 'Select Active Family'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF151D1B),
@@ -799,9 +938,12 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 ],
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Danh sách lời nhắc tổng (Cả nhà) sẽ chỉ hiển thị các lời nhắc thuộc gia đình bạn chọn bên dưới.',
-                style: TextStyle(
+              Text(
+                AppLanguage.text(
+                  'Danh sách lời nhắc tổng (Cả nhà) sẽ chỉ hiển thị các lời nhắc thuộc gia đình bạn chọn bên dưới.',
+                  'The all-family reminder list will only show reminders from the family you select below.',
+                ),
+                style: const TextStyle(
                   fontSize: 12.5,
                   color: Color(0xFF6E7A75),
                 ),
@@ -908,9 +1050,12 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   ),
                 ),
                 icon: const Icon(Icons.add_home_work_outlined, size: 18),
-                label: const Text(
-                  '+ Tạo hoặc tham gia gia đình khác',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                label: Text(
+                  AppLanguage.text(
+                    '+ Tạo hoặc tham gia gia đình khác',
+                    '+ Create or join another family',
+                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 onPressed: () async {
                   Navigator.of(ctx).pop();
@@ -939,95 +1084,141 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       return const SizedBox.shrink();
     }
 
-    // Phần list remind tổng (Cả nhà): Có mục Chọn Family (mặc định family đầu tiên theo alphabet)
+    // Phần list remind tổng (Cả nhà):
+    // Phía trái là cụm "Chọn gia đình: <Tên Gia Đình> ⌄"
+    // Phía phải neo chặt các icon hành động: Số nhà, Nút reload, Nút mở trang gia đình (Lấy phải làm gốc dời vào trái)
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
-      child: InkWell(
-        onTap: _showFamilyPickerBottomSheet,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFBDC9C4)),
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.home_work_rounded,
-                size: 16,
-                color: Color(0xFF005F50),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'Chọn gia đình:',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF6E7A75),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  _currentFamilyName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF005F50),
-                  ),
-                ),
-              ),
-              if (_families.length > 1)
-                Container(
-                  margin: const EdgeInsets.only(right: 4),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE4F6EF),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${_families.length} nhà',
-                    style: const TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFBDC9C4)),
+        ),
+        child: Row(
+          children: [
+            // Cụm Chọn Gia đình bên trái (Có thể bấm để mở BottomSheet chọn family)
+            Expanded(
+              child: InkWell(
+                onTap: _showFamilyPickerBottomSheet,
+                borderRadius: BorderRadius.circular(8),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.home_work_rounded,
+                      size: 16,
                       color: Color(0xFF005F50),
                     ),
-                  ),
-                ),
-              const Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: Color(0xFF005F50),
-                size: 18,
-              ),
-              const SizedBox(width: 4),
-              Tooltip(
-                message: 'Xem trang gia đình',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const FamilyScreen(),
+                    const SizedBox(width: 6),
+                    Text(
+                      AppLanguage.text('Chọn gia đình:', 'Select family:'),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF6E7A75),
                       ),
-                    );
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.open_in_new_rounded,
-                      size: 15,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        _currentFamilyName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF005F50),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    const Icon(
+                      Icons.keyboard_arrow_down_rounded,
                       color: Color(0xFF005F50),
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Các nút tiện ích neo chặt vào mép phải (lấy phải làm gốc rồi dời vào trái)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_families.length > 1)
+                  InkWell(
+                    onTap: _showFamilyPickerBottomSheet,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE4F6EF),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        AppLanguage.text(
+                          '${_families.length} nhà',
+                          '${_families.length} families',
+                        ),
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF005F50),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Nút Làm mới danh sách
+                Tooltip(
+                  message: AppLanguage.text('Làm mới danh sách', 'Refresh list'),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: _manualRefresh,
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.refresh_rounded,
+                        size: 16,
+                        color: Color(0xFF005F50),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 4),
+
+                // Nút Xem trang gia đình (nằm ở vị trí ngoài cùng bên phải)
+                Tooltip(
+                  message: AppLanguage.text('Xem trang gia đình', 'Go to family screen'),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () {
+                      if (widget.onNavigateToFamily != null) {
+                        widget.onNavigateToFamily!();
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const FamilyScreen(),
+                          ),
+                        );
+                      }
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.open_in_new_rounded,
+                        size: 16,
+                        color: Color(0xFF005F50),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -1040,6 +1231,9 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       builder: (context, _, child) {
         const primaryColor = Color(0xFF005F50);
         const textPrimary = Color(0xFF151D1B);
+        final screenWidth = MediaQuery.of(context).size.width;
+        final isSmallScreen = screenWidth < 360;
+        final horizontalPad = isSmallScreen ? 10.0 : 16.0;
 
         if (_isLoading) {
           return const Scaffold(
@@ -1062,6 +1256,13 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               ),
               backgroundColor: Colors.white,
               elevation: 0,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, color: primaryColor),
+                  tooltip: AppLanguage.text('Làm mới', 'Refresh'),
+                  onPressed: _manualRefresh,
+                ),
+              ],
             ),
             body: Center(
               child: SingleChildScrollView(
@@ -1086,8 +1287,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                       const SizedBox(height: 24),
                       Text(
                         AppLanguage.text(
-                          'Bạn chưa tham gia gia đình nào',
-                          "You haven't joined a family yet",
+                          'Bạn chưa tham gia gia đình nào.',
+                          "You haven't joined a family yet.",
                         ),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
@@ -1205,455 +1406,427 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
           );
         }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3FBF8),
-      appBar: AppBar(
-        title: _isSearchOpen
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                style: const TextStyle(color: textPrimary, fontSize: 16),
-                decoration: InputDecoration(
-                  hintText: AppLanguage.text('Tìm kiếm nhắc nhở...', 'Search reminders...'),
-                  border: InputBorder.none,
-                  hintStyle: TextStyle(color: Colors.grey.shade500),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 20),
-                          onPressed: () {
-                            setState(() {
-                              _searchController.clear();
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                      : null,
+        return Scaffold(
+          backgroundColor: const Color(0xFFF3FBF8),
+          appBar: AppBar(
+            title: _isSearchOpen
+                ? TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    style: const TextStyle(color: textPrimary, fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: AppLanguage.text('Tìm kiếm nhắc nhở...', 'Search reminders...'),
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(color: Colors.grey.shade500),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 20),
+                              onPressed: () {
+                                setState(() {
+                                  _searchController.clear();
+                                  _searchQuery = '';
+                                });
+                              },
+                            )
+                          : null,
+                    ),
+                    onChanged: (val) {
+                      setState(() {
+                        _searchQuery = val.trim();
+                      });
+                    },
+                  )
+                : Text(
+                    AppLanguage.text('Tổ Ấm Yêu Thương', 'Family Hub'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                      color: primaryColor,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+            backgroundColor: const Color(0xFFEDF5F2),
+            elevation: 1,
+            shadowColor: Colors.black12,
+            actions: [
+              // Tìm kiếm
+              IconButton(
+                icon: Icon(
+                  _isSearchOpen ? Icons.close : Icons.search,
+                  color: primaryColor,
+                  size: 22,
                 ),
-                onChanged: (val) {
+                tooltip: _isSearchOpen
+                    ? AppLanguage.text('Đóng tìm kiếm', 'Close search')
+                    : AppLanguage.text('Tìm kiếm nhắc nhở', 'Search reminders'),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                onPressed: () {
                   setState(() {
-                    _searchQuery = val.trim();
+                    _isSearchOpen = !_isSearchOpen;
+                    if (!_isSearchOpen) {
+                      _searchController.clear();
+                      _searchQuery = '';
+                    }
                   });
                 },
-              )
-            : Text(
-                AppLanguage.text('Tổ Ấm Yêu Thương', 'Family Hub'),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                  color: primaryColor,
-                  letterSpacing: -0.5,
-                ),
               ),
-        backgroundColor: const Color(0xFFEDF5F2),
-        elevation: 1,
-        shadowColor: Colors.black12,
-        actions: [
-          // Tìm kiếm
-          IconButton(
-            icon: Icon(
-              _isSearchOpen ? Icons.close : Icons.search,
-              color: primaryColor,
-              size: 22,
-            ),
-            tooltip: _isSearchOpen
-                ? AppLanguage.text('Đóng tìm kiếm', 'Close search')
-                : AppLanguage.text('Tìm kiếm nhắc nhở', 'Search reminders'),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            onPressed: () {
-              setState(() {
-                _isSearchOpen = !_isSearchOpen;
-                if (!_isSearchOpen) {
-                  _searchController.clear();
-                  _searchQuery = '';
-                }
-              });
-            },
-          ),
-          // Chuyển đổi thành viên người dùng chủ động (gọn gàng, không tràn tên)
-          PopupMenuButton<FamilyMember>(
-            tooltip: AppLanguage.text('Chuyển đổi góc nhìn thành viên', 'Switch member perspective'),
-            padding: EdgeInsets.zero,
-            icon: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircleAvatar(
-                  radius: 11,
-                  backgroundColor: primaryColor,
-                  child: Text(
-                    _currentUserName.isNotEmpty
-                        ? _currentUserName[0].toUpperCase()
-                        : 'U',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+              // Nút làm mới dữ liệu nhanh (Realtime Sync Trigger)
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, color: primaryColor, size: 22),
+                tooltip: AppLanguage.text('Làm mới dữ liệu', 'Refresh data'),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                onPressed: _manualRefresh,
+              ),
+              // Chuyển đổi qua lại giữa List View và Calendar View
+              IconButton(
+                icon: Icon(
+                  _isCalendarView
+                      ? Icons.format_list_bulleted_rounded
+                      : Icons.calendar_month_rounded,
+                  color: primaryColor,
+                  size: 22,
                 ),
-                const SizedBox(width: 4),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 65),
-                  child: Text(
-                    _currentUserName,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                    style: const TextStyle(
-                      color: textPrimary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                const Icon(Icons.arrow_drop_down, color: textPrimary, size: 16),
-              ],
-            ),
-            onSelected: _switchUser,
-            itemBuilder: (ctx) => _familyMembers.map((member) {
-              final isCurrent = member.id == _currentUserId;
-              return PopupMenuItem<FamilyMember>(
-                value: member,
-                child: Row(
-                  children: [
-                    Icon(
-                      isCurrent
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_off,
-                      color: isCurrent ? primaryColor : Colors.grey,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        '${member.name} (${member.role})',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                tooltip: _isCalendarView
+                    ? AppLanguage.text('Chuyển sang chế độ Danh sách (List View)', 'Switch to List View')
+                    : AppLanguage.text('Chuyển sang chế độ Lịch (Calendar View)', 'Switch to Calendar View'),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                onPressed: () {
+                  setState(() {
+                    _isCalendarView = !_isCalendarView;
+                  });
+                },
+              ),
+              // Menu mở rộng: Trợ lý AI, Tạo lời nhắc, Lịch toàn màn hình, Làm mới
+              PopupMenuButton<String>(
+                tooltip: AppLanguage.text('Tùy chọn khác', 'More options'),
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.more_vert, color: primaryColor, size: 22),
+                onSelected: (val) {
+                  if (val == 'full_calendar') {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (ctx) => CalendarPage(
+                          familyId: _familyId,
+                          currentUserId: _currentUserId,
+                          currentUserName: _currentUserName,
+                          familyMembers: _familyMembers,
+                          repository: _repository,
+                        ),
                       ),
+                    );
+                  } else if (val == 'ai_assistant') {
+                    _openAiAssistant();
+                  } else if (val == 'create_reminder') {
+                    _openCreateReminder();
+                  } else if (val == 'refresh') {
+                    _manualRefresh();
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'ai_assistant',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.auto_awesome_rounded,
+                            size: 18, color: Color(0xFF0D7A68)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text('Trợ lý AI Gia đình', 'Family AI Assistant'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-          // Chuyển đổi qua lại giữa List View và Calendar View
-          IconButton(
-            icon: Icon(
-              _isCalendarView
-                  ? Icons.format_list_bulleted_rounded
-                  : Icons.calendar_month_rounded,
-              color: primaryColor,
-              size: 22,
+                  ),
+                  PopupMenuItem(
+                    value: 'create_reminder',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.add_circle_outline_rounded,
+                            size: 18, color: primaryColor),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text('Tạo lời nhắc mới', 'Create new reminder'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'full_calendar',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.open_in_new_rounded,
+                            size: 18, color: primaryColor),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text('Mở trang Lịch toàn màn hình', 'Open full calendar'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'refresh',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.refresh_rounded,
+                            size: 18, color: primaryColor),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text('Làm mới dữ liệu', 'Refresh data'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 6),
+            ],
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(color: const Color(0xFFDCE8E3), height: 1),
             ),
-            tooltip: _isCalendarView
-                ? 'Chuyển sang chế độ Danh sách (List View)'
-                : 'Chuyển sang chế độ Lịch (Calendar View)',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            onPressed: () {
-              setState(() {
-                _isCalendarView = !_isCalendarView;
-              });
-            },
           ),
-          // Menu mở rộng: Trợ lý AI, Tạo lời nhắc, Lịch toàn màn hình
-          PopupMenuButton<String>(
-            tooltip: 'Tùy chọn khác',
-            padding: EdgeInsets.zero,
-            icon: const Icon(Icons.more_vert, color: primaryColor, size: 22),
-            onSelected: (val) {
-              if (val == 'full_calendar') {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (ctx) => CalendarPage(
-                      familyId: _familyId,
-                      currentUserId: _currentUserId,
-                      currentUserName: _currentUserName,
-                      familyMembers: _familyMembers,
-                      repository: _repository,
+          body: RefreshIndicator(
+            color: primaryColor,
+            onRefresh: _manualRefresh,
+            child: StreamBuilder<List<ReminderModel>>(
+              stream: _filterOnlyMine
+                  ? _repository.watchRemindersForFamilies(
+                      familyIds: _families.isNotEmpty
+                          ? _families.map((f) => f.id).toList()
+                          : [_familyId],
+                    )
+                  : _repository.watchReminders(familyId: _familyId),
+              builder: (context, snapshot) {
+                final allReminders = snapshot.data ?? [];
+
+                // 1. Lọc theo Scope:
+                // - Cả nhà (!_filterOnlyMine): Chỉ hiện lời nhắc thuộc family đang được chọn (_familyId)
+                // - Việc của tôi (_filterOnlyMine): Hiện việc cá nhân của tôi trên các family kèm nhãn family
+                final scopedReminders = _filterOnlyMine
+                    ? allReminders
+                        .where((r) => r.assignedTo == _currentUserId)
+                        .toList()
+                    : allReminders
+                        .where((r) => r.familyId == _familyId)
+                        .toList();
+
+                // 2. Lọc theo từ khóa tìm kiếm (Title, Ghi chú giọng nói, Gia đình, hoặc Tên/Vai trò người nhận)
+                final searchedReminders = _searchQuery.isEmpty
+                    ? scopedReminders
+                    : scopedReminders.where((r) {
+                        final q = _searchQuery.toLowerCase();
+                        final titleMatch = r.title.toLowerCase().contains(q);
+                        final voiceDescMatch =
+                            (r.voiceNoteDescription ?? '').toLowerCase().contains(q);
+                        final famName =
+                            (r.familyName ?? _familyNamesById[r.familyId] ?? '')
+                                .toLowerCase();
+                        final familyMatch = famName.contains(q);
+                        final directAssigneeMatch =
+                            r.assignedToName.toLowerCase().contains(q);
+                        final famMembers = _getMembersForReminder(r);
+                        final member = famMembers.firstWhere(
+                          (m) => m.id == r.assignedTo,
+                          orElse: () => const FamilyMember(
+                            id: '',
+                            name: '',
+                            role: '',
+                            familyId: '',
+                          ),
+                        );
+                        final assigneeMatch = directAssigneeMatch ||
+                            member.name.toLowerCase().contains(q) ||
+                            member.role.toLowerCase().contains(q);
+                        return titleMatch ||
+                            voiceDescMatch ||
+                            familyMatch ||
+                            assigneeMatch;
+                      }).toList();
+
+                final selectedDateStr = _formatDate(_selectedDate);
+                final displayedReminders = _showAll
+                    ? searchedReminders
+                    : searchedReminders
+                        .where((r) => r.date == selectedDateStr)
+                        .toList();
+
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 680),
+                    child: Column(
+                      children: [
+                        // Thanh lọc phạm vi: [👨‍👩‍👧 Cả nhà] vs [👤 Việc của tôi]
+                        ReminderScopeFilterChips(
+                          filterOnlyMine: _filterOnlyMine,
+                          onScopeChanged: (val) =>
+                              setState(() => _filterOnlyMine = val),
+                        ),
+
+                        // Thanh chọn Family (ở chế độ Cả nhà) hoặc hiển thị ngữ cảnh đa gia đình (ở chế độ Việc của tôi)
+                        _buildFamilyContextBar(),
+
+                        // Calendar View hoặc Weekly Strip
+                        if (_isCalendarView) ...[
+                          ReminderCalendarView(
+                            currentMonth: _currentMonth,
+                            selectedDate: _selectedDate,
+                            showAll: _showAll,
+                            reminders: scopedReminders,
+                            selectedDateFormatted: selectedDateStr,
+                            onDateSelected: (date) {
+                              setState(() {
+                                _selectedDate = date;
+                                _showAll = false;
+                              });
+                            },
+                            onMonthChanged: (newMonth) {
+                              setState(() {
+                                _currentMonth = newMonth;
+                              });
+                            },
+                            onShowAllPressed: () => setState(() => _showAll = true),
+                          ),
+                        ] else
+                          WeeklyCalendarStrip(
+                            selectedDate: _selectedDate,
+                            showAll: _showAll,
+                            reminders: scopedReminders,
+                            onDateSelected: (date) {
+                              setState(() {
+                                _selectedDate = date;
+                                _showAll = false;
+                              });
+                            },
+                            onSelectAll: () {
+                              setState(() {
+                                _showAll = true;
+                              });
+                            },
+                          ),
+
+                        // Family Daily Progress Card
+                        FamilyProgressCard(
+                          reminders: _showAll ? searchedReminders : displayedReminders,
+                          dateTitle: _showAll ? AppLanguage.text('Tất cả', 'All') : selectedDateStr,
+                        ),
+
+                        // List View phân nhóm theo 4 mức ưu tiên
+                        Expanded(
+                          child: ReminderListView(
+                            allReminders: scopedReminders,
+                            displayedReminders: displayedReminders,
+                            currentUserId: _currentUserId,
+                            selectedDateStr: selectedDateStr,
+                            isShowingAll: _showAll,
+                            isParentOrOwner: _familyMembers.any(
+                              (m) =>
+                                  m.id == _currentUserId &&
+                                  (m.isParent || m.isGrandparent),
+                            ),
+                            familyNamesById: _familyNamesById,
+                            showFamilyBadge: _filterOnlyMine,
+                            canDeletePredicate: _canDeleteReminder,
+                            onCreatePressed: _openCreateReminder,
+                            onShowAllPressed: () => setState(() => _showAll = true),
+                            onTapReminder: _showDetailBottomSheet,
+                            onCompleteReminder: _completeReminder,
+                            onDeleteReminder: _confirmAndDelete,
+                            onClaimReminder: _claimReminder,
+                            onClaimAndCompleteReminder: _claimAndCompleteReminder,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
-              } else if (val == 'ai_assistant') {
-                _openAiAssistant();
-              } else if (val == 'create_reminder') {
-                _openCreateReminder();
-              }
-            },
-            itemBuilder: (ctx) => const [
-              PopupMenuItem(
-                value: 'ai_assistant',
-                child: Row(
-                  children: [
-                    Icon(Icons.auto_awesome_rounded,
-                        size: 18, color: Color(0xFF0D7A68)),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Trợ lý AI Gia đình (Gemini)',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'create_reminder',
-                child: Row(
-                  children: [
-                    Icon(Icons.add_circle_outline_rounded,
-                        size: 18, color: primaryColor),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Tạo lời nhắc mới',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'full_calendar',
-                child: Row(
-                  children: [
-                    Icon(Icons.open_in_new_rounded,
-                        size: 18, color: primaryColor),
-                    SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Mở trang Lịch toàn màn hình',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              },
+            ),
           ),
-          const SizedBox(width: 6),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: const Color(0xFFDCE8E3), height: 1),
-        ),
-      ),
-      body: StreamBuilder<List<ReminderModel>>(
-        stream: _filterOnlyMine
-            ? _repository.watchRemindersForFamilies(
-                familyIds: _families.isNotEmpty
-                    ? _families.map((f) => f.id).toList()
-                    : [_familyId],
-              )
-            : _repository.watchReminders(familyId: _familyId),
-        builder: (context, snapshot) {
-          final allReminders = snapshot.data ?? [];
-
-          // 1. Lọc theo Scope:
-          // - Cả nhà (!_filterOnlyMine): Chỉ hiện lời nhắc thuộc family đang được chọn (_familyId)
-          // - Việc của tôi (_filterOnlyMine): Hiện việc cá nhân của tôi trên các family kèm nhãn family
-          final scopedReminders = _filterOnlyMine
-              ? allReminders
-                  .where((r) => r.assignedTo == _currentUserId)
-                  .toList()
-              : allReminders
-                  .where((r) => r.familyId == _familyId)
-                  .toList();
-
-          // 2. Lọc theo từ khóa tìm kiếm (Title, Ghi chú giọng nói, Gia đình, hoặc Tên/Vai trò người nhận)
-          final searchedReminders = _searchQuery.isEmpty
-              ? scopedReminders
-              : scopedReminders.where((r) {
-                  final q = _searchQuery.toLowerCase();
-                  final titleMatch = r.title.toLowerCase().contains(q);
-                  final voiceDescMatch =
-                      (r.voiceNoteDescription ?? '').toLowerCase().contains(q);
-                  final famName =
-                      (r.familyName ?? _familyNamesById[r.familyId] ?? '')
-                          .toLowerCase();
-                  final familyMatch = famName.contains(q);
-                  final directAssigneeMatch =
-                      r.assignedToName.toLowerCase().contains(q);
-                  final famMembers = _getMembersForReminder(r);
-                  final member = famMembers.firstWhere(
-                    (m) => m.id == r.assignedTo,
-                    orElse: () => const FamilyMember(
-                      id: '',
-                      name: '',
-                      role: '',
-                      familyId: '',
-                    ),
-                  );
-                  final assigneeMatch = directAssigneeMatch ||
-                      member.name.toLowerCase().contains(q) ||
-                      member.role.toLowerCase().contains(q);
-                  return titleMatch ||
-                      voiceDescMatch ||
-                      familyMatch ||
-                      assigneeMatch;
-                }).toList();
-
-          final selectedDateStr = _formatDate(_selectedDate);
-          final displayedReminders = _showAll
-              ? searchedReminders
-              : searchedReminders
-                  .where((r) => r.date == selectedDateStr)
-                  .toList();
-
-          return Center(
+          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+          floatingActionButton: Padding(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPad),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 680),
-              child: Column(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Thanh lọc phạm vi: [👨‍👩‍👧 Cả nhà] vs [👤 Việc của tôi]
-                  ReminderScopeFilterChips(
-                    filterOnlyMine: _filterOnlyMine,
-                    onScopeChanged: (val) =>
-                        setState(() => _filterOnlyMine = val),
-                  ),
-
-                  // Thanh chọn Family (ở chế độ Cả nhà) hoặc hiển thị ngữ cảnh đa gia đình (ở chế độ Việc của tôi)
-                  _buildFamilyContextBar(),
-
-                  // Calendar View hoặc Weekly Strip
-                  if (_isCalendarView) ...[
-                    ReminderCalendarView(
-                      currentMonth: _currentMonth,
-                      selectedDate: _selectedDate,
-                      showAll: _showAll,
-                      reminders: scopedReminders,
-                      selectedDateFormatted: selectedDateStr,
-                      onDateSelected: (date) {
-                        setState(() {
-                          _selectedDate = date;
-                          _showAll = false;
-                        });
-                      },
-                      onMonthChanged: (newMonth) {
-                        setState(() {
-                          _currentMonth = newMonth;
-                        });
-                      },
-                      onShowAllPressed: () => setState(() => _showAll = true),
-                    ),
-                  ] else
-                    WeeklyCalendarStrip(
-                      selectedDate: _selectedDate,
-                      showAll: _showAll,
-                      reminders: scopedReminders,
-                      onDateSelected: (date) {
-                        setState(() {
-                          _selectedDate = date;
-                          _showAll = false;
-                        });
-                      },
-                      onSelectAll: () {
-                        setState(() {
-                          _showAll = true;
-                        });
-                      },
-                    ),
-
-                  // Family Daily Progress Card
-                  FamilyProgressCard(
-                    reminders: _showAll ? searchedReminders : displayedReminders,
-                    dateTitle: _showAll ? 'Tất cả' : selectedDateStr,
-                  ),
-
-                  // List View phân nhóm theo 4 mức ưu tiên
-                  Expanded(
-                    child: ReminderListView(
-                      allReminders: scopedReminders,
-                      displayedReminders: displayedReminders,
-                      currentUserId: _currentUserId,
-                      selectedDateStr: selectedDateStr,
-                      isShowingAll: _showAll,
-                      isParentOrOwner: _familyMembers.any(
-                        (m) =>
-                            m.id == _currentUserId &&
-                            (m.isParent || m.isGrandparent),
+                  Flexible(
+                    child: FloatingActionButton.extended(
+                      heroTag: 'fab_create_reminder',
+                      onPressed: _openCreateReminder,
+                      backgroundColor: primaryColor,
+                      elevation: 4,
+                      icon: const Icon(
+                        Icons.add_rounded,
+                        color: Colors.white,
+                        size: 22,
                       ),
-                      familyNamesById: _familyNamesById,
-                      showFamilyBadge: _filterOnlyMine,
-                      canDeletePredicate: _canDeleteReminder,
-                      onCreatePressed: _openCreateReminder,
-                      onShowAllPressed: () => setState(() => _showAll = true),
-                      onTapReminder: _showDetailBottomSheet,
-                      onCompleteReminder: _completeReminder,
-                      onDeleteReminder: _confirmAndDelete,
-                      onClaimReminder: _claimReminder,
-                      onClaimAndCompleteReminder: _claimAndCompleteReminder,
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          AppLanguage.text('Tạo lời nhắc', 'Create reminder'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: isSmallScreen ? 12.5 : 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: isSmallScreen ? 8 : 12),
+                  Flexible(
+                    child: FloatingActionButton.extended(
+                      heroTag: 'fab_ai_assistant',
+                      onPressed: _openAiAssistant,
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      elevation: 4,
+                      icon: const Icon(
+                        Icons.auto_awesome,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          AppLanguage.text('Trợ lý AI', 'AI Assistant'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: isSmallScreen ? 12 : 13,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          );
-        },
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 680),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: FloatingActionButton.extended(
-                  heroTag: 'fab_create_reminder',
-                  onPressed: _openCreateReminder,
-                  backgroundColor: primaryColor,
-                  elevation: 4,
-                  icon: const Icon(
-                    Icons.add_rounded,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                  label: Text(
-                    AppLanguage.text('Tạo lời nhắc', 'Create reminder'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: FloatingActionButton.extended(
-                  heroTag: 'fab_ai_assistant',
-                  onPressed: _openAiAssistant,
-                  backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
-                  elevation: 4,
-                  icon: const Icon(
-                    Icons.auto_awesome,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  label: Text(
-                    AppLanguage.text('Trợ lý AI', 'AI Assistant'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
-        ),
-      ),
-    );
+        );
       },
     );
   }

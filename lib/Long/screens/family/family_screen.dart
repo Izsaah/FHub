@@ -33,8 +33,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
   @override
   void initState() {
     super.initState();
+    _familyDataService.ensureRealtimeSync();
     _loadData();
     _familyDataService.selectedFamilyIdNotifier.addListener(
+      _onSelectedFamilyChanged,
+    );
+    _familyDataService.membershipRevisionNotifier.addListener(
       _onSelectedFamilyChanged,
     );
   }
@@ -42,6 +46,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
   @override
   void dispose() {
     _familyDataService.selectedFamilyIdNotifier.removeListener(
+      _onSelectedFamilyChanged,
+    );
+    _familyDataService.membershipRevisionNotifier.removeListener(
       _onSelectedFamilyChanged,
     );
     super.dispose();
@@ -63,8 +70,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
     final members = await _familyDataService.getFamilyMembers(
       familyId: family?.id,
     );
-    if (family != null) {
+    if (family != null && families.isNotEmpty) {
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
+    } else {
+      DanhPaymentEntry.clearFamilyContext();
     }
     return {
       'families': families,
@@ -569,7 +578,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
           body: FutureBuilder<Map<String, dynamic>>(
             future: _familyDataFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
 

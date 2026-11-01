@@ -21,8 +21,25 @@ class DanhPaymentEntry {
 
   static final PaymentService service = PaymentService();
 
+  static bool _ensureHasFamily(BuildContext context) {
+    if (service.currentFamilyId.trim().isNotEmpty) return true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          AppLanguage.text(
+            'Vui lòng tạo hoặc tham gia gia đình trước khi sử dụng tính năng này!',
+            'Please create or join a family before using this feature!',
+          ),
+        ),
+        backgroundColor: DanhColors.brand800,
+      ),
+    );
+    return false;
+  }
+
   /// Điều hướng tới màn hình Xem & Chọn gói Premium
   static Future<bool?> openPremiumPlans(BuildContext context) {
+    if (!_ensureHasFamily(context)) return Future.value(false);
     return Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const PremiumPlanScreen()),
@@ -34,6 +51,7 @@ class DanhPaymentEntry {
     BuildContext context, {
     int? memberCount,
   }) {
+    if (!_ensureHasFamily(context)) return Future.value();
     return Navigator.push(
       context,
       MaterialPageRoute(
@@ -44,6 +62,7 @@ class DanhPaymentEntry {
 
   /// Điều hướng tới Hũ Niềm Vui Gia Đình (Shopee Shake) - Tính năng độc quyền Premium
   static Future<void> openFamilyJackpot(BuildContext context) {
+    if (!_ensureHasFamily(context)) return Future.value();
     if (!service.isPremium) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -80,6 +99,11 @@ class DanhPaymentEntry {
     service.applyPendingSubscriptionIfNeeded(familyId);
   }
 
+  /// Xóa ngữ cảnh gia đình khi User chưa có hoặc đã rời hết tất cả gia đình
+  static void clearFamilyContext() {
+    service.clearFamily();
+  }
+
   /// Widget hiển thị tiến trình hạn mức và trạng thái gói cho TOÀN BỘ thành viên trong Family
   static Widget buildFamilyPremiumStatus(int currentMemberCount) {
     return FamilyPremiumStatusWidget(currentMemberCount: currentMemberCount);
@@ -90,6 +114,9 @@ class DanhPaymentEntry {
     return ListenableBuilder(
       listenable: service,
       builder: (context, _) {
+        if (service.currentFamilyId.trim().isEmpty) {
+          return const SizedBox.shrink();
+        }
         final isPremium = service.isPremium;
 
         return Container(
@@ -137,14 +164,18 @@ class DanhPaymentEntry {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              isPremium
-                                  ? AppLanguage.text('Tổ Ấm Premium', 'Family Hub Premium')
-                                  : AppLanguage.text('Nâng cấp Tổ Ấm Plus', 'Upgrade to Family Hub Plus'),
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: isPremium ? DanhColors.brand900 : DanhColors.textPrimary,
+                            Flexible(
+                              child: Text(
+                                isPremium
+                                    ? AppLanguage.text('Tổ Ấm Premium', 'Family Hub Premium')
+                                    : AppLanguage.text('Nâng cấp Tổ Ấm Plus', 'Upgrade to Family Hub Plus'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: isPremium ? DanhColors.brand900 : DanhColors.textPrimary,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 6),

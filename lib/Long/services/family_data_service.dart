@@ -42,19 +42,131 @@ class FamilyDataService implements IFamilyService {
   String? _cachedFamilyId;
   String? _cachedFamilyIdUserId;
   List<FamilyModel>? _cachedFamilies;
+  Future<List<FamilyModel>>? _inFlightFamiliesFuture;
 
   final ValueNotifier<String?> selectedFamilyIdNotifier =
       ValueNotifier<String?>(null);
+  final ValueNotifier<int> membershipRevisionNotifier = ValueNotifier<int>(0);
+
+  StreamSubscription<User?>? _authSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _membershipSub;
+  String? _watchedUid;
+  String? _lastMembershipSignature;
+  DateTime? _lastOwnerActiveUpdatedAt;
+  String? _lastOwnerActiveKey;
+
+  bool get hasActiveSelectedFamily =>
+      selectedFamilyIdNotifier.value != null &&
+      selectedFamilyIdNotifier.value!.isNotEmpty;
+
+  String _computeMembershipSignature(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final parts = <String>[];
+    for (final doc in docs) {
+      final d = doc.data();
+      final fid = (d['familyId'] ?? d['family_id'])?.toString() ?? '';
+      if (fid.isEmpty) continue;
+      final status = (d['status'] ?? 'ACTIVE').toString().toUpperCase();
+      final role = (d['role'] ?? '').toString();
+      final isOwner = (d['isOwner'] == true).toString();
+      parts.add('$fid:$status:$role:$isOwner');
+    }
+    parts.sort();
+    return parts.join('|');
+  }
+
+  /// Khởi tạo lắng nghe realtime trạng thái đăng nhập & danh sách family_members của user
+  void ensureRealtimeSync() {
+    if (!_isFirebaseAvailable || _authSub != null) return;
+    try {
+      _authSub = _firebaseAuth.authStateChanges().listen((user) {
+        _bindMembershipStream(user?.uid);
+      });
+      _bindMembershipStream(_firebaseAuth.currentUser?.uid);
+    } catch (e) {
+      debugPrint('ensureRealtimeSync error: $e');
+    }
+  }
+
+  void _bindMembershipStream(String? uid) {
+    if (_watchedUid == uid && _membershipSub != null) return;
+    _membershipSub?.cancel();
+    _membershipSub = null;
+    _watchedUid = uid;
+    _lastMembershipSignature = null;
+
+    if (uid == null || uid.isEmpty) {
+      resetAll();
+      return;
+    }
+
+    try {
+      _membershipSub = _firestore
+          .collection('family_members')
+          .where('userId', isEqualTo: uid)
+          .snapshots()
+          .listen(
+        (snap) async {
+          final sig = _computeMembershipSignature(snap.docs);
+          // Bỏ qua các cập nhật không làm đổi tư cách thành viên (VD: lastActiveAt, lastCheckInAt)
+          if (_lastMembershipSignature == sig) return;
+          final isInitialSnapshot = _lastMembershipSignature == null;
+          _lastMembershipSignature = sig;
+
+          // Nếu là snapshot đầu tiên và cache đã khớp danh sách ACTIVE hiện tại thì không gây rebuild thừa
+          if (isInitialSnapshot && _cachedFamilies != null) {
+            final activeIds = snap.docs
+                .where((d) =>
+                    (d.data()['status'] ?? 'ACTIVE')
+                        .toString()
+                        .toUpperCase() ==
+                    'ACTIVE')
+                .map((d) =>
+                    (d.data()['familyId'] ?? d.data()['family_id'])
+                        ?.toString() ??
+                    '')
+                .where((id) => id.isNotEmpty)
+                .toSet();
+            final cachedIds = _cachedFamilies!.map((f) => f.id).toSet();
+            if (activeIds.length == cachedIds.length &&
+                activeIds.containsAll(cachedIds)) {
+              return;
+            }
+          }
+
+          await getMyFamilies(forceRefresh: true);
+          membershipRevisionNotifier.value++;
+        },
+        onError: (e) {
+          debugPrint('FamilyDataService membership stream error: $e');
+        },
+      );
+    } catch (e) {
+      debugPrint('Bind membership stream error: $e');
+    }
+  }
 
   void clearCache() {
     _cachedFamilies = null;
+    _inFlightFamiliesFuture = null;
   }
 
   void resetAll() {
+    final hadState = _cachedFamilyId != null ||
+        (_cachedFamilies != null && _cachedFamilies!.isNotEmpty) ||
+        selectedFamilyIdNotifier.value != null;
     _cachedFamilyId = null;
     _cachedFamilyIdUserId = null;
     _cachedFamilies = null;
-    selectedFamilyIdNotifier.value = null;
+    _inFlightFamiliesFuture = null;
+    _lastMembershipSignature = null;
+    if (selectedFamilyIdNotifier.value != null) {
+      selectedFamilyIdNotifier.value = null;
+    }
+    if (hadState) {
+      membershipRevisionNotifier.value++;
+    }
   }
 
   @override
@@ -82,10 +194,14 @@ class FamilyDataService implements IFamilyService {
 
   @override
   Future<List<FamilyModel>> getMyFamilies({bool forceRefresh = false}) async {
-    if (!_isFirebaseAvailable) return _mock.getMyFamilies();
+    if (!_isFirebaseAvailable || !_isAuthenticated) {
+      return _mock.getMyFamilies();
+    }
+
+    ensureRealtimeSync();
 
     final uid = currentUserId;
-    if (uid.isEmpty) return _mock.getMyFamilies();
+    if (uid.isEmpty) return <FamilyModel>[];
 
     if (!forceRefresh &&
         _cachedFamilies != null &&
@@ -93,10 +209,27 @@ class FamilyDataService implements IFamilyService {
       return _cachedFamilies!;
     }
 
+    if (!forceRefresh && _inFlightFamiliesFuture != null) {
+      return _inFlightFamiliesFuture!;
+    }
+
+    final future = _fetchMyFamiliesInternal(uid);
+    _inFlightFamiliesFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_inFlightFamiliesFuture, future)) {
+        _inFlightFamiliesFuture = null;
+      }
+    }
+  }
+
+  Future<List<FamilyModel>> _fetchMyFamiliesInternal(String uid) async {
     final List<FamilyModel> resolved = [];
     final Set<String> familyIds = {};
 
     try {
+      // Chỉ chấp nhận tư cách thành viên đang ACTIVE thực tế trong family_members
       final memberDocs = await _firestore
           .collection('family_members')
           .where('userId', isEqualTo: uid)
@@ -106,35 +239,12 @@ class FamilyDataService implements IFamilyService {
       for (final doc in memberDocs.docs) {
         final data = doc.data();
         final status = (data['status'] ?? 'ACTIVE').toString().toUpperCase();
-        if (status == 'DEACTIVATED') continue;
+        if (status != 'ACTIVE') continue;
         final fid = (data['familyId'] ?? data['family_id'])?.toString();
         if (fid != null && fid.isNotEmpty) {
           familyIds.add(fid);
         }
       }
-
-      try {
-        final userDoc = await _firestore
-            .collection('users')
-            .doc(uid)
-            .get()
-            .timeout(const Duration(seconds: 3));
-        if (userDoc.exists && userDoc.data() != null) {
-          final fid = (userDoc.data()!['familyId'] ??
-                  userDoc.data()!['family_id'])
-              ?.toString();
-          if (fid != null && fid.isNotEmpty) {
-            final memSnap = await _firestore
-                .collection('family_members')
-                .doc('${fid}_$uid')
-                .get();
-            if (!memSnap.exists ||
-                (memSnap.data()?['status'] ?? 'ACTIVE') != 'DEACTIVATED') {
-              familyIds.add(fid);
-            }
-          }
-        }
-      } catch (_) {}
 
       for (final fid in familyIds) {
         try {
@@ -169,6 +279,11 @@ class FamilyDataService implements IFamilyService {
 
       if (resolved.isEmpty) {
         _cachedFamilyId = null;
+        // Tự động xóa con trỏ familyId cũ bị treo trong users/{uid} nếu user đã rời hết gia đình
+        _firestore.collection('users').doc(uid).update({
+          'familyId': FieldValue.delete(),
+          'family_id': FieldValue.delete(),
+        }).catchError((_) {});
       } else if (_cachedFamilyId == null ||
           !resolved.any((f) => f.id == _cachedFamilyId)) {
         _cachedFamilyId = resolved.first.id;
@@ -177,10 +292,10 @@ class FamilyDataService implements IFamilyService {
         selectedFamilyIdNotifier.value = _cachedFamilyId;
       }
 
-      return resolved.isNotEmpty ? resolved : await _mock.getMyFamilies();
+      return resolved;
     } catch (e) {
       debugPrint('getMyFamilies error: $e');
-      return _cachedFamilies ?? await _mock.getMyFamilies();
+      return _cachedFamilies ?? <FamilyModel>[];
     }
   }
 
@@ -433,13 +548,16 @@ class FamilyDataService implements IFamilyService {
 
   @override
   Future<List<FamilyMemberModel>> getFamilyMembers({String? familyId}) async {
-    if (!_isFirebaseAvailable) {
+    if (!_isFirebaseAvailable || !_isAuthenticated) {
       return _mock.getFamilyMembers(familyId: familyId);
     }
 
+    final myFamilies = await getMyFamilies();
     final targetFamilyId = familyId ?? await _getCurrentFamilyId();
-    if (targetFamilyId == null || targetFamilyId.isEmpty) {
-      return _mock.getFamilyMembers(familyId: familyId);
+    if (targetFamilyId == null ||
+        targetFamilyId.isEmpty ||
+        !myFamilies.any((f) => f.id == targetFamilyId)) {
+      return <FamilyMemberModel>[];
     }
 
     try {
@@ -531,16 +649,18 @@ class FamilyDataService implements IFamilyService {
       debugPrint('Firestore family members fetch error: $e');
     }
 
-    return _mock.getFamilyMembers(familyId: familyId);
+    return <FamilyMemberModel>[];
   }
 
   @override
   Stream<List<FamilyMemberModel>> streamFamilyMembers({String? familyId}) {
-    if (!_isFirebaseAvailable) {
+    if (!_isFirebaseAvailable || !_isAuthenticated) {
       return _mock.streamFamilyMembers(familyId: familyId);
     }
     final targetId = familyId ?? _cachedFamilyId;
-    if (targetId == null) return _mock.streamFamilyMembers(familyId: familyId);
+    if (targetId == null || targetId.isEmpty) {
+      return Stream.value(const <FamilyMemberModel>[]);
+    }
 
     return _firestore
         .collection('family_members')
@@ -647,13 +767,24 @@ class FamilyDataService implements IFamilyService {
       await _mock.updateOwnerLastActive();
       return;
     }
+    if (!_isAuthenticated) return;
     final uid = currentUserId;
     final fid = await _getCurrentFamilyId();
-    if (uid.isNotEmpty && fid != null) {
+    if (uid.isNotEmpty && fid != null && fid.isNotEmpty) {
+      final key = '${fid}_$uid';
+      final now = DateTime.now();
+      if (_lastOwnerActiveKey == key &&
+          _lastOwnerActiveUpdatedAt != null &&
+          now.difference(_lastOwnerActiveUpdatedAt!) <
+              const Duration(minutes: 10)) {
+        return;
+      }
+      _lastOwnerActiveKey = key;
+      _lastOwnerActiveUpdatedAt = now;
       try {
         await _firestore
             .collection('family_members')
-            .doc('${fid}_$uid')
+            .doc(key)
             .update({'lastActiveAt': FieldValue.serverTimestamp()});
       } catch (_) {}
     }
@@ -672,8 +803,10 @@ class FamilyDataService implements IFamilyService {
   }) async {
     final targetFamilyId = familyId ?? await _getCurrentFamilyId();
     if (targetFamilyId == null || targetFamilyId.isEmpty) {
-      await _mock.checkIn(userId,
-          imageUrl: imageUrl, caption: caption, familyId: familyId);
+      if (!_isFirebaseAvailable || !_isAuthenticated) {
+        await _mock.checkIn(userId,
+            imageUrl: imageUrl, caption: caption, familyId: familyId);
+      }
       return;
     }
 
@@ -718,9 +851,16 @@ class FamilyDataService implements IFamilyService {
 
   @override
   Future<List<CheckInFeedModel>> getCheckInFeeds({String? familyId}) async {
+    if (!_isFirebaseAvailable || !_isAuthenticated) {
+      return await _mock.getCheckInFeeds(familyId: familyId);
+    }
+
+    final myFamilies = await getMyFamilies();
     final targetFamId = familyId ?? await _getCurrentFamilyId();
-    if (!_isFirebaseAvailable || targetFamId == null) {
-      return await _mock.getCheckInFeeds(familyId: targetFamId);
+    if (targetFamId == null ||
+        targetFamId.isEmpty ||
+        !myFamilies.any((f) => f.id == targetFamId)) {
+      return <CheckInFeedModel>[];
     }
 
     try {
@@ -730,7 +870,7 @@ class FamilyDataService implements IFamilyService {
           .get();
 
       if (snap.docs.isEmpty) {
-        return await _mock.getCheckInFeeds(familyId: targetFamId);
+        return <CheckInFeedModel>[];
       }
 
       final List<CheckInFeedModel> feeds = [];
@@ -754,7 +894,7 @@ class FamilyDataService implements IFamilyService {
       feeds.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return feeds;
     } catch (_) {
-      return await _mock.getCheckInFeeds(familyId: targetFamId);
+      return <CheckInFeedModel>[];
     }
   }
 
@@ -776,11 +916,14 @@ class FamilyDataService implements IFamilyService {
     String? familyId,
     bool acrossAllFamilies = true,
   }) async {
-    if (!_isFirebaseAvailable) return _mock.getMyPendingReminders();
+    if (!_isFirebaseAvailable || !_isAuthenticated) {
+      return _mock.getMyPendingReminders();
+    }
     final uid = currentUserId;
-    if (uid.isEmpty) return _mock.getMyPendingReminders();
+    if (uid.isEmpty) return <ReminderModel>[];
 
     final families = await getMyFamilies();
+    if (families.isEmpty) return <ReminderModel>[];
     final familyNameMap = {for (final f in families) f.id: f.name};
 
     final targetFamilyId = familyId ?? await _getCurrentFamilyId();
@@ -802,9 +945,7 @@ class FamilyDataService implements IFamilyService {
         final data = Map<String, dynamic>.from(doc.data());
         data['id'] = doc.id;
         final fid = (data['family_id'] ?? data['familyId'])?.toString() ?? '';
-        if (allowedFamilyIds.isNotEmpty &&
-            fid.isNotEmpty &&
-            !allowedFamilyIds.contains(fid)) {
+        if (fid.isEmpty || !allowedFamilyIds.contains(fid)) {
           continue;
         }
         data['family_name'] ??= familyNameMap[fid];
@@ -824,9 +965,7 @@ class FamilyDataService implements IFamilyService {
         final data = Map<String, dynamic>.from(doc.data());
         data['id'] = doc.id;
         final fid = (data['family_id'] ?? data['familyId'])?.toString() ?? '';
-        if (allowedFamilyIds.isNotEmpty &&
-            fid.isNotEmpty &&
-            !allowedFamilyIds.contains(fid)) {
+        if (fid.isEmpty || !allowedFamilyIds.contains(fid)) {
           continue;
         }
         data['family_name'] ??= familyNameMap[fid];
@@ -838,7 +977,7 @@ class FamilyDataService implements IFamilyService {
       return result;
     } catch (e) {
       debugPrint('Firestore reminders fetch error: $e');
-      return _mock.getMyPendingReminders();
+      return <ReminderModel>[];
     }
   }
 

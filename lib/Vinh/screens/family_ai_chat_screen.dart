@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../Khoa/screens/family_setup_screen.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
@@ -42,8 +46,10 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
   bool _isThinking = false;
   bool _isListening = false;
   bool _autoSpeak = false;
+  bool _hasFamilyAccess = true;
   String? _speakingMessageId;
   String _liveTranscript = '';
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _membershipSub;
 
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
@@ -57,7 +63,62 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
   @override
   void initState() {
     super.initState();
-    _loadChatHistory();
+    if (widget.familyId.trim().isEmpty) {
+      _hasFamilyAccess = false;
+    } else {
+      _watchFamilyAccess();
+      _loadChatHistory();
+    }
+  }
+
+  void _watchFamilyAccess() {
+    if (Firebase.apps.isEmpty) return;
+    try {
+      final fbUser = FirebaseAuth.instance.currentUser;
+      if (fbUser == null) return;
+      _membershipSub?.cancel();
+      _membershipSub = _firestore
+          .collection('family_members')
+          .where('userId', isEqualTo: fbUser.uid)
+          .snapshots()
+          .listen((snap) async {
+        bool activeInCurrentFamily = false;
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final status = (data['status'] ?? 'ACTIVE').toString().toUpperCase();
+          final fid = (data['familyId'] ?? data['family_id'])?.toString() ?? '';
+          if (status == 'ACTIVE' && fid == widget.familyId) {
+            activeInCurrentFamily = true;
+            break;
+          }
+        }
+        if (activeInCurrentFamily) {
+          try {
+            final famDoc = await _firestore
+                .collection('families')
+                .doc(widget.familyId)
+                .get()
+                .timeout(const Duration(seconds: 3));
+            if (!famDoc.exists || famDoc.data()?['deleting'] == true) {
+              activeInCurrentFamily = false;
+            }
+          } catch (_) {}
+        }
+        if (mounted && _hasFamilyAccess != activeInCurrentFamily) {
+          if (!activeInCurrentFamily) {
+            AiSpeechPlatform.instance.stopSpeaking();
+            AiSpeechPlatform.instance.stopListening();
+          }
+          setState(() {
+            _hasFamilyAccess = activeInCurrentFamily;
+            if (!activeInCurrentFamily) {
+              _isListening = false;
+              _speakingMessageId = null;
+            }
+          });
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadChatHistory() async {
@@ -152,6 +213,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
 
   @override
   void dispose() {
+    _membershipSub?.cancel();
     AiSpeechPlatform.instance.stopSpeaking();
     AiSpeechPlatform.instance.stopListening();
     _textController.dispose();
@@ -249,6 +311,8 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         setState(() => _isListening = false);
       }
     }
+
+    if (!_hasFamilyAccess || widget.familyId.trim().isEmpty) return;
 
     final text = predefinedText ?? _textController.text.trim();
     if (text.isEmpty || _isThinking) return;
@@ -465,7 +529,9 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                 ),
               ],
             ),
-            actions: [
+            actions: !_hasFamilyAccess
+                ? const []
+                : [
               // Nút bật/tắt Tự động đọc phản hồi (TTS Auto-Speak)
               IconButton(
                 tooltip: AppLanguage.text(
@@ -588,79 +654,168 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
             ],
           ),
           body: SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 680),
-                child: Column(
-                  children: [
-                    // Danh sách tin nhắn chat
-                    Expanded(
-                      child: ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final msg = _messages[index];
-                          return _buildMessageItem(msg);
-                        },
+            child: !_hasFamilyAccess
+                ? _buildNoFamilyGuard(context, primaryColor)
+                : Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 680),
+                      child: Column(
+                        children: [
+                          // Danh sách tin nhắn chat
+                          Expanded(
+                            child: ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 16,
+                              ),
+                              itemCount: _messages.length,
+                              itemBuilder: (context, index) {
+                                final msg = _messages[index];
+                                return _buildMessageItem(msg);
+                              },
+                            ),
+                          ),
+
+                          // Hiệu ứng "AI đang suy nghĩ..."
+                          if (_isThinking)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 6,
+                              ),
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor:
+                                          AlwaysStoppedAnimation<Color>(primaryColor),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      AppLanguage.text(
+                                        'Trợ lý AI đang xử lý...',
+                                        'AI Assistant is thinking...',
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                          // Thanh trạng thái Đang Lắng Nghe Giọng Nói (STT Panel trực quan)
+                          if (_isListening) _buildListeningBanner(primaryColor),
+
+                          // Khung nhập câu lệnh (Nói & Nhắn tin)
+                          _buildInputBar(),
+                        ],
                       ),
                     ),
-
-                    // Hiệu ứng "AI đang suy nghĩ..."
-                    if (_isThinking)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 6,
-                        ),
-                        alignment: Alignment.centerLeft,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(primaryColor),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                AppLanguage.text(
-                                  'Trợ lý AI đang xử lý...',
-                                  'AI Assistant is thinking...',
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    // Thanh trạng thái Đang Lắng Nghe Giọng Nói (STT Panel trực quan)
-                    if (_isListening) _buildListeningBanner(primaryColor),
-
-                    // Khung nhập câu lệnh (Nói & Nhắn tin)
-                    _buildInputBar(),
-                  ],
-                ),
-              ),
-            ),
+                  ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildNoFamilyGuard(BuildContext context, Color primaryColor) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 84,
+                height: 84,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE6F6F2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.family_restroom_rounded,
+                  size: 42,
+                  color: primaryColor,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                AppLanguage.text(
+                  'Bạn chưa tham gia gia đình nào.',
+                  'You have not joined any family yet.',
+                ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF151D1B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                AppLanguage.text(
+                  'Trợ lý AI Gia đình chỉ hoạt động khi tài khoản đang tham gia một không gian gia đình hợp lệ.',
+                  'Family AI Assistant is only available when you are an active member of a family.',
+                ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF6E7A75),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.group_add_rounded, size: 20),
+                  label: Text(
+                    AppLanguage.text(
+                      'Tạo hoặc tham gia gia đình',
+                      'Create or join a family',
+                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onPressed: () async {
+                    final nav = Navigator.of(context);
+                    await nav.push(
+                      MaterialPageRoute(
+                        builder: (_) => const FamilySetupScreen(),
+                      ),
+                    );
+                    if (mounted) {
+                      nav.pop();
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

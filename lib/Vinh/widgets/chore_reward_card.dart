@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../Thinh/theme/app_language.dart';
 
 /// Thẻ tùy chọn nghiệm thu việc nhà:
 /// - Bật/Tắt yêu cầu bắt buộc chụp ảnh bằng chứng hoàn thành bằng Camera
@@ -18,63 +19,77 @@ class ChoreRewardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFD0E6DE)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, child) {
+        return Material(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFD0E6DE)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.camera_alt_rounded,
-                  color: primaryColor,
-                  size: 22,
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.camera_alt_rounded,
+                      color: primaryColor,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        AppLanguage.text(
+                          'Nghiệm thu hoàn thành việc nhà',
+                          'Task Completion Verification',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Nghiệm thu hoàn thành việc nhà',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: textPrimary,
+                const SizedBox(height: 8),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    AppLanguage.text(
+                      'Bắt buộc chụp ảnh nghiệm thu',
+                      'Proof Photo Required',
+                    ),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
                     ),
                   ),
+                  subtitle: Text(
+                    AppLanguage.text(
+                      'Người nhận việc cần chụp ảnh hoàn thành bằng Camera để xác thực',
+                      'Assignee must take a completion photo via Camera to verify',
+                    ),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: textMuted,
+                    ),
+                  ),
+                  value: requiresProofImage,
+                  activeTrackColor: primaryColor,
+                  onChanged: onProofRequiredChanged,
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                'Bắt buộc chụp ảnh nghiệm thu',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-              subtitle: const Text(
-                'Người nhận việc cần chụp ảnh hoàn thành bằng Camera để xác thực',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: textMuted,
-                ),
-              ),
-              value: requiresProofImage,
-              activeTrackColor: primaryColor,
-              onChanged: onProofRequiredChanged,
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

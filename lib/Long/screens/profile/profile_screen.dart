@@ -26,8 +26,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _familyDataService.ensureRealtimeSync();
     _loadData();
     _familyDataService.selectedFamilyIdNotifier.addListener(
+      _onSelectedFamilyChanged,
+    );
+    _familyDataService.membershipRevisionNotifier.addListener(
       _onSelectedFamilyChanged,
     );
   }
@@ -36,6 +40,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _familyScrollController.dispose();
     _familyDataService.selectedFamilyIdNotifier.removeListener(
+      _onSelectedFamilyChanged,
+    );
+    _familyDataService.membershipRevisionNotifier.removeListener(
       _onSelectedFamilyChanged,
     );
     super.dispose();
@@ -55,8 +62,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = await _familyDataService.getCurrentUser();
     final families = await _familyDataService.getMyFamilies();
     final family = await _familyDataService.getCurrentFamily();
-    if (family != null) {
+    if (family != null && families.isNotEmpty) {
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
+    } else {
+      DanhPaymentEntry.clearFamilyContext();
     }
     return {
       'user': user,
@@ -522,12 +531,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: FutureBuilder<Map<String, dynamic>>(
         future: _profileDataFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
+          }
+
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
           }
 
           final data = snapshot.data!;
@@ -712,10 +721,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
 
-                // Banner nâng cấp / quản lý gói Premium
-                DanhPaymentEntry.buildPremiumBanner(context),
-
-                const SizedBox(height: 16),
+                // Banner nâng cấp / quản lý gói Premium & Hũ Niềm Vui (chỉ dành cho người dùng đã tham gia gia đình)
+                if (families.isNotEmpty && family != null) ...[
+                  DanhPaymentEntry.buildPremiumBanner(context),
+                  const SizedBox(height: 16),
+                ] else
+                  const SizedBox(height: 16),
 
                 // Cài đặt ngôn ngữ hiển thị (Tiếng Việt & English)
                 _buildLanguageSettingsCard(),
@@ -763,6 +774,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                       try {
                         _familyDataService.resetAll();
+                        DanhPaymentEntry.clearFamilyContext();
                         await AuthService().logout();
                         if (context.mounted) {
                           Navigator.of(context).pushAndRemoveUntil(
