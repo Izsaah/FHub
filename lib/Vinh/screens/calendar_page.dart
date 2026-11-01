@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../services/reminder_repository.dart';
@@ -84,11 +85,15 @@ class _CalendarPageState extends State<CalendarPage> {
         proofImageUrl: proofUrl,
       );
       if (mounted) {
-        const successMsg = 'Đã hoàn thành công việc!';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(successMsg),
-            backgroundColor: Color(0xFF005F50),
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                'Đã hoàn thành công việc!',
+                'Task completed successfully!',
+              ),
+            ),
+            backgroundColor: const Color(0xFF005F50),
           ),
         );
         setState(() {});
@@ -116,7 +121,11 @@ class _CalendarPageState extends State<CalendarPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!'),
+              AppLanguage.text(
+                '🎉 Bạn đã xung phong nhận việc "${reminder.title}" thành công!',
+                '🎉 Successfully claimed "${reminder.title}"!',
+              ),
+            ),
             backgroundColor: const Color(0xFF005F50),
           ),
         );
@@ -157,17 +166,26 @@ class _CalendarPageState extends State<CalendarPage> {
         }
       }
 
-      await widget.repository.claimAndCompleteOpenTask(
+      await widget.repository.claimOpenTask(
         reminderId: reminder.id,
         currentUserId: widget.currentUserId,
         currentUserName: widget.currentUserName,
+      );
+
+      await widget.repository.completeReminder(
+        reminderId: reminder.id,
+        currentUserId: widget.currentUserId,
         proofImageUrl: proofUrl,
       );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '🎉 Bạn đã hoàn thành việc chung "${reminder.title}" xuất sắc!',
+              AppLanguage.text(
+                '🎉 Bạn đã hoàn thành việc "${reminder.title}"!',
+                '🎉 Completed task "${reminder.title}"!',
+              ),
             ),
             backgroundColor: const Color(0xFF005F50),
           ),
@@ -196,22 +214,27 @@ class _CalendarPageState extends State<CalendarPage> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        title: const Text(
-          'Xóa lời nhắc',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          AppLanguage.text('Xóa lời nhắc', 'Delete reminder'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text('Bạn có chắc chắn muốn xóa lời nhắc này?'),
+        content: Text(
+          AppLanguage.text(
+            'Bạn có chắc chắn muốn xóa lời nhắc này?',
+            'Are you sure you want to delete this reminder?',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Hủy'),
+            child: Text(AppLanguage.text('Hủy', 'Cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFBA1A1A),
             ),
             onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Xóa'),
+            child: Text(AppLanguage.text('Xóa', 'Delete')),
           ),
         ],
       ),
@@ -230,9 +253,14 @@ class _CalendarPageState extends State<CalendarPage> {
           final controller = messenger.showSnackBar(
             SnackBar(
               duration: const Duration(seconds: 10),
-              content: Text('Đã xóa "${reminder.title}".'),
+              content: Text(
+                AppLanguage.text(
+                  'Đã xóa "${reminder.title}".',
+                  'Deleted "${reminder.title}".',
+                ),
+              ),
               action: SnackBarAction(
-                label: 'HOÀN TÁC',
+                label: AppLanguage.text('HOÀN TÁC', 'UNDO'),
                 textColor: const Color(0xFFaaffe9),
                 onPressed: () async {
                   _deleteSnackBarTimer?.cancel();
@@ -285,289 +313,325 @@ class _CalendarPageState extends State<CalendarPage> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF0D7A68);
-    const textPrimary = Color(0xFF151D1B);
-    final selectedDateStr = _formatDate(_selectedDate);
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, isEn, child) {
+        const primaryColor = Color(0xFF0D7A68);
+        const textPrimary = Color(0xFF151D1B);
+        final selectedDateStr = _formatDate(_selectedDate);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3FBF8),
-      appBar: AppBar(
-        title: const Text(
-          'Lịch Gia Đình',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-            color: textPrimary,
+        return Scaffold(
+          backgroundColor: const Color(0xFFF3FBF8),
+          appBar: AppBar(
+            title: Text(
+              AppLanguage.text('Lịch Gia Đình', 'Family Calendar'),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+                color: textPrimary,
+              ),
+            ),
+            backgroundColor: Colors.white,
+            elevation: 0,
+            iconTheme: const IconThemeData(color: textPrimary),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(color: const Color(0xFFE2EAE7), height: 1),
+            ),
           ),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: textPrimary),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: const Color(0xFFE2EAE7), height: 1),
-        ),
-      ),
-      body: StreamBuilder<List<ReminderModel>>(
-        stream: widget.repository.watchReminders(familyId: widget.familyId),
-        builder: (context, snapshot) {
-          final allReminders = snapshot.data ?? [];
-          final dayReminders = allReminders
-              .where((r) => r.date == selectedDateStr && !r.isDeleted)
-              .toList();
+          body: StreamBuilder<List<ReminderModel>>(
+            stream: widget.repository.watchReminders(familyId: widget.familyId),
+            builder: (context, snapshot) {
+              final allReminders = snapshot.data ?? [];
+              final dayReminders = allReminders
+                  .where((r) => r.date == selectedDateStr && !r.isDeleted)
+                  .toList();
 
-          final overdueList = dayReminders
-              .where((r) => r.isOverdue && !r.isCompleted)
-              .toList();
+              final overdueList = dayReminders
+                  .where((r) => r.isOverdue && !r.isCompleted)
+                  .toList();
 
-          final openList = dayReminders
-              .where((r) => r.isOpen && !r.isOverdue && !r.isCompleted)
-              .toList();
+              final openList = dayReminders
+                  .where((r) => r.isOpen && !r.isOverdue && !r.isCompleted)
+                  .toList();
 
-          final pendingList = dayReminders
-              .where((r) =>
-                  r.isPending && !r.isOverdue && !r.isOpen && !r.isCompleted)
-              .toList();
+              final pendingList = dayReminders
+                  .where((r) =>
+                      r.isPending &&
+                      !r.isOverdue &&
+                      !r.isOpen &&
+                      !r.isCompleted)
+                  .toList();
 
-          final completedList =
-              dayReminders.where((r) => r.isCompleted).toList();
+              final completedList =
+                  dayReminders.where((r) => r.isCompleted).toList();
 
-          return Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 680),
-              child: CustomScrollView(
-                slivers: [
-                  // 1. Monthly Calendar Grid
-                  SliverToBoxAdapter(
-                    child: MonthlyCalendarGrid(
-                      currentMonth: _currentMonth,
-                      selectedDate: _selectedDate,
-                      reminders: allReminders,
-                      onDateSelected: (date) {
-                        setState(() => _selectedDate = date);
-                      },
-                      onMonthChanged: (month) {
-                        setState(() => _currentMonth = month);
-                      },
-                    ),
-                  ),
-
-                  // 2. Day Progress Card
-                  if (dayReminders.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: FamilyProgressCard(
-                        reminders: dayReminders,
-                        dateTitle: selectedDateStr,
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 680),
+                  child: CustomScrollView(
+                    slivers: [
+                      // 1. Monthly Calendar Grid
+                      SliverToBoxAdapter(
+                        child: MonthlyCalendarGrid(
+                          currentMonth: _currentMonth,
+                          selectedDate: _selectedDate,
+                          reminders: allReminders,
+                          onDateSelected: (date) {
+                            setState(() => _selectedDate = date);
+                          },
+                          onMonthChanged: (month) {
+                            setState(() => _currentMonth = month);
+                          },
+                        ),
                       ),
-                    ),
 
-                  // 3. Section Title for Selected Date
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Việc ngày $selectedDateStr',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: textPrimary,
-                              ),
-                            ),
+                      // 2. Day Progress Card
+                      if (dayReminders.isNotEmpty)
+                        SliverToBoxAdapter(
+                          child: FamilyProgressCard(
+                            reminders: dayReminders,
+                            dateTitle: selectedDateStr,
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${dayReminders.length} nhắc nhở',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF6E7A75),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                        ),
 
-                  // 4. Reminders for Selected Date
-                  if (dayReminders.isEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Center(
-                          child: Column(
+                      // 3. Section Title for Selected Date
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Icon(
-                                Icons.event_note_outlined,
-                                size: 48,
-                                color: Colors.grey.shade400,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Chưa có nhắc nhở cho ngày $selectedDateStr',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  color: Color(0xFF6E7A75),
+                              Expanded(
+                                child: Text(
+                                  AppLanguage.text(
+                                    'Việc ngày $selectedDateStr',
+                                    'Tasks for $selectedDateStr',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: textPrimary,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              FilledButton.tonal(
-                                onPressed: _openCreateReminder,
-                                child:
-                                    const Text('Thêm nhắc nhở cho ngày này'),
+                              const SizedBox(width: 8),
+                              Text(
+                                AppLanguage.text(
+                                  '${dayReminders.length} nhắc nhở',
+                                  '${dayReminders.length} reminders',
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF6E7A75),
+                                ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                    )
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 90),
-                      sliver: SliverList(
-                        delegate: SliverChildListDelegate([
-                          // 1. OVERDUE
-                          if (overdueList.isNotEmpty) ...[
-                            ReminderSectionHeader(
-                              title: 'QUÁ HẠN',
-                              count: overdueList.length,
-                              color: const Color(0xFFBA1A1A),
-                              icon: Icons.warning_amber_rounded,
+
+                      // 4. Reminders for Selected Date
+                      if (dayReminders.isEmpty)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Center(
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.event_note_outlined,
+                                    size: 48,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    AppLanguage.text(
+                                      'Chưa có nhắc nhở cho ngày $selectedDateStr',
+                                      'No reminders for $selectedDateStr',
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      color: Color(0xFF6E7A75),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  FilledButton.tonal(
+                                    onPressed: _openCreateReminder,
+                                    child: Text(
+                                      AppLanguage.text(
+                                        'Thêm nhắc nhở cho ngày này',
+                                        'Add reminder for this day',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            ...overdueList.map(
-                              (reminder) => ReminderCard(
-                                reminder: reminder,
-                                currentUserId: widget.currentUserId,
-                                onTap: () => _showDetailBottomSheet(reminder),
-                                onComplete:
-                                    reminder.assignedTo == widget.currentUserId
+                          ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 90),
+                          sliver: SliverList(
+                            delegate: SliverChildListDelegate([
+                              // 1. OVERDUE
+                              if (overdueList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: AppLanguage.text('QUÁ HẠN', 'OVERDUE'),
+                                  count: overdueList.length,
+                                  color: const Color(0xFFBA1A1A),
+                                  icon: Icons.warning_amber_rounded,
+                                ),
+                                ...overdueList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: widget.currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onComplete: reminder.assignedTo ==
+                                            widget.currentUserId
                                         ? () => _completeReminder(reminder)
                                         : null,
-                                onDelete: (reminder.creatorId ==
-                                            widget.currentUserId ||
-                                        _isParentOrOwner)
-                                    ? () => _confirmAndDelete(reminder)
-                                    : null,
-                                onClaim: reminder.isOpenTask
-                                    ? () => _claimReminder(reminder)
-                                    : null,
-                                onClaimAndComplete: reminder.isOpenTask
-                                    ? () => _claimAndCompleteReminder(reminder)
-                                    : null,
-                              ),
-                            ),
-                          ],
+                                    onDelete: (reminder.creatorId ==
+                                                widget.currentUserId ||
+                                            _isParentOrOwner)
+                                        ? () => _confirmAndDelete(reminder)
+                                        : null,
+                                    onClaim: reminder.isOpenTask
+                                        ? () => _claimReminder(reminder)
+                                        : null,
+                                    onClaimAndComplete: reminder.isOpenTask
+                                        ? () =>
+                                            _claimAndCompleteReminder(reminder)
+                                        : null,
+                                  ),
+                                ),
+                              ],
 
-                          // 2. OPEN
-                          if (openList.isNotEmpty) ...[
-                            ReminderSectionHeader(
-                              title: 'VIỆC CHUNG CHƯA GÁN',
-                              count: openList.length,
-                              color: const Color(0xFF006A6A),
-                              icon: Icons.lock_open_rounded,
-                            ),
-                            ...openList.map(
-                              (reminder) => ReminderCard(
-                                reminder: reminder,
-                                currentUserId: widget.currentUserId,
-                                onTap: () => _showDetailBottomSheet(reminder),
-                                onComplete:
-                                    reminder.assignedTo == widget.currentUserId
+                              // 2. OPEN
+                              if (openList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: AppLanguage.text(
+                                    'VIỆC CHUNG CHƯA GÁN',
+                                    'UNASSIGNED SHARED',
+                                  ),
+                                  count: openList.length,
+                                  color: const Color(0xFF006A6A),
+                                  icon: Icons.lock_open_rounded,
+                                ),
+                                ...openList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: widget.currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onComplete: reminder.assignedTo ==
+                                            widget.currentUserId
                                         ? () => _completeReminder(reminder)
                                         : null,
-                                onDelete: (reminder.creatorId ==
-                                            widget.currentUserId ||
-                                        _isParentOrOwner)
-                                    ? () => _confirmAndDelete(reminder)
-                                    : null,
-                                onClaim: () => _claimReminder(reminder),
-                                onClaimAndComplete: () =>
-                                    _claimAndCompleteReminder(reminder),
-                              ),
-                            ),
-                          ],
+                                    onDelete: (reminder.creatorId ==
+                                                widget.currentUserId ||
+                                            _isParentOrOwner)
+                                        ? () => _confirmAndDelete(reminder)
+                                        : null,
+                                    onClaim: () => _claimReminder(reminder),
+                                    onClaimAndComplete: () =>
+                                        _claimAndCompleteReminder(reminder),
+                                  ),
+                                ),
+                              ],
 
-                          // 3. PENDING
-                          if (pendingList.isNotEmpty) ...[
-                            ReminderSectionHeader(
-                              title: 'CHỜ THỰC HIỆN',
-                              count: pendingList.length,
-                              color: const Color(0xFF49454F),
-                              icon: Icons.hourglass_top_rounded,
-                            ),
-                            ...pendingList.map(
-                              (reminder) => ReminderCard(
-                                reminder: reminder,
-                                currentUserId: widget.currentUserId,
-                                onTap: () => _showDetailBottomSheet(reminder),
-                                onComplete:
-                                    reminder.assignedTo == widget.currentUserId
+                              // 3. PENDING
+                              if (pendingList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: AppLanguage.text(
+                                    'CHỜ THỰC HIỆN',
+                                    'PENDING',
+                                  ),
+                                  count: pendingList.length,
+                                  color: const Color(0xFF49454F),
+                                  icon: Icons.hourglass_top_rounded,
+                                ),
+                                ...pendingList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: widget.currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onComplete: reminder.assignedTo ==
+                                            widget.currentUserId
                                         ? () => _completeReminder(reminder)
                                         : null,
-                                onDelete: (reminder.creatorId ==
-                                            widget.currentUserId ||
-                                        _isParentOrOwner)
-                                    ? () => _confirmAndDelete(reminder)
-                                    : null,
-                                onClaim: reminder.isOpenTask
-                                    ? () => _claimReminder(reminder)
-                                    : null,
-                                onClaimAndComplete: reminder.isOpenTask
-                                    ? () => _claimAndCompleteReminder(reminder)
-                                    : null,
-                              ),
-                            ),
-                          ],
+                                    onDelete: (reminder.creatorId ==
+                                                widget.currentUserId ||
+                                            _isParentOrOwner)
+                                        ? () => _confirmAndDelete(reminder)
+                                        : null,
+                                    onClaim: reminder.isOpenTask
+                                        ? () => _claimReminder(reminder)
+                                        : null,
+                                    onClaimAndComplete: reminder.isOpenTask
+                                        ? () =>
+                                            _claimAndCompleteReminder(reminder)
+                                        : null,
+                                  ),
+                                ),
+                              ],
 
-                          // 4. COMPLETED
-                          if (completedList.isNotEmpty) ...[
-                            ReminderSectionHeader(
-                              title: 'ĐÃ HOÀN THÀNH',
-                              count: completedList.length,
-                              color: const Color(0xFF005F50),
-                              icon: Icons.check_circle_outline_rounded,
-                            ),
-                            ...completedList.map(
-                              (reminder) => ReminderCard(
-                                reminder: reminder,
-                                currentUserId: widget.currentUserId,
-                                onTap: () => _showDetailBottomSheet(reminder),
-                                onDelete: (reminder.creatorId ==
-                                            widget.currentUserId ||
-                                        _isParentOrOwner)
-                                    ? () => _confirmAndDelete(reminder)
-                                    : null,
-                              ),
-                            ),
-                          ],
-                        ]),
-                      ),
-                    ),
-                ],
+                              // 4. COMPLETED
+                              if (completedList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: AppLanguage.text(
+                                    'ĐÃ HOÀN THÀNH',
+                                    'COMPLETED',
+                                  ),
+                                  count: completedList.length,
+                                  color: const Color(0xFF005F50),
+                                  icon: Icons.check_circle_outline_rounded,
+                                ),
+                                ...completedList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: widget.currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onDelete: (reminder.creatorId ==
+                                                widget.currentUserId ||
+                                            _isParentOrOwner)
+                                        ? () => _confirmAndDelete(reminder)
+                                        : null,
+                                  ),
+                                ),
+                              ],
+                            ]),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: _openCreateReminder,
+            backgroundColor: primaryColor,
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: Text(
+              AppLanguage.text('Tạo lời nhắc', 'Create reminder'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
               ),
             ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreateReminder,
-        backgroundColor: primaryColor,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          'Tạo lời nhắc',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

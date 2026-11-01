@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../Thinh/theme/app_language.dart';
 import '../../models/reminder_model.dart';
 import '../../widgets/monthly_calendar_grid.dart';
 
@@ -30,61 +31,70 @@ class ReminderCalendarView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        MonthlyCalendarGrid(
-          currentMonth: currentMonth,
-          selectedDate: selectedDate,
-          reminders: reminders,
-          onDateSelected: onDateSelected,
-          onMonthChanged: onMonthChanged,
-        ),
-        if (!showAll)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.filter_alt_outlined,
-                        size: 16,
-                        color: primaryColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          'Đang lọc theo ngày: $selectedDateFormatted',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, child) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MonthlyCalendarGrid(
+              currentMonth: currentMonth,
+              selectedDate: selectedDate,
+              reminders: reminders,
+              onDateSelected: onDateSelected,
+              onMonthChanged: onMonthChanged,
+            ),
+            if (!showAll)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.filter_alt_outlined,
+                            size: 16,
                             color: primaryColor,
                           ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              AppLanguage.text(
+                                'Đang lọc theo ngày: $selectedDateFormatted',
+                                'Filtering by date: $selectedDateFormatted',
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: primaryColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: onShowAllPressed,
+                      child: Text(
+                        AppLanguage.text('Xem tất cả', 'View all'),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: primaryColor,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: onShowAllPressed,
-                  child: const Text(
-                    'Xem tất cả',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor,
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-      ],
+              ),
+          ],
+        );
+      },
     );
   }
 }

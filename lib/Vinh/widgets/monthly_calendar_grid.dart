@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../Thinh/theme/app_language.dart';
 import '../models/reminder_model.dart';
 
 class MonthlyCalendarGrid extends StatefulWidget {
@@ -22,22 +23,25 @@ class MonthlyCalendarGrid extends StatefulWidget {
 }
 
 class _MonthlyCalendarGridState extends State<MonthlyCalendarGrid> {
-  String _getMonthName(int month) {
-    const months = [
-      'Tháng 1',
-      'Tháng 2',
-      'Tháng 3',
-      'Tháng 4',
-      'Tháng 5',
-      'Tháng 6',
-      'Tháng 7',
-      'Tháng 8',
-      'Tháng 9',
-      'Tháng 10',
-      'Tháng 11',
-      'Tháng 12'
-    ];
-    return months[month - 1];
+  String _getMonthName(int month, bool isEn) {
+    if (isEn) {
+      const monthsEn = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December'
+      ];
+      return monthsEn[month - 1];
+    }
+    return 'Tháng $month';
   }
 
   void _prevMonth() {
@@ -66,228 +70,247 @@ class _MonthlyCalendarGridState extends State<MonthlyCalendarGrid> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF0D7A68);
-    const textPrimary = Color(0xFF151D1B);
-    const textMuted = Color(0xFF6E7A75);
-    final today = DateTime.now();
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, isEn, child) {
+        const primaryColor = Color(0xFF0D7A68);
+        const textPrimary = Color(0xFF151D1B);
+        const textMuted = Color(0xFF6E7A75);
+        final today = DateTime.now();
 
-    final firstDayOfMonth =
-        DateTime(widget.currentMonth.year, widget.currentMonth.month, 1);
-    final daysInMonth =
-        DateTime(widget.currentMonth.year, widget.currentMonth.month + 1, 0)
+        final firstDayOfMonth =
+            DateTime(widget.currentMonth.year, widget.currentMonth.month, 1);
+        final daysInMonth = DateTime(
+                widget.currentMonth.year, widget.currentMonth.month + 1, 0)
             .day;
-    // Weekday: Monday is 1, Sunday is 7
-    final firstWeekday = firstDayOfMonth.weekday; // 1 to 7
+        // Weekday: Monday is 1, Sunday is 7
+        final firstWeekday = firstDayOfMonth.weekday; // 1 to 7
 
-    const weekdays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+        final weekdays = isEn
+            ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            : ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2EAE7)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A0D7A68),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Month navigation bar
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Text(
-                  '${_getMonthName(widget.currentMonth.month)} ${widget.currentMonth.year}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: textPrimary,
-                  ),
-                ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left, size: 22),
-                    color: textPrimary,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _prevMonth,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.today, size: 20),
-                    tooltip: 'Về hôm nay',
-                    color: primaryColor,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () {
-                      final now = DateTime.now();
-                      widget.onMonthChanged(DateTime(now.year, now.month, 1));
-                      widget.onDateSelected(now);
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right, size: 22),
-                    color: textPrimary,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _nextMonth,
-                  ),
-                ],
+        final monthHeaderTitle = isEn
+            ? '${_getMonthName(widget.currentMonth.month, true)} ${widget.currentMonth.year}'
+            : '${_getMonthName(widget.currentMonth.month, false)}, ${widget.currentMonth.year}';
+
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE2EAE7)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A0D7A68),
+                blurRadius: 12,
+                offset: Offset(0, 4),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-
-          // Weekday header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: weekdays.map((w) {
-              return Expanded(
-                child: Center(
-                  child: Text(
-                    w,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: textMuted,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 8),
-
-          // Month days grid
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: (firstWeekday - 1) + daysInMonth,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisSpacing: 4,
-              crossAxisSpacing: 4,
-              childAspectRatio: 1.0,
-            ),
-            itemBuilder: (context, index) {
-              if (index < firstWeekday - 1) {
-                return const SizedBox.shrink();
-              }
-
-              final dayNum = index - (firstWeekday - 1) + 1;
-              final dayDate = DateTime(
-                  widget.currentMonth.year, widget.currentMonth.month, dayNum);
-
-              final isSelected = _isSameDay(dayDate, widget.selectedDate);
-              final isToday = _isSameDay(dayDate, today);
-
-              final dayReminders = _getRemindersForDay(dayDate);
-              final hasOverdue =
-                  dayReminders.any((r) => r.isOverdue && !r.isCompleted);
-              final hasPending = dayReminders.any(
-                  (r) => (r.isPending || r.isOpen) && !r.isOverdue && !r.isCompleted);
-              final hasCompleted = dayReminders.any((r) => r.isCompleted);
-
-              return InkWell(
-                onTap: () => widget.onDateSelected(dayDate),
-                borderRadius: BorderRadius.circular(12),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? primaryColor
-                        : (isToday
-                            ? const Color(0xFFE7F5F2)
-                            : Colors.transparent),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected
-                          ? primaryColor
-                          : (isToday ? primaryColor : Colors.transparent),
-                      width: isToday && !isSelected ? 1.5 : 1,
-                    ),
-                  ),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '$dayNum',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: isSelected || isToday
-                                ? FontWeight.bold
-                                : FontWeight.w500,
-                            color: isSelected
-                                ? Colors.white
-                                : (isToday ? primaryColor : textPrimary),
-                          ),
+          child: Column(
+            children: [
+              // Month navigation bar
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        monthHeaderTitle,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
                         ),
-                        if (dayReminders.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (hasOverdue)
-                                Container(
-                                  width: 5,
-                                  height: 5,
-                                  margin:
-                                      const EdgeInsets.symmetric(horizontal: 1),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFBA1A1A),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              if (hasPending)
-                                Container(
-                                  width: 5,
-                                  height: 5,
-                                  margin:
-                                      const EdgeInsets.symmetric(horizontal: 1),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? const Color(0xFFF49D37)
-                                        : const Color(0xFF0D7A68),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              if (hasCompleted)
-                                Container(
-                                  width: 5,
-                                  height: 5,
-                                  margin:
-                                      const EdgeInsets.symmetric(horizontal: 1),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? Colors.white70
-                                        : const Color(0xFFBDC9C4),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
                   ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left, size: 22),
+                        tooltip: AppLanguage.text('Tháng trước', 'Previous month'),
+                        color: textPrimary,
+                        visualDensity: VisualDensity.compact,
+                        onPressed: _prevMonth,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.today, size: 20),
+                        tooltip: AppLanguage.text('Về hôm nay', 'To today'),
+                        color: primaryColor,
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () {
+                          final now = DateTime.now();
+                          widget
+                              .onMonthChanged(DateTime(now.year, now.month, 1));
+                          widget.onDateSelected(now);
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right, size: 22),
+                        tooltip: AppLanguage.text('Tháng sau', 'Next month'),
+                        color: textPrimary,
+                        visualDensity: VisualDensity.compact,
+                        onPressed: _nextMonth,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Weekday header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: weekdays.map((w) {
+                  return Expanded(
+                    child: Center(
+                      child: Text(
+                        w,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: textMuted,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 8),
+
+              // Month days grid
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: (firstWeekday - 1) + daysInMonth,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 7,
+                  mainAxisSpacing: 4,
+                  crossAxisSpacing: 4,
+                  childAspectRatio: 1.0,
                 ),
-              );
-            },
+                itemBuilder: (context, index) {
+                  if (index < firstWeekday - 1) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final dayNum = index - (firstWeekday - 1) + 1;
+                  final dayDate = DateTime(widget.currentMonth.year,
+                      widget.currentMonth.month, dayNum);
+
+                  final isSelected = _isSameDay(dayDate, widget.selectedDate);
+                  final isToday = _isSameDay(dayDate, today);
+
+                  final dayReminders = _getRemindersForDay(dayDate);
+                  final hasOverdue =
+                      dayReminders.any((r) => r.isOverdue && !r.isCompleted);
+                  final hasPending = dayReminders.any((r) =>
+                      (r.isPending || r.isOpen) &&
+                      !r.isOverdue &&
+                      !r.isCompleted);
+                  final hasCompleted = dayReminders.any((r) => r.isCompleted);
+
+                  return InkWell(
+                    onTap: () => widget.onDateSelected(dayDate),
+                    borderRadius: BorderRadius.circular(12),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? primaryColor
+                            : (isToday
+                                ? const Color(0xFFE7F5F2)
+                                : Colors.transparent),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? primaryColor
+                              : (isToday ? primaryColor : Colors.transparent),
+                          width: isToday && !isSelected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$dayNum',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: isSelected || isToday
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
+                                color: isSelected
+                                    ? Colors.white
+                                    : (isToday ? primaryColor : textPrimary),
+                              ),
+                            ),
+                            if (dayReminders.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (hasOverdue)
+                                    Container(
+                                      width: 5,
+                                      height: 5,
+                                      margin: const EdgeInsets.symmetric(
+                                          horizontal: 1),
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFBA1A1A),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  if (hasPending)
+                                    Container(
+                                      width: 5,
+                                      height: 5,
+                                      margin: const EdgeInsets.symmetric(
+                                          horizontal: 1),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? const Color(0xFFF49D37)
+                                            : const Color(0xFF0D7A68),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  if (hasCompleted)
+                                    Container(
+                                      width: 5,
+                                      height: 5,
+                                      margin: const EdgeInsets.symmetric(
+                                          horizontal: 1),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? Colors.white60
+                                            : const Color(0xFFBDC9C4),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
