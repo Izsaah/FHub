@@ -8,9 +8,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/Thinh/screens/login_form_view.dart';
-import '../lib/Thinh/screens/register_view.dart';
-import '../lib/Thinh/theme/app_language.dart';
+import 'package:fhub/Thinh/screens/login_form_view.dart';
+import 'package:fhub/Thinh/screens/register_view.dart';
+import 'package:fhub/Thinh/theme/app_language.dart';
 
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {

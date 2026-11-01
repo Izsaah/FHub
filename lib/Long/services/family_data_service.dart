@@ -3,7 +3,6 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/user_model.dart';
@@ -15,26 +14,15 @@ import '../models/member_status.dart';
 import '../models/check_in_feed_model.dart';
 import '../models/check_in_reminder_model.dart';
 import 'family_service_interface.dart';
-import 'mock_data_service.dart';
 
 /// Central data service bridging Firebase Auth & Firestore with Long's screens
 /// (Home, Family, Profile, Reminders, and Jackpot).
-/// Implements IFamilyService for full Module 2 & Module 3 support.
-/// Automatically falls back to MockDataService when Firebase is not initialized (e.g. during unit tests).
+/// Hoàn toàn sử dụng Firebase (Auth & Firestore) - KHÔNG dùng mock data.
+/// Hỗ trợ 1 người dùng tham gia 1 hoặc nhiều gia đình (N families).
 class FamilyDataService implements IFamilyService {
   static final FamilyDataService _instance = FamilyDataService._internal();
   factory FamilyDataService() => _instance;
   FamilyDataService._internal();
-
-  final MockDataService _mock = MockDataService();
-
-  bool get _isFirebaseAvailable {
-    try {
-      return Firebase.apps.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
-  }
 
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   FirebaseAuth get _firebaseAuth => FirebaseAuth.instance;
@@ -42,33 +30,38 @@ class FamilyDataService implements IFamilyService {
   String? _cachedFamilyId;
   String? _cachedFamilyIdUserId;
   List<FamilyModel>? _cachedFamilies;
+  final Map<String, List<FamilyMemberModel>> _cachedFamilyMembers = {};
 
+  /// Notifier phát tín hiệu khi người dùng chuyển đổi gia đình đang xem
+  /// hoặc tạo/tham gia/rời gia đình.
   final ValueNotifier<String?> selectedFamilyIdNotifier =
       ValueNotifier<String?>(null);
 
   void clearCache() {
     _cachedFamilies = null;
+    _cachedFamilyMembers.clear();
   }
 
   void resetAll() {
     _cachedFamilyId = null;
     _cachedFamilyIdUserId = null;
     _cachedFamilies = null;
+    _cachedFamilyMembers.clear();
     selectedFamilyIdNotifier.value = null;
   }
 
+  /// Trả về ID của người dùng hiện tại từ Firebase Auth (hoặc chuỗi rỗng nếu chưa đăng nhập).
   @override
   String get currentUserId {
-    if (!_isFirebaseAvailable) return _mock.currentUserId;
     try {
       final fbUser = _firebaseAuth.currentUser;
       if (fbUser != null) return fbUser.uid;
     } catch (_) {}
-    return _mock.currentUserId;
+    return '';
   }
 
+  /// True khi người dùng đã xác thực bằng Firebase.
   bool get _isAuthenticated {
-    if (!_isFirebaseAvailable) return false;
     try {
       return _firebaseAuth.currentUser != null;
     } catch (_) {
@@ -77,15 +70,15 @@ class FamilyDataService implements IFamilyService {
   }
 
   // ---------------------------------------------------------------------------
-  // Multi-Family Management
+  // Multi-Family Management (1 người có thể có 1 hoặc N family)
   // ---------------------------------------------------------------------------
 
+  /// Lấy toàn bộ danh sách gia đình đang ACTIVE của người dùng từ Firestore,
+  /// sắp xếp theo bảng chữ cái (A -> Z).
   @override
   Future<List<FamilyModel>> getMyFamilies({bool forceRefresh = false}) async {
-    if (!_isFirebaseAvailable) return _mock.getMyFamilies();
-
     final uid = currentUserId;
-    if (uid.isEmpty) return _mock.getMyFamilies();
+    if (uid.isEmpty) return [];
 
     if (!forceRefresh &&
         _cachedFamilies != null &&
@@ -97,6 +90,7 @@ class FamilyDataService implements IFamilyService {
     final Set<String> familyIds = {};
 
     try {
+      // 1. Lấy tất cả các family_members đang ACTIVE của người dùng từ Firestore
       final memberDocs = await _firestore
           .collection('family_members')
           .where('userId', isEqualTo: uid)
@@ -113,6 +107,7 @@ class FamilyDataService implements IFamilyService {
         }
       }
 
+      // 2. Kiểm tra thêm trường familyId trong users/{uid} (nếu có dữ liệu cũ)
       try {
         final userDoc = await _firestore
             .collection('users')
@@ -124,6 +119,7 @@ class FamilyDataService implements IFamilyService {
                   userDoc.data()!['family_id'])
               ?.toString();
           if (fid != null && fid.isNotEmpty) {
+            // Chỉ thêm nếu membership không bị DEACTIVATED
             final memSnap = await _firestore
                 .collection('family_members')
                 .doc('${fid}_$uid')
@@ -136,6 +132,7 @@ class FamilyDataService implements IFamilyService {
         }
       } catch (_) {}
 
+      // 3. Tải thông tin từng family từ collection families trên Firestore
       for (final fid in familyIds) {
         try {
           final famDoc = await _firestore
@@ -160,6 +157,7 @@ class FamilyDataService implements IFamilyService {
         } catch (_) {}
       }
 
+      // 4. Sắp xếp theo thứ tự bảng chữ cái A -> Z
       resolved.sort(
         (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
       );
@@ -167,6 +165,8 @@ class FamilyDataService implements IFamilyService {
       _cachedFamilies = resolved;
       _cachedFamilyIdUserId = uid;
 
+      // Đồng bộ _cachedFamilyId: Nếu chưa chọn hoặc family cũ không còn trong danh sách,
+      // mặc định chọn family đầu tiên theo bảng chữ cái (A -> Z)
       if (resolved.isEmpty) {
         _cachedFamilyId = null;
       } else if (_cachedFamilyId == null ||
@@ -177,13 +177,14 @@ class FamilyDataService implements IFamilyService {
         selectedFamilyIdNotifier.value = _cachedFamilyId;
       }
 
-      return resolved.isNotEmpty ? resolved : await _mock.getMyFamilies();
+      return resolved;
     } catch (e) {
       debugPrint('getMyFamilies error: $e');
-      return _cachedFamilies ?? await _mock.getMyFamilies();
+      return resolved;
     }
   }
 
+  /// Chọn gia đình đang hoạt động (Active Family) khi người dùng có nhiều family
   Future<void> selectFamily(String familyId) async {
     if (familyId.isEmpty) return;
     _cachedFamilyId = familyId;
@@ -205,9 +206,6 @@ class FamilyDataService implements IFamilyService {
   @override
   Future<void> switchFamily(String familyId) async {
     await selectFamily(familyId);
-    if (!_isFirebaseAvailable) {
-      await _mock.switchFamily(familyId);
-    }
   }
 
   String? get selectedFamilyId => _cachedFamilyId;
@@ -237,41 +235,42 @@ class FamilyDataService implements IFamilyService {
   }
 
   // ---------------------------------------------------------------------------
-  // Current User
+  // Current User (Từ Firebase Auth & Firestore users collection)
   // ---------------------------------------------------------------------------
 
   @override
   Future<UserModel> getCurrentUser() async {
-    if (!_isFirebaseAvailable) return _mock.getCurrentUser();
-    try {
+    final uid = currentUserId;
+    if (uid.isNotEmpty) {
+      try {
+        final doc = await _firestore
+            .collection('users')
+            .doc(uid)
+            .get()
+            .timeout(const Duration(seconds: 3));
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          final fbUser = _firebaseAuth.currentUser;
+          return UserModel(
+            id: uid,
+            name: data['name']?.toString() ??
+                (fbUser?.displayName != null && fbUser!.displayName!.isNotEmpty
+                    ? fbUser.displayName!
+                    : (fbUser?.email?.isNotEmpty == true
+                        ? fbUser!.email!.split('@').first
+                        : 'Người dùng')),
+            email: data['email']?.toString() ?? fbUser?.email ?? '',
+            avatarType: data['avatar_type']?.toString() ?? 'google',
+            avatarUrl:
+                data['avatarUrl']?.toString() ?? fbUser?.photoURL ?? '',
+          );
+        }
+      } catch (e) {
+        debugPrint('Firestore user fetch error: $e');
+      }
+
       final fbUser = _firebaseAuth.currentUser;
       if (fbUser != null) {
-        try {
-          final doc = await _firestore
-              .collection('users')
-              .doc(fbUser.uid)
-              .get()
-              .timeout(const Duration(seconds: 3));
-          if (doc.exists && doc.data() != null) {
-            final data = doc.data()!;
-            return UserModel(
-              id: fbUser.uid,
-              name: data['name']?.toString() ??
-                  (fbUser.displayName != null && fbUser.displayName!.isNotEmpty
-                      ? fbUser.displayName!
-                      : (fbUser.email?.isNotEmpty == true
-                          ? fbUser.email!.split('@').first
-                          : 'Người dùng')),
-              email: data['email']?.toString() ?? fbUser.email ?? '',
-              avatarType: data['avatar_type']?.toString() ?? 'google',
-              avatarUrl:
-                  data['avatarUrl']?.toString() ?? fbUser.photoURL ?? '',
-            );
-          }
-        } catch (e) {
-          debugPrint('Firestore user fetch error: $e');
-        }
-
         return UserModel(
           id: fbUser.uid,
           name: (fbUser.displayName != null && fbUser.displayName!.isNotEmpty)
@@ -284,13 +283,19 @@ class FamilyDataService implements IFamilyService {
           avatarUrl: fbUser.photoURL ?? '',
         );
       }
-    } catch (_) {}
+    }
 
-    return _mock.getCurrentUser();
+    return UserModel(
+      id: '',
+      name: 'Người dùng',
+      email: '',
+      avatarType: 'default',
+      avatarUrl: '',
+    );
   }
 
   // ---------------------------------------------------------------------------
-  // Current Family
+  // Current Family (hoặc family theo familyId truyền vào)
   // ---------------------------------------------------------------------------
 
   @override
@@ -308,117 +313,8 @@ class FamilyDataService implements IFamilyService {
   }
 
   // ---------------------------------------------------------------------------
-  // Create & Join Family (Module 2)
+  // Create & Join Family (Module 2 - Firestore)
   // ---------------------------------------------------------------------------
-
-  @override
-  Future<FamilyModel> createFamily({
-    required String name,
-    HierarchyRole hierarchyRole = HierarchyRole.parent,
-  }) async {
-    if (!_isFirebaseAvailable) {
-      return _mock.createFamily(name: name, hierarchyRole: hierarchyRole);
-    }
-
-    final uid = currentUserId;
-    final joinCode = _generateJoinCode();
-    try {
-      final docRef = await _firestore.collection('families').add({
-        'name': name,
-        'joinCode': joinCode,
-        'ownerId': uid,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      await _firestore
-          .collection('family_members')
-          .doc('${docRef.id}_$uid')
-          .set({
-        'familyId': docRef.id,
-        'userId': uid,
-        'role': 'OWNER',
-        'isOwner': true,
-        'hierarchyRole': hierarchyRole.code,
-        'status': 'ACTIVE',
-        'lastActiveAt': FieldValue.serverTimestamp(),
-      });
-
-      clearCache();
-      await selectFamily(docRef.id);
-
-      return FamilyModel(
-        id: docRef.id,
-        name: name,
-        joinCode: joinCode,
-        ownerId: uid,
-      );
-    } catch (e) {
-      debugPrint('createFamily error: $e');
-      return _mock.createFamily(name: name, hierarchyRole: hierarchyRole);
-    }
-  }
-
-  @override
-  Future<FamilyModel> joinFamily({
-    required String joinCode,
-    HierarchyRole hierarchyRole = HierarchyRole.child,
-  }) async {
-    if (!_isFirebaseAvailable) {
-      return _mock.joinFamily(joinCode: joinCode, hierarchyRole: hierarchyRole);
-    }
-
-    final uid = currentUserId;
-    try {
-      final snap = await _firestore
-          .collection('families')
-          .where('joinCode', isEqualTo: joinCode.toUpperCase())
-          .limit(1)
-          .get();
-
-      if (snap.docs.isEmpty) {
-        throw Exception('Mã tham gia không tồn tại');
-      }
-
-      final famDoc = snap.docs.first;
-      final familyId = famDoc.id;
-
-      // Duplicate check
-      final existing = await _firestore
-          .collection('family_members')
-          .doc('${familyId}_$uid')
-          .get();
-      if (existing.exists &&
-          (existing.data()?['status'] ?? 'ACTIVE') == 'ACTIVE') {
-        throw Exception('Bạn đã là thành viên của gia đình này');
-      }
-
-      await _firestore
-          .collection('family_members')
-          .doc('${familyId}_$uid')
-          .set({
-        'familyId': familyId,
-        'userId': uid,
-        'role': 'MEMBER',
-        'isOwner': false,
-        'hierarchyRole': hierarchyRole.code,
-        'status': 'ACTIVE',
-        'lastActiveAt': FieldValue.serverTimestamp(),
-      });
-
-      clearCache();
-      await selectFamily(familyId);
-
-      return FamilyModel(
-        id: familyId,
-        name: famDoc.data()['name']?.toString() ?? 'Gia đình',
-        joinCode: joinCode.toUpperCase(),
-        ownerId: famDoc.data()['ownerId']?.toString() ?? '',
-      );
-    } catch (e) {
-      debugPrint('joinFamily error: $e');
-      return _mock.joinFamily(joinCode: joinCode, hierarchyRole: hierarchyRole);
-    }
-  }
 
   String _generateJoinCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -427,20 +323,184 @@ class FamilyDataService implements IFamilyService {
         .join();
   }
 
+  @override
+  Future<FamilyModel> createFamily({
+    required String name,
+    HierarchyRole hierarchyRole = HierarchyRole.parent,
+  }) async {
+    final uid = currentUserId;
+    if (uid.isEmpty) {
+      throw Exception('Vui lòng đăng nhập để tạo gia đình mới');
+    }
+
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw Exception('Tên gia đình không được để trống');
+    }
+
+    // Generate unique 6-character code
+    String joinCode = _generateJoinCode();
+    for (int i = 0; i < 5; i++) {
+      final existing = await _firestore
+          .collection('families')
+          .where('joinCode', isEqualTo: joinCode)
+          .limit(1)
+          .get();
+      if (existing.docs.isEmpty) break;
+      joinCode = _generateJoinCode();
+    }
+
+    try {
+      final familyRef = _firestore.collection('families').doc();
+      final memberRef = _firestore
+          .collection('family_members')
+          .doc('${familyRef.id}_$uid');
+      final userRef = _firestore.collection('users').doc(uid);
+
+      final userObj = await getCurrentUser();
+
+      final batch = _firestore.batch();
+      batch.set(familyRef, {
+        'name': trimmedName,
+        'joinCode': joinCode,
+        'ownerId': uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      batch.set(memberRef, {
+        'familyId': familyRef.id,
+        'userId': uid,
+        'name': userObj.name,
+        'role': 'OWNER',
+        'isOwner': true,
+        'hierarchyRole': hierarchyRole.code,
+        'status': 'ACTIVE',
+        'joinedAt': FieldValue.serverTimestamp(),
+        'lastActiveAt': FieldValue.serverTimestamp(),
+        'lastCheckInAt': null,
+        'lastCheckInDate': null,
+      });
+
+      batch.set(
+        userRef,
+        {
+          'familyId': familyRef.id,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+
+      clearCache();
+      await selectFamily(familyRef.id);
+
+      return FamilyModel(
+        id: familyRef.id,
+        name: trimmedName,
+        joinCode: joinCode,
+        ownerId: uid,
+      );
+    } catch (e) {
+      debugPrint('Firestore createFamily error: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<FamilyModel> joinFamily({
+    required String joinCode,
+    HierarchyRole hierarchyRole = HierarchyRole.child,
+  }) async {
+    final uid = currentUserId;
+    if (uid.isEmpty) {
+      throw Exception('Vui lòng đăng nhập để gia nhập gia đình');
+    }
+
+    final normalized = joinCode.trim().toUpperCase();
+    if (normalized.length != 6) {
+      throw Exception('Mã gia đình phải gồm đúng 6 ký tự (VD: A8K29D)');
+    }
+
+    try {
+      final snap = await _firestore
+          .collection('families')
+          .where('joinCode', isEqualTo: normalized)
+          .limit(1)
+          .get();
+
+      if (snap.docs.isEmpty) {
+        throw Exception('Mã gia đình không tồn tại hoặc đã hết hạn');
+      }
+
+      final famDoc = snap.docs.first;
+      final familyId = famDoc.id;
+      final famData = famDoc.data();
+
+      // Check if already an active member
+      final memberRef = _firestore
+          .collection('family_members')
+          .doc('${familyId}_$uid');
+      final existingMember = await memberRef.get();
+      if (existingMember.exists &&
+          (existingMember.data()?['status'] ?? 'ACTIVE') == 'ACTIVE') {
+        throw Exception('Bạn đã là thành viên của gia đình này');
+      }
+
+      final userObj = await getCurrentUser();
+
+      final batch = _firestore.batch();
+      batch.set(
+        memberRef,
+        {
+          'familyId': familyId,
+          'userId': uid,
+          'name': userObj.name,
+          'role': 'MEMBER',
+          'isOwner': false,
+          'hierarchyRole': hierarchyRole.code,
+          'status': 'ACTIVE',
+          'joinedAt': FieldValue.serverTimestamp(),
+          'lastActiveAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      batch.set(
+        _firestore.collection('users').doc(uid),
+        {
+          'familyId': familyId,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+
+      clearCache();
+      await selectFamily(familyId);
+
+      return FamilyModel(
+        id: familyId,
+        name: famData['name']?.toString() ?? 'Gia đình',
+        joinCode: normalized,
+        ownerId: famData['ownerId']?.toString() ?? '',
+      );
+    } catch (e) {
+      debugPrint('Firestore joinFamily error: $e');
+      rethrow;
+    }
+  }
+
   // ---------------------------------------------------------------------------
-  // Family Members
+  // Family Members (Đọc trực tiếp từ Firestore family_members & users)
   // ---------------------------------------------------------------------------
 
   @override
   Future<List<FamilyMemberModel>> getFamilyMembers({String? familyId}) async {
-    if (!_isFirebaseAvailable) {
-      return _mock.getFamilyMembers(familyId: familyId);
-    }
-
     final targetFamilyId = familyId ?? await _getCurrentFamilyId();
-    if (targetFamilyId == null || targetFamilyId.isEmpty) {
-      return _mock.getFamilyMembers(familyId: familyId);
-    }
+    if (targetFamilyId == null || targetFamilyId.isEmpty) return [];
 
     try {
       final memberDocs = await _firestore
@@ -466,7 +526,9 @@ class FamilyDataService implements IFamilyService {
               final userData = userDoc.data()!;
               userModel = UserModel(
                 id: userId,
-                name: userData['name']?.toString() ?? 'Thành viên',
+                name: userData['name']?.toString() ??
+                    memberData['name']?.toString() ??
+                    'Thành viên',
                 email: userData['email']?.toString() ?? '',
                 avatarType: userData['avatar_type']?.toString() ?? 'default',
                 avatarUrl: userData['avatarUrl']?.toString() ?? '',
@@ -486,10 +548,12 @@ class FamilyDataService implements IFamilyService {
             );
           }
 
-          final bool isOwner = memberData['isOwner'] as bool? ?? false;
+          final bool isOwner = memberData['isOwner'] as bool? ??
+              ((memberData['role']?.toString().toUpperCase()) == 'OWNER');
           final role = isOwner ? Role.owner : Role.member;
           final hierarchyRaw = memberData['hierarchyRole'] ??
               memberData['hierarchy_role'] ??
+              memberData['memberRole'] ??
               memberData['role'];
           final statusRaw = memberData['status']?.toString();
 
@@ -525,34 +589,32 @@ class FamilyDataService implements IFamilyService {
           );
         }
 
+        _cachedFamilyMembers[targetFamilyId] = members;
         return members;
       }
     } catch (e) {
       debugPrint('Firestore family members fetch error: $e');
     }
 
-    return _mock.getFamilyMembers(familyId: familyId);
+    return _cachedFamilyMembers[targetFamilyId] ?? [];
   }
 
   @override
   Stream<List<FamilyMemberModel>> streamFamilyMembers({String? familyId}) {
-    if (!_isFirebaseAvailable) {
-      return _mock.streamFamilyMembers(familyId: familyId);
-    }
     final targetId = familyId ?? _cachedFamilyId;
-    if (targetId == null) return _mock.streamFamilyMembers(familyId: familyId);
+    if (targetId == null) {
+      return Stream.value([]);
+    }
 
     return _firestore
         .collection('family_members')
         .where('familyId', isEqualTo: targetId)
         .snapshots()
-        .asyncMap((snap) async {
-      return getFamilyMembers(familyId: targetId);
-    });
+        .asyncMap((_) => getFamilyMembers(familyId: targetId));
   }
 
   // ---------------------------------------------------------------------------
-  // Status & Ownership Management (Module 2)
+  // Status & Ownership Management (Module 2 - Firestore)
   // ---------------------------------------------------------------------------
 
   @override
@@ -562,20 +624,20 @@ class FamilyDataService implements IFamilyService {
     String? familyId,
   }) async {
     final targetFamId = familyId ?? await _getCurrentFamilyId();
-    if (!_isFirebaseAvailable || targetFamId == null) {
-      await _mock.updateMemberStatus(targetUserId, newStatus,
-          familyId: targetFamId);
-      return;
-    }
+    if (targetFamId == null || targetFamId.isEmpty) return;
 
     try {
       await _firestore
           .collection('family_members')
           .doc('${targetFamId}_$targetUserId')
-          .update({'status': newStatus.code});
-    } catch (_) {
-      await _mock.updateMemberStatus(targetUserId, newStatus,
-          familyId: targetFamId);
+          .update({
+        'status': newStatus.code,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      clearCache();
+    } catch (e) {
+      debugPrint('Firestore updateMemberStatus error: $e');
+      rethrow;
     }
   }
 
@@ -585,68 +647,102 @@ class FamilyDataService implements IFamilyService {
     String? familyId,
   }) async {
     final targetFamId = familyId ?? await _getCurrentFamilyId();
-    if (!_isFirebaseAvailable || targetFamId == null) {
-      await _mock.transferOwnership(newOwnerUserId, familyId: targetFamId);
-      return;
+    if (targetFamId == null || targetFamId.isEmpty) return;
+
+    final members = await getFamilyMembers(familyId: targetFamId);
+    final target = members.firstWhere(
+      (m) => m.user.id == newOwnerUserId,
+      orElse: () => throw Exception('Thành viên không tồn tại trong gia đình'),
+    );
+    if (target.hierarchyRole != HierarchyRole.parent) {
+      throw Exception('Chỉ có thể chuyển quyền Chủ gia đình cho vai vế Bố / Mẹ');
     }
 
     try {
-      final members = await getFamilyMembers(familyId: targetFamId);
-      final target = members.firstWhere((m) => m.user.id == newOwnerUserId);
-      if (target.hierarchyRole != HierarchyRole.parent) {
-        throw Exception('Chỉ có thể chuyển quyền Chủ gia đình cho vai vế Bố / Mẹ');
-      }
-
-      await _firestore.collection('families').doc(targetFamId).update({
+      final batch = _firestore.batch();
+      batch.update(_firestore.collection('families').doc(targetFamId), {
         'ownerId': newOwnerUserId,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      await _firestore
-          .collection('family_members')
-          .doc('${targetFamId}_$currentUserId')
-          .update({'isOwner': false, 'role': 'MEMBER'});
+      batch.update(
+        _firestore
+            .collection('family_members')
+            .doc('${targetFamId}_$currentUserId'),
+        {
+          'isOwner': false,
+          'role': 'MEMBER',
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      );
 
-      await _firestore
-          .collection('family_members')
-          .doc('${targetFamId}_$newOwnerUserId')
-          .update({'isOwner': true, 'role': 'OWNER'});
-    } catch (_) {
-      await _mock.transferOwnership(newOwnerUserId, familyId: targetFamId);
+      batch.update(
+        _firestore
+            .collection('family_members')
+            .doc('${targetFamId}_$newOwnerUserId'),
+        {
+          'isOwner': true,
+          'role': 'OWNER',
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      );
+
+      await batch.commit();
+      clearCache();
+    } catch (e) {
+      debugPrint('Firestore transferOwnership error: $e');
+      rethrow;
     }
   }
 
   @override
   bool isTakeoverEligible({String? familyId}) {
-    return _mock.isTakeoverEligible(familyId: familyId);
+    final targetFamId = familyId ?? _cachedFamilyId;
+    if (targetFamId == null) return false;
+    final members = _cachedFamilyMembers[targetFamId];
+    if (members == null || members.isEmpty) return false;
+
+    final owner = members.firstWhere(
+      (m) => m.isOwner,
+      orElse: () => members.first,
+    );
+    if (owner.lastActiveAt == null) return true;
+    return DateTime.now().difference(owner.lastActiveAt!).inDays >= 30;
   }
 
   @override
   Future<void> claimOwnership({String? familyId}) async {
     final targetFamId = familyId ?? await _getCurrentFamilyId();
-    if (!_isFirebaseAvailable || targetFamId == null) {
-      await _mock.claimOwnership(familyId: targetFamId);
-      return;
-    }
+    if (targetFamId == null) throw Exception('Chưa chọn gia đình');
 
     try {
-      await _firestore.collection('families').doc(targetFamId).update({
+      final batch = _firestore.batch();
+      batch.update(_firestore.collection('families').doc(targetFamId), {
         'ownerId': currentUserId,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
-      await _firestore
-          .collection('family_members')
-          .doc('${targetFamId}_$currentUserId')
-          .update({'isOwner': true, 'role': 'OWNER'});
-    } catch (_) {
-      await _mock.claimOwnership(familyId: targetFamId);
+
+      batch.update(
+        _firestore
+            .collection('family_members')
+            .doc('${targetFamId}_$currentUserId'),
+        {
+          'isOwner': true,
+          'role': 'OWNER',
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      );
+
+      await batch.commit();
+      clearCache();
+    } catch (e) {
+      debugPrint('Firestore claimOwnership error: $e');
+      rethrow;
     }
   }
 
   @override
   Future<void> updateOwnerLastActive() async {
-    if (!_isFirebaseAvailable) {
-      await _mock.updateOwnerLastActive();
-      return;
-    }
     final uid = currentUserId;
     final fid = await _getCurrentFamilyId();
     if (uid.isNotEmpty && fid != null) {
@@ -660,7 +756,7 @@ class FamilyDataService implements IFamilyService {
   }
 
   // ---------------------------------------------------------------------------
-  // Check-In & Feed (Module 3)
+  // Check-In & Feed (Module 3 - Firestore)
   // ---------------------------------------------------------------------------
 
   @override
@@ -672,32 +768,25 @@ class FamilyDataService implements IFamilyService {
   }) async {
     final targetFamilyId = familyId ?? await _getCurrentFamilyId();
     if (targetFamilyId == null || targetFamilyId.isEmpty) {
-      await _mock.checkIn(userId,
-          imageUrl: imageUrl, caption: caption, familyId: familyId);
-      return;
+      throw Exception('Chưa chọn gia đình để điểm danh');
     }
 
     final now = DateTime.now();
     final dateStr =
         "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-    if (!_isFirebaseAvailable) {
-      await _mock.checkIn(userId,
-          imageUrl: imageUrl, caption: caption, familyId: targetFamilyId);
-      return;
-    }
-
     try {
       final memberDocId = '${targetFamilyId}_$userId';
       final memberRef =
           _firestore.collection('family_members').doc(memberDocId);
 
-      await memberRef.update({
+      await memberRef.set({
         'lastCheckInAt': Timestamp.fromDate(now),
         'lastCheckInDate': dateStr,
         'lastActiveAt': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true));
 
+      // Lưu bài viết ảnh vào Firestore check_in_feeds
       if (imageUrl != null || caption != null) {
         final currentUserObj = await getCurrentUser();
         await _firestore.collection('check_in_feeds').add({
@@ -709,29 +798,25 @@ class FamilyDataService implements IFamilyService {
           'createdAt': Timestamp.fromDate(now),
         });
       }
+
+      clearCache();
     } catch (e) {
-      debugPrint('Firestore checkIn fallback: $e');
-      await _mock.checkIn(userId,
-          imageUrl: imageUrl, caption: caption, familyId: targetFamilyId);
+      debugPrint('Firestore checkIn error: $e');
+      rethrow;
     }
   }
 
   @override
   Future<List<CheckInFeedModel>> getCheckInFeeds({String? familyId}) async {
     final targetFamId = familyId ?? await _getCurrentFamilyId();
-    if (!_isFirebaseAvailable || targetFamId == null) {
-      return await _mock.getCheckInFeeds(familyId: targetFamId);
-    }
+    if (targetFamId == null || targetFamId.isEmpty) return [];
 
     try {
       final snap = await _firestore
           .collection('check_in_feeds')
           .where('familyId', isEqualTo: targetFamId)
-          .get();
-
-      if (snap.docs.isEmpty) {
-        return await _mock.getCheckInFeeds(familyId: targetFamId);
-      }
+          .get()
+          .timeout(const Duration(seconds: 4));
 
       final List<CheckInFeedModel> feeds = [];
       for (final doc in snap.docs) {
@@ -740,6 +825,8 @@ class FamilyDataService implements IFamilyService {
         final rawCreated = d['createdAt'];
         if (rawCreated is Timestamp) {
           createdAt = rawCreated.toDate();
+        } else if (rawCreated is String) {
+          createdAt = DateTime.tryParse(rawCreated) ?? DateTime.now();
         }
         feeds.add(CheckInFeedModel(
           id: doc.id,
@@ -753,32 +840,103 @@ class FamilyDataService implements IFamilyService {
       }
       feeds.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return feeds;
-    } catch (_) {
-      return await _mock.getCheckInFeeds(familyId: targetFamId);
+    } catch (e) {
+      debugPrint('Firestore getCheckInFeeds error: $e');
+      return [];
     }
   }
 
   @override
   List<CheckInReminderItem> getSimulatedReminders({String? familyId}) {
-    return _mock.getSimulatedReminders(familyId: familyId);
+    final targetFamId = familyId ?? _cachedFamilyId;
+    if (targetFamId == null) return [];
+    final famMembers = _cachedFamilyMembers[targetFamId] ?? [];
+
+    final grandparents = famMembers.where(
+      (m) =>
+          m.hierarchyRole == HierarchyRole.grandparent &&
+          m.status == MemberStatus.active,
+    );
+
+    final parents = famMembers.where(
+      (m) =>
+          m.hierarchyRole == HierarchyRole.parent &&
+          m.status == MemberStatus.active,
+    );
+
+    final List<CheckInReminderItem> results = [];
+    final now = DateTime.now();
+
+    for (var gp in grandparents) {
+      final isCheckedIn = gp.isCheckedInToday;
+
+      results.add(CheckInReminderItem(
+        id: 'rem_${gp.user.id}_8am',
+        familyId: targetFamId,
+        targetMemberId: gp.user.id,
+        targetMemberName: gp.user.name,
+        recipientMemberId: gp.user.id,
+        recipientMemberName: gp.user.name,
+        slot: ReminderTimeSlot.slot8AM,
+        message:
+            'Chào buổi sáng ${gp.user.name}! Hãy bấm "✓ I\'M OK" để con cháu yên tâm nhé.',
+        isVibration: false,
+        isCancelled: isCheckedIn,
+        scheduledTime: DateTime(now.year, now.month, now.day, 8, 0),
+      ));
+
+      results.add(CheckInReminderItem(
+        id: 'rem_${gp.user.id}_2pm',
+        familyId: targetFamId,
+        targetMemberId: gp.user.id,
+        targetMemberName: gp.user.name,
+        recipientMemberId: gp.user.id,
+        recipientMemberName: gp.user.name,
+        slot: ReminderTimeSlot.slot2PM,
+        message:
+            'Đã 14:00 rồi! ${gp.user.name} chưa check-in hôm nay, gia đình đang lo lắng đó ạ.',
+        isVibration: true,
+        isCancelled: isCheckedIn,
+        scheduledTime: DateTime(now.year, now.month, now.day, 14, 0),
+      ));
+
+      for (var p in parents) {
+        results.add(CheckInReminderItem(
+          id: 'rem_${gp.user.id}_8pm_${p.user.id}',
+          familyId: targetFamId,
+          targetMemberId: gp.user.id,
+          targetMemberName: gp.user.name,
+          recipientMemberId: p.user.id,
+          recipientMemberName: p.user.name,
+          slot: ReminderTimeSlot.slot8PM,
+          message:
+              'Cảnh báo: Đã quá 12 tiếng từ giờ hẹn nhưng ${gp.user.name} chưa check-in hôm nay, gia đình hãy gọi điện kiểm tra nhé!',
+          isVibration: true,
+          isCancelled: isCheckedIn,
+          scheduledTime: DateTime(now.year, now.month, now.day, 20, 0),
+        ));
+      }
+    }
+
+    return results;
   }
 
   @override
   void cancelRemindersForUser(String userId, {String? familyId}) {
-    _mock.cancelRemindersForUser(userId, familyId: familyId);
+    // When member is checked in today, isCheckedInToday becomes true, cancelling reminders
+    clearCache();
   }
 
   // ---------------------------------------------------------------------------
-  // Reminders
+  // Reminders (Đọc trực tiếp từ Firestore reminders collection)
   // ---------------------------------------------------------------------------
 
   Future<List<ReminderModel>> getMyPendingReminders({
     String? familyId,
     bool acrossAllFamilies = true,
   }) async {
-    if (!_isFirebaseAvailable) return _mock.getMyPendingReminders();
     final uid = currentUserId;
-    if (uid.isEmpty) return _mock.getMyPendingReminders();
+    if (uid.isEmpty) return [];
 
     final families = await getMyFamilies();
     final familyNameMap = {for (final f in families) f.id: f.name};
@@ -838,19 +996,15 @@ class FamilyDataService implements IFamilyService {
       return result;
     } catch (e) {
       debugPrint('Firestore reminders fetch error: $e');
-      return _mock.getMyPendingReminders();
+      return [];
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Complete Reminder
+  // Complete Reminder (Cập nhật trực tiếp lên Firestore reminders collection)
   // ---------------------------------------------------------------------------
 
   Future<void> completeReminder(String reminderId) async {
-    if (!_isFirebaseAvailable) {
-      _mock.completeReminder(reminderId);
-      return;
-    }
     try {
       final reminderRef = _firestore.collection('reminders').doc(reminderId);
       final reminderDoc = await reminderRef.get();
@@ -863,7 +1017,7 @@ class FamilyDataService implements IFamilyService {
       }
     } catch (e) {
       debugPrint('Firestore completeReminder error: $e');
-      _mock.completeReminder(reminderId);
+      rethrow;
     }
   }
 }

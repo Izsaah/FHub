@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/check_in_feed_model.dart';
 import '../services/family_state_manager.dart';
@@ -69,18 +70,7 @@ class CheckInFeedView extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (feed.imageUrl != null)
-                          Image.network(
-                            feed.imageUrl!,
-                            height: 100,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              height: 100,
-                              color: const Color(0xFFEDF5F2),
-                              child: const Icon(Icons.image,
-                                  color: Color(0xFF005F50)),
-                            ),
-                          )
+                          _buildFeedImage(feed.imageUrl!)
                         else
                           Container(
                             height: 60,
@@ -139,6 +129,56 @@ class CheckInFeedView extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildFeedImage(String imageUrl) {
+    if (imageUrl.startsWith('data:image')) {
+      try {
+        final commaIdx = imageUrl.indexOf(',');
+        final base64Str =
+            commaIdx != -1 ? imageUrl.substring(commaIdx + 1) : imageUrl;
+        final bytes = base64Decode(base64Str);
+        return Image.memory(
+          bytes,
+          height: 100,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+        );
+      } catch (_) {
+        return _buildPlaceholder();
+      }
+    } else if (imageUrl.startsWith('http://') ||
+        imageUrl.startsWith('https://')) {
+      return Image.network(
+        imageUrl,
+        height: 100,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+      );
+    } else {
+      try {
+        final bytes = base64Decode(imageUrl);
+        return Image.memory(
+          bytes,
+          height: 100,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+        );
+      } catch (_) {
+        return _buildPlaceholder();
+      }
+    }
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      height: 100,
+      color: const Color(0xFFEDF5F2),
+      child: const Icon(Icons.image, color: Color(0xFF005F50)),
     );
   }
 }

@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/family_state_manager.dart';
 
 class CheckInSheet extends StatefulWidget {
@@ -23,32 +26,59 @@ class CheckInSheet extends StatefulWidget {
 
 class _CheckInSheetState extends State<CheckInSheet> {
   final TextEditingController _captionController = TextEditingController();
-  String? _selectedImageUrl;
+  final ImagePicker _picker = ImagePicker();
+
+  String? _selectedImageBase64;
+  Uint8List? _selectedImageBytes;
   bool _isLoading = false;
 
-  final List<Map<String, String>> _samplePhotos = [
-    {
-      'label': 'Bữa sáng',
-      'url': 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500',
-    },
-    {
-      'label': 'Tập thể dục',
-      'url': 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=500',
-    },
-    {
-      'label': 'Uống trà',
-      'url': 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=500',
-    },
-    {
-      'label': 'Đi dạo',
-      'url': 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=500',
-    },
+  final List<String> _quickCaptions = [
+    '🍳 Bữa sáng',
+    '🏃‍♂️ Tập thể dục',
+    '💊 Đã uống thuốc',
+    '☕ Uống trà',
+    '🚶‍♂️ Đi dạo',
+    '❤️ An lành hôm nay',
   ];
 
   @override
   void dispose() {
     _captionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(
+        source: source,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 70,
+      );
+
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        setState(() {
+          _selectedImageBytes = bytes;
+          _selectedImageBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể chọn ảnh: $e'),
+          backgroundColor: Colors.red[700],
+        ),
+      );
+    }
+  }
+
+  void _clearImage() {
+    setState(() {
+      _selectedImageBytes = null;
+      _selectedImageBase64 = null;
+    });
   }
 
   Future<void> _handleQuickCheckIn() async {
@@ -80,10 +110,10 @@ class _CheckInSheetState extends State<CheckInSheet> {
   }
 
   Future<void> _handlePhotoCheckIn() async {
-    if (_selectedImageUrl == null && _captionController.text.trim().isEmpty) {
+    if (_selectedImageBase64 == null && _captionController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng chọn 1 bức ảnh hoặc nhập lời nhắn.'),
+          content: Text('Vui lòng chụp ảnh hoặc nhập lời nhắn.'),
         ),
       );
       return;
@@ -94,7 +124,7 @@ class _CheckInSheetState extends State<CheckInSheet> {
       final service = FamilyStateManager().service;
       await service.checkIn(
         service.currentUserId,
-        imageUrl: _selectedImageUrl,
+        imageUrl: _selectedImageBase64,
         caption: _captionController.text.trim().isNotEmpty
             ? _captionController.text.trim()
             : 'Đã check-in an toàn hôm nay!',
@@ -225,7 +255,7 @@ class _CheckInSheetState extends State<CheckInSheet> {
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 10),
                   child: Text(
-                    'HOẶC KÈM ẢNH',
+                    'HOẶC KÈM ẢNH HOẠT ĐỘNG',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
@@ -247,65 +277,115 @@ class _CheckInSheetState extends State<CheckInSheet> {
                 color: Color(0xFF151D1B),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
 
-            SizedBox(
-              height: 80,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _samplePhotos.length,
-                separatorBuilder: (context, index) => const SizedBox(width: 10),
-                itemBuilder: (context, index) {
-                  final photo = _samplePhotos[index];
-                  final isSelected = _selectedImageUrl == photo['url'];
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedImageUrl = isSelected ? null : photo['url'];
-                      });
-                    },
-                    child: Container(
-                      width: 80,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF005F50)
-                              : Colors.grey[300]!,
-                          width: isSelected ? 3 : 1,
-                        ),
-                        image: DecorationImage(
-                          image: NetworkImage(photo['url']!),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      alignment: Alignment.bottomCenter,
+            if (_selectedImageBytes != null) ...[
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(
+                      _selectedImageBytes!,
+                      height: 140,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: InkWell(
+                      onTap: _clearImage,
                       child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.55),
-                          borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(10),
-                          ),
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
                         ),
-                        child: Text(
-                          photo['label']!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: const Icon(
+                          Icons.close,
+                          size: 18,
+                          color: Colors.white,
                         ),
                       ),
                     ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isLoading ? null : () => _pickImage(ImageSource.camera),
+                      icon: const Icon(Icons.camera_alt, color: Color(0xFF005F50)),
+                      label: const Text(
+                        'Chụp ảnh',
+                        style: TextStyle(
+                          color: Color(0xFF005F50),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: Color(0xFF005F50)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isLoading ? null : () => _pickImage(ImageSource.gallery),
+                      icon: const Icon(Icons.photo_library, color: Color(0xFF005F50)),
+                      label: const Text(
+                        'Chọn từ thư viện',
+                        style: TextStyle(
+                          color: Color(0xFF005F50),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: Color(0xFF005F50)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // Quick Caption Suggestions
+            SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _quickCaptions.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final text = _quickCaptions[index];
+                  return ActionChip(
+                    label: Text(text, style: const TextStyle(fontSize: 12)),
+                    backgroundColor: const Color(0xFFEDF5F2),
+                    side: BorderSide(
+                      color: const Color(0xFF005F50).withValues(alpha: 0.2),
+                    ),
+                    onPressed: () {
+                      _captionController.text = text;
+                    },
                   );
                 },
               ),
             ),
-
             const SizedBox(height: 12),
+
             TextField(
               controller: _captionController,
               decoration: InputDecoration(
@@ -342,7 +422,7 @@ class _CheckInSheetState extends State<CheckInSheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                icon: const Icon(Icons.photo_camera),
+                icon: const Icon(Icons.send_rounded),
                 label: const Text(
                   'Đăng Check-in Kèm Ảnh lên Feed',
                   style: TextStyle(fontWeight: FontWeight.bold),
