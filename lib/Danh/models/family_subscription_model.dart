@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// Model lưu trạng thái gói cước gắn với Gia đình (Family)
 class FamilySubscriptionModel {
   final String familyId;
@@ -30,6 +32,35 @@ class FamilySubscriptionModel {
     );
   }
 
+  factory FamilySubscriptionModel.fromMap(String familyId, Map<String, dynamic> map) {
+    return FamilySubscriptionModel(
+      familyId: familyId,
+      isPremium: map['isPremium'] as bool? ?? false,
+      planName: map['planName'] as String? ?? 'Gói Cơ Bản (Free)',
+      maxMembers: map['maxMembers'] as int? ?? 4,
+      startDate: _parseDateTime(map['subscriptionStartDate'] ?? map['startDate']),
+      endDate: _parseDateTime(map['subscriptionEndDate'] ?? map['endDate']),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'isPremium': isPremium,
+      'planName': planName,
+      'maxMembers': maxMembers,
+      'subscriptionStartDate': startDate != null ? Timestamp.fromDate(startDate!) : FieldValue.serverTimestamp(),
+      'subscriptionEndDate': endDate != null ? Timestamp.fromDate(endDate!) : null,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  static DateTime? _parseDateTime(dynamic val) {
+    if (val is Timestamp) return val.toDate();
+    if (val is DateTime) return val;
+    if (val is String) return DateTime.tryParse(val);
+    return null;
+  }
+
   FamilySubscriptionModel copyWith({
     String? familyId,
     bool? isPremium,
@@ -48,3 +79,4 @@ class FamilySubscriptionModel {
     );
   }
 }
+

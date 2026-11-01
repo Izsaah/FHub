@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/family_member_model.dart';
 import '../models/hierarchy_role.dart';
+import '../utils/long_strings.dart';
 
 class FamilyMemberTile extends StatelessWidget {
   final FamilyMemberModel member;
@@ -60,11 +61,14 @@ class FamilyMemberTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: const Color(0xFFE8E2D2),
-                    border: Border.all(color: const Color(0xFFD4AF37), width: 2),
+                    border:
+                        Border.all(color: const Color(0xFFD4AF37), width: 2),
                   ),
                   alignment: Alignment.center,
                   child: Text(
-                    member.user.name.substring(0, 1).toUpperCase(),
+                    member.user.name.isNotEmpty
+                        ? member.user.name.substring(0, 1).toUpperCase()
+                        : '?',
                     style: const TextStyle(
                       color: Color(0xFF5D4037),
                       fontWeight: FontWeight.bold,
@@ -153,7 +157,7 @@ class FamilyMemberTile extends StatelessWidget {
     );
   }
 
-  // --- DEACTIVATED TILE (TẠM NGƯNG) ---
+  // --- DEACTIVATED TILE (TẠM DỪNG KẾT NỐI) ---
   Widget _buildDeactivatedTile(BuildContext context) {
     return InkWell(
       onTap: onTap,
@@ -162,24 +166,29 @@ class FamilyMemberTile extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F3F4),
+          color: const Color(0xFFF1F3F2),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFD0D5DD)),
+          border: Border.all(
+            color: const Color(0xFFBDC9C4).withValues(alpha: 0.5),
+          ),
         ),
         child: Row(
           children: [
             Container(
               width: 44,
               height: 44,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFFE0E2E5),
+                color: const Color(0xFFD6DBDA),
+                border: Border.all(color: const Color(0xFF9EA8A5), width: 1.5),
               ),
               alignment: Alignment.center,
               child: Text(
-                member.user.name.substring(0, 1).toUpperCase(),
+                member.user.name.isNotEmpty
+                    ? member.user.name.substring(0, 1).toUpperCase()
+                    : '?',
                 style: const TextStyle(
-                  color: Color(0xFF71767B),
+                  color: Color(0xFF6E7A75),
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -197,25 +206,26 @@ class FamilyMemberTile extends StatelessWidget {
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 15,
-                            color: Color(0xFF667085),
+                            color: Color(0xFF86928E),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(width: 6),
-                      _buildHierarchyBadge(member.hierarchyRole),
+                      _buildHierarchyBadge(member.hierarchyRole, isMuted: true),
                     ],
                   ),
                   const SizedBox(height: 2),
                   const Row(
                     children: [
-                      Icon(Icons.pause_circle_outline, size: 14, color: Color(0xFF98A2B3)),
+                      Icon(Icons.pause_circle_outline,
+                          size: 14, color: Color(0xFF86928E)),
                       SizedBox(width: 4),
                       Text(
-                        'Tạm ngưng kết nối',
+                        'Tài khoản đang tạm khóa kết nối',
                         style: TextStyle(
-                          color: Color(0xFF98A2B3),
+                          color: Color(0xFF86928E),
                           fontSize: 12,
                         ),
                       ),
@@ -227,15 +237,15 @@ class FamilyMemberTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFFEAECF0),
-                borderRadius: BorderRadius.circular(8),
+                color: const Color(0xFFE0E5E3),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: const Text(
-                'Tạm ngưng',
+                'Tạm ngưng kết nối',
                 style: TextStyle(
-                  fontSize: 11,
-                  color: Color(0xFF667085),
-                  fontWeight: FontWeight.w500,
+                  fontSize: 10.5,
+                  color: Color(0xFF5A6662),
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
@@ -245,10 +255,10 @@ class FamilyMemberTile extends StatelessWidget {
     );
   }
 
-  // --- ACTIVE TILE (HOẠT ĐỘNG BÌNH THƯỜNG) ---
+  // --- ACTIVE TILE ---
   Widget _buildActiveTile(BuildContext context) {
     final isCheckedIn = member.isCheckedInToday;
-    final timeString = isCheckedIn && member.lastCheckInAt != null
+    final timeString = member.lastCheckInAt != null
         ? '${member.lastCheckInAt!.hour.toString().padLeft(2, '0')}:${member.lastCheckInAt!.minute.toString().padLeft(2, '0')}'
         : '';
 
@@ -286,14 +296,25 @@ class FamilyMemberTile extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.blue[100],
-                border: Border.all(color: const Color(0xFF0D7A68), width: 2),
+                color: isCheckedIn
+                    ? const Color(0xFFD7EFE6)
+                    : const Color(0xFFE0E5E3),
+                border: Border.all(
+                  color: isCheckedIn
+                      ? const Color(0xFF005F50)
+                      : const Color(0xFFBDC9C4),
+                  width: 2,
+                ),
               ),
               alignment: Alignment.center,
               child: Text(
-                member.user.name.substring(0, 1).toUpperCase(),
+                member.user.name.isNotEmpty
+                    ? member.user.name.substring(0, 1).toUpperCase()
+                    : '?',
                 style: TextStyle(
-                  color: Colors.blue[900],
+                  color: isCheckedIn
+                      ? const Color(0xFF005F50)
+                      : Colors.blue[900],
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -360,13 +381,13 @@ class FamilyMemberTile extends StatelessWidget {
                   color: const Color(0xFFFFDCBD),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('👑 ', style: TextStyle(fontSize: 10)),
+                    const Text('👑 ', style: TextStyle(fontSize: 10)),
                     Text(
-                      'Chủ phòng',
-                      style: TextStyle(
+                      LongStrings.t('Chủ nhà', 'Owner'),
+                      style: const TextStyle(
                         fontSize: 11,
                         color: Color(0xFF6C3E00),
                         fontWeight: FontWeight.bold,
@@ -381,7 +402,7 @@ class FamilyMemberTile extends StatelessWidget {
     );
   }
 
-  Widget _buildHierarchyBadge(HierarchyRole role) {
+  Widget _buildHierarchyBadge(HierarchyRole role, {bool isMuted = false}) {
     Color bg;
     Color fg;
     String label = role.displayName;
@@ -399,6 +420,11 @@ class FamilyMemberTile extends StatelessWidget {
         bg = const Color(0xFFE8DAEF);
         fg = const Color(0xFF5B2C6F);
         break;
+    }
+
+    if (isMuted) {
+      bg = const Color(0xFFE2E6E5);
+      fg = const Color(0xFF6E7A75);
     }
 
     return Container(

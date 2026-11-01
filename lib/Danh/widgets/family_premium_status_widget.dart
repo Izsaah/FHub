@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../screens/premium_plan_screen.dart';
 import '../screens/manage_subscription_screen.dart';
+import '../screens/family_jackpot_screen.dart';
 import '../services/payment_service.dart';
 import '../theme/danh_colors.dart';
+import '../theme/danh_svgs.dart';
 import 'premium_badge_widget.dart';
+import '../../Thinh/theme/app_language.dart';
 
 /// Widget hiển thị Trạng thái Gói & Hạn mức Thành viên của Gia đình
 /// - Dành cho TOÀN BỘ thành viên trong tổ ấm (không chỉ riêng Owner)
@@ -59,11 +62,15 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                       PremiumBadgeWidget(
                         isPremium: isPremium,
                         compact: true,
-                        customText: isPremium ? 'TỔ ẤM PREMIUM' : 'GÓI CƠ BẢN',
+                        customText: isPremium
+                            ? AppLanguage.text('TỔ ẤM PREMIUM', 'FAMILY PREMIUM')
+                            : AppLanguage.text('GÓI CƠ BẢN', 'BASIC PLAN'),
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        sub.planName,
+                        isPremium
+                            ? AppLanguage.text('Tổ Ấm Premium', 'Family Premium')
+                            : AppLanguage.text('Gói Cơ Bản (Miễn phí)', 'Basic Plan (Free)'),
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -95,7 +102,9 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          isPremium ? 'Chi tiết' : 'Nâng cấp 10 người',
+                          isPremium
+                              ? AppLanguage.text('Chi tiết', 'Details')
+                              : AppLanguage.text('Nâng cấp 10 người', 'Upgrade to 10'),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -118,12 +127,15 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Số lượng thành viên',
-                    style: TextStyle(fontSize: 12, color: DanhColors.textMuted),
+                  Text(
+                    AppLanguage.text('Số lượng thành viên', 'Family members'),
+                    style: const TextStyle(fontSize: 12, color: DanhColors.textMuted),
                   ),
                   Text(
-                    '$currentMemberCount / $maxMembers người',
+                    AppLanguage.text(
+                      '$currentMemberCount / $maxMembers người',
+                      '$currentMemberCount / $maxMembers members',
+                    ),
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
@@ -163,8 +175,14 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                       Expanded(
                         child: Text(
                           isPremium
-                              ? 'Đã đạt hạn mức tối đa của gói ($maxMembers thành viên).'
-                              : 'Đã đạt giới hạn 4 người. Nâng cấp Premium để mời thêm tối đa 10 người!',
+                              ? AppLanguage.text(
+                                  'Đã đạt hạn mức tối đa của gói ($maxMembers thành viên).',
+                                  'Reached max plan limit ($maxMembers members).',
+                                )
+                              : AppLanguage.text(
+                                  'Đã đạt giới hạn 4 người. Nâng cấp Premium để mời thêm tối đa 10 người!',
+                                  'Reached 4-member limit. Upgrade to Premium to invite up to 10 members!',
+                                ),
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -177,9 +195,104 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                 )
               else
                 Text(
-                  'Còn trống ${maxMembers - currentMemberCount} vị trí mời thêm vào gia đình.',
+                  AppLanguage.text(
+                    'Còn trống ${maxMembers - currentMemberCount} vị trí mời thêm vào gia đình.',
+                    '${maxMembers - currentMemberCount} slots remaining to invite to family.',
+                  ),
                   style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
                 ),
+
+              const SizedBox(height: 14),
+
+              // Banner Hũ Niềm Vui Gia Đình (Shopee Shake)
+              InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () {
+                  if (isPremium) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const FamilyJackpotScreen()),
+                    );
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PremiumPlanScreen()),
+                    );
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isPremium
+                          ? [const Color(0xFFFFF3E0), const Color(0xFFFFE0B2)]
+                          : [Colors.grey.shade100, Colors.grey.shade200],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isPremium ? const Color(0xFFFFB74D) : Colors.grey.shade300,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      DanhSvgs.goldenPot(size: 28),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  AppLanguage.text('Hũ Niềm Vui Gia Đình', 'Family Jackpot'),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: isPremium ? const Color(0xFFE65100) : Colors.grey.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                if (isPremium)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE65100),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'HOT',
+                                      style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            Text(
+                              isPremium
+                                  ? AppLanguage.text(
+                                      'Góp quỹ & Lắc điện thoại 30s nổ hũ',
+                                      'Contribute fund & Shake phone 30s to win',
+                                    )
+                                  : AppLanguage.text(
+                                      'Mở khóa khi nâng cấp lên Tổ Ấm Premium',
+                                      'Unlock by upgrading to Family Hub Premium',
+                                    ),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isPremium ? const Color(0xFF8D4000) : Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        isPremium ? Icons.arrow_forward_ios_rounded : Icons.lock_outline_rounded,
+                        size: 16,
+                        color: isPremium ? const Color(0xFFE65100) : Colors.grey.shade600,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         );

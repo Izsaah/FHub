@@ -1,76 +1,142 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import '../../services/family_state_manager.dart';
+import '../../services/family_data_service.dart';
 import '../../models/user_model.dart';
 import '../../models/family_model.dart';
 import '../../models/family_member_model.dart';
 import '../../models/reminder_model.dart';
+import '../../utils/long_strings.dart';
 import '../../widgets/check_in_button.dart';
 import '../../widgets/check_in_sheet.dart';
+import '../../widgets/check_in_feed_view.dart';
+import '../../widgets/check_in_reminder_card.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/family_member_tile.dart';
-import '../../widgets/family_switcher_bar.dart';
-import '../../widgets/check_in_reminder_card.dart';
-import '../../widgets/check_in_feed_view.dart';
-import '../family/create_family_screen.dart';
-import '../family/join_family_screen.dart';
+import '../../widgets/family_selector_bar.dart';
+import '../family/family_screen.dart';
+import '../../../Khoa/screens/family_setup_screen.dart';
+import '../../../Thinh/theme/app_language.dart';
+import '../../../Vinh/models/reminder_model.dart' as vinh;
+import '../../../Vinh/screens/reminder_list_screen.dart';
+import '../../../Vinh/services/firebase_reminder_repository.dart';
+import '../../../Vinh/widgets/reminder_detail_bottom_sheet.dart' as vinh_sheet;
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onNavigateToFamily;
+  final VoidCallback? onNavigateToReminders;
+
+  const HomeScreen({
+    super.key,
+    this.onNavigateToFamily,
+    this.onNavigateToReminders,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _stateManager = FamilyStateManager();
-  UserModel? _currentUser;
-  List<ReminderModel> _myReminders = [];
+  final _familydataService = FamilyDataService();
+
+  late Future<Map<String, dynamic>> _homeDataFuture;
 
   @override
   void initState() {
     super.initState();
-    _stateManager.addListener(_onStateChanged);
-    _initData();
+    _loadData();
+    _familydataService.selectedFamilyIdNotifier.addListener(
+      _onSelectedFamilyChanged,
+    );
   }
 
   @override
   void dispose() {
-    _stateManager.removeListener(_onStateChanged);
+    _familydataService.selectedFamilyIdNotifier.removeListener(
+      _onSelectedFamilyChanged,
+    );
     super.dispose();
   }
 
-  void _onStateChanged() {
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _initData() async {
-    await _stateManager.initialize();
-    _currentUser = await _stateManager.service.getCurrentUser();
-    // Update owner lastActiveAt whenever app is opened
-    await _stateManager.service.updateOwnerLastActive();
-    await _loadReminders();
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _loadReminders() async {
-    final reminders = await _stateManager.service.getFamilyMembers();
-    // Fetch pending reminders
-    final myPending = (_stateManager.service as dynamic).getMyPendingReminders?.call();
-    if (myPending is List<ReminderModel>) {
-      _myReminders = myPending;
-    } else if (reminders.isNotEmpty) {
-      _myReminders = [];
+  void _onSelectedFamilyChanged() {
+    if (mounted) {
+      setState(_loadData);
     }
-    if (mounted) setState(() {});
+  }
+
+  void _loadData() {
+    _homeDataFuture = _fetchHomeData();
+  }
+
+  Future<Map<String, dynamic>> _fetchHomeData() async {
+    final user = await _familydataService.getCurrentUser();
+    final families = await _familydataService.getMyFamilies();
+    final family = await _familydataService.getCurrentFamily();
+    final members = await _familydataService.getFamilyMembers(
+      familyId: family?.id,
+    );
+    final allReminders = await _familydataService.getMyPendingReminders(
+      acrossAllFamilies: true,
+    );
+
+    // Update owner lastActiveAt on app open
+    await _familydataService.updateOwnerLastActive();
+
+    final pendingReminders = allReminders
+        .where((r) => r.status == ReminderStatus.pending)
+        .toList();
+
+    return {
+      'user': user,
+      'families': families,
+      'family': family,
+      'members': members,
+      'reminders': pendingReminders,
+    };
+  }
+
+  Future<void> _handleSelectFamily(FamilyModel selected) async {
+    await _familydataService.selectFamily(selected.id);
+    if (mounted) {
+      setState(_loadData);
+    }
+  }
+
+  Future<void> _openFamilySetup() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const FamilySetupScreen(),
+      ),
+    );
+    if (mounted) {
+      _familydataService.clearCache();
+      setState(_loadData);
+    }
+  }
+
+  void _navigateToFamily() {
+    if (widget.onNavigateToFamily != null) {
+      widget.onNavigateToFamily!();
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const FamilyScreen(),
+        ),
+      );
+    }
   }
 
   void _handleCheckInPress(bool isAlreadyCheckedIn) {
     if (isAlreadyCheckedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("You're already checked in today!"),
-          backgroundColor: Color(0xFF005F50),
+        SnackBar(
+          content: Text(
+            LongStrings.t(
+              "You're already checked in today!",
+              "You're already checked in today!",
+            ),
+          ),
+          backgroundColor: const Color(0xFF005F50),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -80,285 +146,653 @@ class _HomeScreenState extends State<HomeScreen> {
     CheckInSheet.show(
       context,
       onSuccess: () {
-        _stateManager.reload();
+        _familydataService.clearCache();
+        setState(_loadData);
       },
     );
   }
 
-  Future<void> _handleTakeoverClaim(String familyId) async {
-    try {
-      await _stateManager.service.claimOwnership(familyId: familyId);
-      await _stateManager.reload();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🎉 Bạn đã tiếp quản quyền Owner thành công!'),
-          backgroundColor: Color(0xFF005F50),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red[700],
-        ),
-      );
-    }
-  }
-
   Future<void> _handleCompleteReminder(String reminderId) async {
     try {
-      (_stateManager.service as dynamic).completeReminder?.call(reminderId);
-      await _loadReminders();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✓ Đã hoàn thành nhắc nhở.'),
-          backgroundColor: Color(0xFF005F50),
-        ),
-      );
+      await _familydataService.completeReminder(reminderId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(LongStrings.completeTaskSuccess),
+            backgroundColor: const Color(0xFF005F50),
+          ),
+        );
+        setState(_loadData);
+      }
     } catch (e) {
       debugPrint('Complete reminder error: $e');
     }
   }
 
+  Future<void> _handleOpenReminderDetail(
+    ReminderModel reminder,
+    String? familyName,
+    UserModel currentUser,
+  ) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('reminders')
+          .doc(reminder.id)
+          .get();
+
+      final vinh.ReminderModel vinhModel;
+      if (doc.exists && doc.data() != null) {
+        final data = Map<String, dynamic>.from(doc.data()!);
+        data['id'] = doc.id;
+        vinhModel = vinh.ReminderModel.fromJson(data);
+      } else {
+        vinhModel = vinh.ReminderModel(
+          id: reminder.id,
+          familyId: reminder.familyId,
+          familyName: familyName ?? reminder.familyName ?? '',
+          creatorId: reminder.creatorId,
+          assignedTo: reminder.assignedTo,
+          assignedToName: currentUser.name,
+          title: reminder.title,
+          date:
+              '${reminder.date.day.toString().padLeft(2, '0')}/${reminder.date.month.toString().padLeft(2, '0')}/${reminder.date.year}',
+          time:
+              '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}',
+          status: 'PENDING',
+        );
+      }
+
+      if (!mounted) return;
+
+      await vinh_sheet.ReminderDetailBottomSheet.show(
+        context,
+        reminder: vinhModel,
+        currentUserId: _familydataService.currentUserId,
+        currentUserName: currentUser.name,
+        familyName: familyName ?? reminder.familyName,
+        repository: FirebaseReminderRepository(),
+        onReminderUpdated: () {
+          if (mounted) setState(_loadData);
+        },
+      );
+    } catch (e) {
+      debugPrint('Open reminder detail error: $e');
+    }
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: const BoxDecoration(
+                color: Color(0xFFEDF5F2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.family_restroom,
+                size: 40,
+                color: Color(0xFF005F50),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              LongStrings.noFamilyTitle,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF151D1B),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              LongStrings.noFamilySubtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF6E7A75),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF005F50),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _openFamilySetup,
+              icon: const Icon(Icons.add, size: 20),
+              label: Text(
+                LongStrings.createOrJoinAction,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_stateManager.isLoading && _stateManager.currentFamily == null) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, _, child) {
+        return Scaffold(
+          backgroundColor: Colors.white,
+          appBar: CustomAppBar(
+            title: LongStrings.tabHome,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.group_add_outlined),
+                tooltip: LongStrings.familySetupTooltip,
+                onPressed: _openFamilySetup,
+              ),
+            ],
+          ),
+          body: FutureBuilder<Map<String, dynamic>>(
+            future: _homeDataFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-    final user = _currentUser ??
-        UserModel(id: 'u1', name: 'Minh', email: 'minh@gmail.com', avatarType: 'boy');
-    final FamilyModel? currentFamily = _stateManager.currentFamily;
-    final List<FamilyMemberModel> members = _stateManager.currentMembers;
+              final user = snapshot.data?['user'] as UserModel?;
+              final families =
+                  snapshot.data?['families'] as List<FamilyModel>? ?? [];
+              final family = snapshot.data?['family'] as FamilyModel?;
+              final members = snapshot.data?['members']
+                      as List<FamilyMemberModel>? ??
+                  [];
+              final reminders = snapshot.data?['reminders']
+                      as List<ReminderModel>? ??
+                  [];
 
-    // Check-in status of current user
-    final currentMember = members.where((m) => m.user.id == user.id).firstOrNull;
-    final isCheckedIn = currentMember?.isCheckedInToday ?? false;
+              if (user == null || family == null || families.isEmpty) {
+                return _buildEmptyState();
+              }
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: CustomAppBar(
-        title: 'Xin chào, ${user.name}',
-        subtitle: currentFamily != null ? 'Tổ ấm: ${currentFamily.name}' : null,
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await _stateManager.reload();
-          await _loadReminders();
-        },
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16.0),
-          child: currentFamily == null
-              ? _buildNoFamilyView(context)
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              final currentUserId = _familydataService.currentUserId;
+              final me = members.cast<FamilyMemberModel?>().firstWhere(
+                    (m) => m?.user.id == currentUserId,
+                    orElse: () => null,
+                  );
+              final isCheckedInToday = me?.isCheckedInToday ?? false;
+
+              final isTakeoverEligible =
+                  _familydataService.isTakeoverEligible(familyId: family.id);
+              final isOwner = family.ownerId.isNotEmpty &&
+                  (family.ownerId == currentUserId || (me?.isOwner ?? false));
+
+              // Inactivity monitoring: look for any members inactive for > 24 hours
+              final inactiveMembers = members.where((m) {
+                if (!m.isActive || m.isMemorialized) return false;
+                if (m.lastCheckInAt == null) return true;
+                return DateTime.now().difference(m.lastCheckInAt!).inHours >= 24;
+              }).toList();
+
+              return RefreshIndicator(
+                onRefresh: () async {
+                  _familydataService.clearCache();
+                  setState(_loadData);
+                },
+                child: ListView(
+                  padding: const EdgeInsets.all(20.0),
                   children: [
-                    // Family Switcher Header
-                    FamilySwitcherBar(
-                      currentFamily: currentFamily,
-                      families: _stateManager.myFamilies,
-                      onFamilyChanged: (famId) {
-                        _stateManager.switchFamily(famId);
-                      },
-                      onTakeoverClaimed: () => _handleTakeoverClaim(currentFamily.id),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Big Prominent Check-In Button
-                    CheckInButton(
-                      isCheckedIn: isCheckedIn,
-                      onPressed: () => _handleCheckInPress(isCheckedIn),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Simulated 08:00 / 14:00 / 20:00 Reminder Rule card
-                    CheckInReminderCard(familyId: currentFamily.id),
-
-                    // Photo feed for check-in moments
-                    CheckInFeedView(familyId: currentFamily.id),
-                    const SizedBox(height: 20),
-
-                    // Family Today Section
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // Welcome greeting
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Family Today',
-                          style: TextStyle(
-                            fontSize: 18,
+                        Text(
+                          '${LongStrings.welcomeBack},',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF6E7A75),
+                          ),
+                        ),
+                        Text(
+                          user.name,
+                          style: const TextStyle(
+                            fontSize: 24,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF151D1B),
                           ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Multi-family selector bar
+                    FamilySelectorBar(
+                      families: families,
+                      currentFamily: family,
+                      onFamilySelected: _handleSelectFamily,
+                      onAddFamily: _openFamilySetup,
+                      onQuickNavigateToFamily: _navigateToFamily,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Passive Takeover Banner (if eligible)
+                    if (isTakeoverEligible && !isOwner) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3CD),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFFFC107)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.shield_outlined,
+                                color: Color(0xFF856404), size: 24),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    LongStrings.t(
+                                      'Chủ gia đình đã không hoạt động > 30 ngày',
+                                      'Owner inactive > 30 days',
+                                    ),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12.5,
+                                      color: Color(0xFF856404),
+                                    ),
+                                  ),
+                                  Text(
+                                    LongStrings.t(
+                                      'Bạn có thể tiếp quản quyền Chủ gia đình ngay bây giờ.',
+                                      'You can claim ownership takeover now.',
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF856404),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF005F50),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                              ),
+                              onPressed: () async {
+                                try {
+                                  await _familydataService.claimOwnership(
+                                    familyId: family.id,
+                                  );
+                                  setState(_loadData);
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        LongStrings.t(
+                                          '🎉 Bạn đã tiếp quản quyền Owner thành công!',
+                                          '🎉 You claimed ownership successfully!',
+                                        ),
+                                      ),
+                                      backgroundColor: const Color(0xFF005F50),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(e.toString())),
+                                  );
+                                }
+                              },
+                              child: Text(
+                                LongStrings.t('Tiếp quản', 'Take Over'),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Inactivity alert for family members (> 24 hours)
+                    if (inactiveMembers.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFBE9E7),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFFFCCBC)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded,
+                                color: Color(0xFFD84315), size: 24),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    LongStrings.t(
+                                      'Cảnh báo an toàn (Safe Check-in)',
+                                      'Safety Warning (Safe Check-in)',
+                                    ),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12.5,
+                                      color: Color(0xFFD84315),
+                                    ),
+                                  ),
+                                  Text(
+                                    LongStrings.t(
+                                      '${inactiveMembers.map((m) => m.user.name).join(', ')} chưa điểm danh hơn 24 giờ. Vui lòng liên hệ!',
+                                      '${inactiveMembers.map((m) => m.user.name).join(', ')} haven\'t checked in for 24+ hours. Please check in on them!',
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFFBF360C),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Module 3: CheckInButton
+                    CheckInButton(
+                      isCheckedIn: isCheckedInToday,
+                      onPressed: () => _handleCheckInPress(isCheckedInToday),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Module 3: Check-in Photo Feed
+                    CheckInFeedView(familyId: family.id),
+                    const SizedBox(height: 8),
+
+                    // Module 3: Simulated Reminder Card (08:00, 14:00, 20:00)
+                    CheckInReminderCard(familyId: family.id),
+                    const SizedBox(height: 16),
+
+                    // Family members header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
                         Text(
-                          '${members.where((m) => m.isCheckedInToday).length}/${members.where((m) => m.isActive).length} đã an toàn',
+                          LongStrings.familyMembersHeader(members.length),
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
+                            color: Color(0xFF6E7A75),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: _navigateToFamily,
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  LongStrings.manageFamilyAction,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF005F50),
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                const Icon(
+                                  Icons.chevron_right,
+                                  size: 14,
+                                  color: Color(0xFF005F50),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Up to 3 member tiles on home
+                    ...members.take(3).map(
+                          (m) => FamilyMemberTile(
+                            member: m,
+                            onTap: _navigateToFamily,
+                          ),
+                        ),
+
+                    const SizedBox(height: 16),
+
+                    // Pending reminders section
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          LongStrings.pendingRemindersTitle,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6E7A75),
+                          ),
+                        ),
+                        Text(
+                          '${reminders.length}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
                             color: Color(0xFF005F50),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    ...members.map(
-                      (member) => FamilyMemberTile(member: member),
-                    ),
 
-                    const SizedBox(height: 24),
-
-                    // My Reminders Section
-                    const Text(
-                      'Việc cần làm hôm nay',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF151D1B),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_myReminders.isEmpty)
+                    if (reminders.isEmpty)
                       Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16.0),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF7FAF9),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: const Color(0xFFBDC9C4).withValues(alpha: 0.4),
-                          ),
+                          border: Border.all(color: const Color(0xFFE2EAE7)),
                         ),
-                        child: const Row(
+                        child: Row(
                           children: [
-                            Icon(Icons.check_circle_outline,
-                                color: Color(0xFF005F50), size: 20),
-                            SizedBox(width: 8),
-                            Text(
-                              'Không có việc nào đang chờ xử lý.',
-                              style: TextStyle(
-                                color: Color(0xFF6E7A75),
-                                fontSize: 14,
+                            const Icon(
+                              Icons.task_alt,
+                              color: Color(0xFF005F50),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                LongStrings.noPendingReminders,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF6E7A75),
+                                ),
                               ),
                             ),
                           ],
                         ),
                       )
                     else
-                      ..._myReminders.map((reminder) {
-                        final timeString =
-                            '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}';
-                        return Card(
-                          elevation: 0,
-                          color: const Color(0xFFEDF5F2),
-                          shape: RoundedRectangleBorder(
+                      ...reminders.take(5).map((reminder) {
+                        final remFamName = (reminder.familyName != null &&
+                                reminder.familyName!.isNotEmpty)
+                            ? reminder.familyName!
+                            : family.name;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEDF5F2),
                             borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(
-                              color: const Color(0xFFBDC9C4).withValues(alpha: 0.4),
+                            border: Border.all(
+                              color: const Color(0xFFBDC9C4)
+                                  .withValues(alpha: 0.4),
                             ),
                           ),
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: const Icon(
-                              Icons.medication,
-                              color: Color(0xFF005F50),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _handleOpenReminderDetail(
+                              reminder,
+                              remFamName,
+                              user,
                             ),
-                            title: Text(
-                              '${reminder.title} · $timeString',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: Color(0xFF151D1B),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          reminder.title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 15,
+                                            color: Color(0xFF151D1B),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Color(0xFF6E7A75),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 6,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFE4F6EF),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.cottage_rounded,
+                                                    size: 13,
+                                                    color: Color(0xFF005F50),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Flexible(
+                                                    child: Text(
+                                                      remFamName,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontSize: 11.5,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color:
+                                                            Color(0xFF005F50),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: LongStrings.completeTaskSuccess,
+                                    icon: const Icon(
+                                      Icons.check_circle_outline,
+                                      color: Color(0xFF005F50),
+                                      size: 24,
+                                    ),
+                                    onPressed: () =>
+                                        _handleCompleteReminder(reminder.id),
+                                  ),
+                                ],
                               ),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(
-                                Icons.check_circle_outline,
-                                color: Color(0xFF005F50),
-                              ),
-                              onPressed: () => _handleCompleteReminder(reminder.id),
                             ),
                           ),
                         );
                       }),
+
+                    const SizedBox(height: 8),
+
+                    Center(
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF005F50),
+                        ),
+                        icon: const Icon(Icons.arrow_forward, size: 16),
+                        label: Text(
+                          LongStrings.viewAllReminders,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        onPressed: () {
+                          if (widget.onNavigateToReminders != null) {
+                            widget.onNavigateToReminders!();
+                          } else {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ReminderListScreen(
+                                  familyId: family.id,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
                   ],
                 ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNoFamilyView(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 60),
-        const Icon(Icons.family_restroom, size: 80, color: Colors.grey),
-        const SizedBox(height: 24),
-        const Text(
-          "Bạn chưa tham gia gia đình nào.",
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          "Nhập mã mời của người thân hoặc tạo tổ ấm mới cho gia đình bạn.",
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 16, color: Colors.grey),
-        ),
-        const SizedBox(height: 32),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF005F50),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+              );
+            },
           ),
-          onPressed: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const JoinFamilyScreen()),
-            );
-            _stateManager.reload();
-          },
-          child: const Text(
-            'Tham gia bằng mã',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF005F50),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            side: const BorderSide(color: Color(0xFF005F50)),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          onPressed: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CreateFamilyScreen()),
-            );
-            _stateManager.reload();
-          },
-          child: const Text(
-            'Tạo gia đình mới',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

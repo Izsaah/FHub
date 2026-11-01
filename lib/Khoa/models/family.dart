@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class Family {
   final String id;
   final String name;
@@ -13,25 +15,29 @@ class Family {
     this.createdAt,
   });
 
-  factory Family.fromMap(Map<String, dynamic> map) {
+  factory Family.fromMap(Map<String, dynamic> map, {String? documentId}) {
     return Family(
-      id: map['id'] as String,
+      id: documentId ?? (map['id'] as String? ?? ''),
       name: map['name'] as String? ?? '',
-      joinCode: map['join_code'] as String? ?? '',
-      ownerId: map['owner_id'] as String,
-      createdAt: map['created_at'] != null
-          ? DateTime.tryParse(map['created_at'].toString())
-          : null,
+      joinCode: (map['joinCode'] ?? map['join_code'] ?? '') as String,
+      ownerId: (map['ownerId'] ?? map['owner_id'] ?? '') as String,
+      createdAt: _dateTimeFrom(map['createdAt'] ?? map['created_at']),
     );
   }
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'join_code': joinCode,
-      'owner_id': ownerId,
-      'created_at': createdAt?.toIso8601String(),
-    };
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'joinCode': joinCode,
+        'ownerId': ownerId,
+        'createdAt': createdAt == null
+            ? FieldValue.serverTimestamp()
+            : Timestamp.fromDate(createdAt!),
+      };
+
+  static DateTime? _dateTimeFrom(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 }

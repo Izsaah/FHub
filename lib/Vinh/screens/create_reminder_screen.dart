@@ -4,10 +4,15 @@ import '../models/reminder_model.dart';
 import '../services/member_color_helper.dart';
 import '../services/reminder_repository.dart';
 import '../services/reminder_validator.dart';
+import '../widgets/chore_reward_card.dart';
+import '../widgets/member_picker_bottom_sheet.dart';
 import '../widgets/voice_recorder_widget.dart';
 
 class CreateReminderScreen extends StatefulWidget {
   final String familyId;
+  final String? familyName;
+  final List<FamilyOption>? families;
+  final Map<String, List<FamilyMember>>? membersByFamilyId;
   final String currentUserId;
   final String currentUserName;
   final List<FamilyMember> familyMembers;
@@ -17,6 +22,9 @@ class CreateReminderScreen extends StatefulWidget {
   const CreateReminderScreen({
     super.key,
     required this.familyId,
+    this.familyName,
+    this.families,
+    this.membersByFamilyId,
     required this.currentUserId,
     this.currentUserName = 'Me',
     required this.familyMembers,
@@ -34,9 +42,16 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
 
+  late String _activeFamilyId;
+  late String? _activeFamilyName;
+  late List<FamilyOption> _families;
+  late List<FamilyMember> _activeMembers;
+
   FamilyMember? _selectedMember;
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
+  String _selectedRepeatRule = 'NONE';
+  bool _requiresProofImage = false;
 
   String? _voiceNotePath;
   int? _voiceDurationSeconds;
@@ -44,6 +59,18 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
 
   String? _dateTimeError;
   bool _isLoading = false;
+
+  FamilyMember? get _currentMember {
+    try {
+      return _activeMembers.firstWhere(
+        (m) => m.id == widget.currentUserId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool get _canAssignChores => _currentMember?.canAssignChores ?? true;
 
   void _onVoiceRecorded(String path, int durationSeconds, String description) {
     setState(() {
@@ -73,13 +100,36 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   @override
   void initState() {
     super.initState();
+    _families = widget.families != null && widget.families!.isNotEmpty
+        ? FamilyOption.sortAlphabetically(widget.families!)
+        : [
+            FamilyOption(
+              id: widget.familyId,
+              name: widget.familyName ?? 'Gia đình của tôi',
+            ),
+          ];
+    _activeFamilyId = widget.familyId;
+    _activeFamilyName = widget.familyName ??
+        _families
+            .where((f) => f.id == widget.familyId)
+            .map((f) => f.name)
+            .firstOrNull;
+    _activeMembers = widget.membersByFamilyId?[_activeFamilyId] ??
+        List<FamilyMember>.from(widget.familyMembers);
+
     final existing = widget.existingReminder;
 
     if (existing != null) {
+      _activeFamilyId = existing.familyId;
+      _activeFamilyName = existing.familyName ?? _activeFamilyName;
+      _activeMembers = widget.membersByFamilyId?[_activeFamilyId] ??
+          List<FamilyMember>.from(widget.familyMembers);
       _titleController.text = existing.title;
       _voiceNotePath = existing.voiceNotePath;
       _voiceDurationSeconds = existing.voiceDurationSeconds;
       _voiceNoteDescription = existing.voiceNoteDescription;
+      _selectedRepeatRule = existing.repeatRule ?? 'NONE';
+      _requiresProofImage = existing.requiresProofImage;
 
       // Parse existing date and time
       final parsedDt = existing.dueDateTime;
@@ -92,31 +142,39 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         _selectedTime = TimeOfDay(hour: (now.hour + 1) % 24, minute: now.minute);
       }
 
-      // Find matching assigned member
-      _selectedMember = widget.familyMembers.firstWhere(
-        (m) => m.id == existing.assignedTo,
-        orElse: () => FamilyMember(
-          id: existing.assignedTo,
-          name: existing.assignedToName,
-          role: 'Member',
-          familyId: existing.familyId,
-        ),
-      );
+      // Find matching assigned member (hoặc Open Task)
+      if (existing.isOpenTask) {
+        _selectedMember = const FamilyMember(
+          id: 'OPEN',
+          name: 'Cả nhà (Việc chung)',
+          role: 'Open Task',
+          familyId: '',
+        );
+      } else {
+        _selectedMember = _activeMembers.firstWhere(
+          (m) => m.id == existing.assignedTo,
+          orElse: () => FamilyMember(
+            id: existing.assignedTo,
+            name: existing.assignedToName,
+            role: 'Member',
+            familyId: _activeFamilyId,
+          ),
+        );
+      }
     } else {
-      // Default to tomorrow or later today if early
+      // Default initial date/time: Hôm nay + 1 tiếng
       final now = DateTime.now();
-      // Default date is today
       _selectedDate = DateTime(now.year, now.month, now.day);
-      // Default time is 1 hour in the future
-      final nextHour = now.hour < 23 ? now.hour + 1 : 23;
-      final nextMinute = now.minute;
-      _selectedTime = TimeOfDay(hour: nextHour, minute: nextMinute);
+      _selectedTime = TimeOfDay(hour: (now.hour + 1) % 24, minute: 0);
 
-      // If family members exist, default to the first one that is not current user, or first
-      if (widget.familyMembers.isNotEmpty) {
-        _selectedMember = widget.familyMembers.firstWhere(
+      // Default member: Nếu là con cái thì mặc định là chính mình; Bố Mẹ thì gán cho thành viên khác
+      if (!_canAssignChores) {
+        _selectedMember = _currentMember ??
+            (_activeMembers.isNotEmpty ? _activeMembers.first : null);
+      } else if (_activeMembers.isNotEmpty) {
+        _selectedMember = _activeMembers.firstWhere(
           (m) => m.id != widget.currentUserId,
-          orElse: () => widget.familyMembers.first,
+          orElse: () => _activeMembers.first,
         );
       }
     }
@@ -140,20 +198,41 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     return '$h:$m';
   }
 
+  bool _validateDateTime() {
+    if (_selectedDate == null || _selectedTime == null) {
+      setState(() {
+        _dateTimeError = 'Vui lòng chọn ngày và giờ';
+      });
+      return false;
+    }
+
+    final err = widget.isEditing
+        ? null
+        : ReminderValidator.validateFutureDateTime(
+            _selectedDate,
+            _selectedTime,
+          );
+
+    setState(() {
+      _dateTimeError = err;
+    });
+
+    return err == null;
+  }
+
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? now,
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: DateTime(now.year + 2),
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now.add(const Duration(days: 365 * 5)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF0D7A68),
+              primary: Color(0xFF005F50),
               onPrimary: Colors.white,
-              surface: Colors.white,
               onSurface: Color(0xFF151D1B),
             ),
           ),
@@ -165,22 +244,22 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _validateDateTime();
       });
+      _validateDateTime();
     }
   }
 
   Future<void> _pickTime() async {
+    final now = TimeOfDay.now();
     final picked = await showTimePicker(
       context: context,
-      initialTime: _selectedTime ?? TimeOfDay.now(),
+      initialTime: _selectedTime ?? now,
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF0D7A68),
+              primary: Color(0xFF005F50),
               onPrimary: Colors.white,
-              surface: Colors.white,
               onSurface: Color(0xFF151D1B),
             ),
           ),
@@ -192,140 +271,48 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     if (picked != null) {
       setState(() {
         _selectedTime = picked;
-        _validateDateTime();
       });
+      _validateDateTime();
     }
   }
 
-  bool _validateDateTime() {
-    final error = ReminderValidator.validateFutureDateTime(
-      _selectedDate,
-      _selectedTime,
+  Future<void> _showMemberPickerBottomSheet() async {
+    if (!_canAssignChores) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ Bố/Mẹ mới có quyền phân công việc cho thành viên khác.'),
+          backgroundColor: Color(0xFFE77D2B),
+        ),
+      );
+      return;
+    }
+    final picked = await MemberPickerBottomSheet.show(
+      context,
+      familyMembers: _activeMembers,
+      selectedMember: _selectedMember,
     );
-    setState(() {
-      _dateTimeError = error;
-    });
-    return error == null;
-  }
-
-  Future<void> _pickMember() async {
-    const primaryColor = Color(0xFF0D7A68);
-    const textPrimary = Color(0xFF151D1B);
-
-    final selected = await showModalBottomSheet<FamilyMember>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Select Member (For)',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: textPrimary,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 20),
-                        onPressed: () => Navigator.of(ctx).pop(),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: Color(0xFFE2EAE7)),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: widget.familyMembers.length,
-                    itemBuilder: (ctx, index) {
-                      final member = widget.familyMembers[index];
-                      final isSelected = member.id == _selectedMember?.id;
-                      final primary =
-                          MemberColorHelper.getPrimaryColor(member.name);
-                      final bg =
-                          MemberColorHelper.getBackgroundColor(member.name);
-
-                      return ListTile(
-                        leading: CircleAvatar(
-                          radius: 18,
-                          backgroundColor: bg,
-                          child: Text(
-                            member.name.isNotEmpty
-                                ? member.name[0].toUpperCase()
-                                : '?',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: primary,
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          member.name,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.w500,
-                            color: isSelected ? primaryColor : textPrimary,
-                          ),
-                        ),
-                        subtitle: Text(
-                          member.role,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF6E7A75),
-                          ),
-                        ),
-                        trailing: isSelected
-                            ? const Icon(Icons.check_circle,
-                                color: primaryColor)
-                            : null,
-                        tileColor: isSelected
-                            ? const Color(0xFFE7F5F2)
-                            : Colors.transparent,
-                        onTap: () => Navigator.of(ctx).pop(member),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (selected != null) {
+    if (picked != null) {
       setState(() {
-        _selectedMember = selected;
+        _selectedMember = picked;
       });
     }
   }
 
   Future<void> _submit() async {
-    final formValid = _formKey.currentState?.validate() ?? false;
-    final dateTimeValid = _validateDateTime();
+    final isFormValid = _formKey.currentState?.validate() ?? false;
+    final isDtValid = _validateDateTime();
 
-    if (!formValid || !dateTimeValid) {
+    if (!isFormValid || !isDtValid) {
       return;
     }
 
-    if (_selectedMember == null || _selectedDate == null || _selectedTime == null) {
+    if (_selectedMember == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng chọn người nhận việc hoặc Việc chung cho cả nhà.'),
+          backgroundColor: Color(0xFFBA1A1A),
+        ),
+      );
       return;
     }
 
@@ -334,62 +321,90 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     try {
       final dateStr = _formatDate(_selectedDate!);
       final timeStr = _formatTime(_selectedTime!);
+      final isNowOpenTask = _selectedMember!.id == 'OPEN';
+      final effectiveProofRequired = _canAssignChores && _requiresProofImage;
 
       if (widget.isEditing) {
-        final updatedModel = widget.existingReminder!.copyWith(
-          assignedTo: _selectedMember!.id,
-          assignedToName: _selectedMember!.name,
+        // Cập nhật trạng thái phù hợp khi đổi giữa Cả nhà (OPEN) và Cá nhân (PENDING)
+        String updatedStatus;
+        if (isNowOpenTask) {
+          updatedStatus = ReminderStatus.open;
+        } else if (widget.existingReminder!.isOpen) {
+          updatedStatus = ReminderStatus.pending;
+        } else {
+          updatedStatus = widget.existingReminder!.status;
+        }
+
+        final updated = widget.existingReminder!.copyWith(
+          familyId: _activeFamilyId,
+          familyName: _activeFamilyName,
           title: _titleController.text.trim(),
+          assignedTo: isNowOpenTask ? '' : _selectedMember!.id,
+          assignedToName: isNowOpenTask ? 'Cả nhà' : _selectedMember!.name,
           date: dateStr,
           time: timeStr,
+          repeatRule: _selectedRepeatRule,
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
+          clearVoiceNote: _voiceNotePath == null,
+          requiresProofImage: effectiveProofRequired,
+          rewardStars: 0,
+          status: updatedStatus,
         );
 
-        final result = await widget.repository.updateReminder(
-          reminder: updatedModel,
+        final saved = await widget.repository.updateReminder(
+          reminder: updated,
           currentUserId: widget.currentUserId,
-          familyMembers: widget.familyMembers,
+          familyMembers: _activeMembers,
         );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Reminder "${result.title}" updated!'),
-              backgroundColor: const Color(0xFF0D7A68),
+            const SnackBar(
+              content: Text('Cập nhật lời nhắc thành công!'),
+              backgroundColor: Color(0xFF005F50),
             ),
           );
-          Navigator.of(context).pop(result);
+          Navigator.of(context).pop(saved);
         }
       } else {
-        final reminder = ReminderModel(
-          id: '',
-          familyId: widget.familyId,
+        final newReminder = ReminderModel(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          familyId: _activeFamilyId,
+          familyName: _activeFamilyName,
           creatorId: widget.currentUserId,
           creatorName: widget.currentUserName,
-          assignedTo: _selectedMember!.id,
-          assignedToName: _selectedMember!.name,
           title: _titleController.text.trim(),
+          assignedTo: isNowOpenTask ? '' : _selectedMember!.id,
+          assignedToName: isNowOpenTask ? 'Cả nhà' : _selectedMember!.name,
           date: dateStr,
           time: timeStr,
-          status: ReminderStatus.pending,
+          repeatRule: _selectedRepeatRule,
+          status: isNowOpenTask ? ReminderStatus.open : ReminderStatus.pending,
+          requiresProofImage: effectiveProofRequired,
+          rewardStars: 0,
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
+          createdAt: DateTime.now(),
         );
 
         final created = await widget.repository.createReminder(
-          reminder: reminder,
+          reminder: newReminder,
           currentUserId: widget.currentUserId,
-          familyMembers: widget.familyMembers,
+          familyMembers: _activeMembers,
         );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Reminder "${created.title}" created!'),
-              backgroundColor: const Color(0xFF0D7A68),
+              content: Text(
+                isNowOpenTask
+                    ? '🎉 Tạo việc mở cho cả nhà thành công!'
+                    : 'Tạo lời nhắc thành công!',
+              ),
+              backgroundColor: const Color(0xFF005F50),
             ),
           );
           Navigator.of(context).pop(created);
@@ -397,7 +412,6 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.toString()),
@@ -405,299 +419,526 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF0D7A68);
+    const primaryColor = Color(0xFF005F50);
     const textPrimary = Color(0xFF151D1B);
     const textMuted = Color(0xFF6E7A75);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPad = screenWidth < 360 ? 14.0 : 20.0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3FBF8),
       appBar: AppBar(
         title: Text(
-          widget.isEditing ? 'Edit Reminder' : 'Create Reminder',
+          widget.isEditing ? 'Chỉnh sửa lời nhắc' : 'Tạo lời nhắc mới',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
+            color: primaryColor,
             fontWeight: FontWeight.bold,
-            color: textPrimary,
+            fontSize: 20,
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFEDF5F2),
         elevation: 0,
-        iconTheme: const IconThemeData(color: textPrimary),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: primaryColor),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(color: const Color(0xFFE2EAE7), height: 1),
+          child: Container(color: const Color(0xFFDCE8E3), height: 1),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 1. TITLE
-              const Text(
-                'Title',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _titleController,
-                style: const TextStyle(fontSize: 17),
-                decoration: InputDecoration(
-                  hintText: 'Buy milk',
-                  hintStyle: const TextStyle(color: textMuted),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFFBDC9C4)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFFBDC9C4)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide:
-                        const BorderSide(color: primaryColor, width: 2),
-                  ),
-                ),
-                validator: ReminderValidator.validateTitle,
-              ),
-              const SizedBox(height: 16),
-
-              // 1.1 GHI ÂM GIỌNG NÓI (VOICE REMINDER VIA MICROPHONE & SPEAKER)
-              VoiceRecorderWidget(
-                onVoiceRecorded: _onVoiceRecorded,
-                onVoiceRemoved: _onVoiceRemoved,
-                initialAudioPath: _voiceNotePath,
-                initialDuration: _voiceDurationSeconds,
-                initialDescription: _voiceNoteDescription,
-              ),
-              const SizedBox(height: 20),
-
-              // 2. FOR (Assigned Member)
-              const Text(
-                'For',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: _pickMember,
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  height: 56,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFBDC9C4)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _selectedMember != null
-                          ? Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: MemberColorHelper.getBackgroundColor(
-                                      _selectedMember!.name),
-                                  child: Text(
-                                    _selectedMember!.name.isNotEmpty
-                                        ? _selectedMember!.name[0].toUpperCase()
-                                        : '?',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: MemberColorHelper.getPrimaryColor(
-                                          _selectedMember!.name),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  '${_selectedMember!.name} (${_selectedMember!.role})',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
-                                    color: textPrimary,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : const Text(
-                              'Select Member',
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPad, vertical: 16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 0. CHỌN GIA ĐÌNH (Nếu có thông tin gia đình hoặc tham gia > 1 gia đình)
+                    if (_families.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFBDC9C4)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.home_work_rounded,
+                              color: primaryColor,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 10),
+                            const Text(
+                              'Gia đình:',
                               style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
                                 color: textMuted,
                               ),
                             ),
-                      const Icon(Icons.person_outline, color: primaryColor),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // 3. DATE
-              const Text(
-                'Date',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: _pickDate,
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  height: 56,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFBDC9C4)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _selectedDate != null
-                            ? _formatDate(_selectedDate!)
-                            : 'Select Date',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: _selectedDate != null ? textPrimary : textMuted,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: (!widget.isEditing && _families.length > 1)
+                                  ? DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: _families.any(
+                                                (f) => f.id == _activeFamilyId)
+                                            ? _activeFamilyId
+                                            : _families.first.id,
+                                        isDense: true,
+                                        isExpanded: true,
+                                        icon: const Icon(
+                                          Icons.keyboard_arrow_down_rounded,
+                                          color: primaryColor,
+                                        ),
+                                        items: _families.map((fam) {
+                                          return DropdownMenuItem<String>(
+                                            value: fam.id,
+                                            child: Text(
+                                              fam.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w700,
+                                                color: primaryColor,
+                                              ),
+                                            ),
+                                          );
+                                        }).toList(),
+                                        onChanged: (newFamId) {
+                                          if (newFamId == null ||
+                                              newFamId == _activeFamilyId) {
+                                            return;
+                                          }
+                                          final selectedFam = _families
+                                              .firstWhere((f) => f.id == newFamId);
+                                          final newMembers = widget
+                                                  .membersByFamilyId?[newFamId] ??
+                                              widget.familyMembers;
+                                          setState(() {
+                                            _activeFamilyId = newFamId;
+                                            _activeFamilyName = selectedFam.name;
+                                            _activeMembers = List<FamilyMember>.from(
+                                                newMembers);
+                                            if (_selectedMember != null &&
+                                                _selectedMember!.id != 'OPEN') {
+                                              _selectedMember = _activeMembers
+                                                      .isNotEmpty
+                                                  ? _activeMembers.firstWhere(
+                                                      (m) =>
+                                                          m.id !=
+                                                          widget.currentUserId,
+                                                      orElse: () =>
+                                                          _activeMembers.first,
+                                                    )
+                                                  : null;
+                                            }
+                                          });
+                                        },
+                                      ),
+                                    )
+                                  : Text(
+                                      _activeFamilyName ?? 'Gia đình của tôi',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: primaryColor,
+                                      ),
+                                    ),
+                            ),
+                          ],
                         ),
                       ),
-                      const Icon(Icons.calendar_month, color: primaryColor),
+                      const SizedBox(height: 16),
                     ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
 
-              // 4. TIME
-              const Text(
-                'Time',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: _pickTime,
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  height: 56,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFBDC9C4)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _selectedTime != null
-                            ? _formatTime(_selectedTime!)
-                            : 'Select Time',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: _selectedTime != null ? textPrimary : textMuted,
-                        ),
+                    // 1. TIÊU ĐỀ
+                    const Text(
+                      'Nội dung việc cần làm *',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
                       ),
-                      const Icon(Icons.access_time, color: primaryColor),
-                    ],
-                  ),
-                ),
-              ),
-
-              // 5. Future Date + Time Error Message
-              if (_dateTimeError != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFDAD6),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.error_outline,
-                          color: Color(0xFFBA1A1A), size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _dateTimeError!,
-                          style: const TextStyle(
-                            color: Color(0xFFBA1A1A),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 32),
-
-              // 6. CREATE BUTTON
-              SizedBox(
-                height: 54,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
                     ),
-                  ),
-                  onPressed: _isLoading ? null : _submit,
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2.5,
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _titleController,
+                      maxLength: 100,
+                      decoration: InputDecoration(
+                        hintText: 'Nhập việc cần làm hoặc bấm ghi âm giọng nói...',
+                        hintStyle: const TextStyle(color: textMuted),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.all(16),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: Color(0xFFBDC9C4)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: Color(0xFFBDC9C4)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: primaryColor, width: 2),
+                        ),
+                      ),
+                      validator: (val) =>
+                          ReminderValidator.validateTitle(val?.trim() ?? ''),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // 1.5. GHI ÂM LỜI NHẮC GIỌNG NÓI
+                    VoiceRecorderWidget(
+                      initialAudioPath: _voiceNotePath,
+                      initialDuration: _voiceDurationSeconds,
+                      initialDescription: _voiceNoteDescription,
+                      onVoiceRecorded: _onVoiceRecorded,
+                      onVoiceRemoved: _onVoiceRemoved,
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 2. NGƯỜI NHẬN VIỆC (FOR)
+                    const Text(
+                      'Người nhận việc',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: _showMemberPickerBottomSheet,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        height: 56,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFBDC9C4)),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _selectedMember != null
+                                  ? Row(
+                                      children: [
+                                        if (_selectedMember!.id == 'OPEN')
+                                          const CircleAvatar(
+                                            radius: 14,
+                                            backgroundColor: Color(0xFFE0F7FA),
+                                            child: Icon(Icons.groups_rounded,
+                                                color: Color(0xFF00796B),
+                                                size: 16),
+                                          )
+                                        else
+                                          CircleAvatar(
+                                            radius: 14,
+                                            backgroundColor: MemberColorHelper
+                                                .getBackgroundColor(
+                                                    _selectedMember!.name),
+                                            child: Text(
+                                              _selectedMember!.name.isNotEmpty
+                                                  ? _selectedMember!.name[0]
+                                                      .toUpperCase()
+                                                  : '?',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: MemberColorHelper
+                                                    .getPrimaryColor(
+                                                        _selectedMember!.name),
+                                              ),
+                                            ),
+                                          ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            _selectedMember!.id == 'OPEN'
+                                                ? '👨‍👩‍👧 Cả nhà (Việc chung chưa gán)'
+                                                : '${_selectedMember!.name} (${_selectedMember!.roleDisplayName})',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w600,
+                                              color: textPrimary,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : const Text(
+                                      'Chọn thành viên',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                        color: textMuted,
+                                      ),
+                                    ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.arrow_drop_down, color: primaryColor),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 3. NGÀY HẸN
+                    const Text(
+                      'Ngày thực hiện',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: _pickDate,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        height: 56,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFBDC9C4)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _selectedDate != null
+                                    ? _formatDate(_selectedDate!)
+                                    : 'Chọn ngày',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: _selectedDate != null
+                                      ? textPrimary
+                                      : textMuted,
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.calendar_month, color: primaryColor),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 4. GIỜ HẸN
+                    const Text(
+                      'Giờ thực hiện',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: _pickTime,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        height: 56,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFBDC9C4)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _selectedTime != null
+                                    ? _formatTime(_selectedTime!)
+                                    : 'Chọn giờ',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: _selectedTime != null
+                                      ? textPrimary
+                                      : textMuted,
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.access_time, color: primaryColor),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // 4.5. TẦN SUẤT LẶP LẠI (REPEAT)
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Tần suất lặp lại',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<String>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment<String>(
+                            value: 'NONE',
+                            label: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text('Một lần', maxLines: 1),
+                            ),
+                            icon: Icon(Icons.event_outlined, size: 18),
                           ),
-                        )
-                      : Text(
-                          widget.isEditing ? 'Save Changes' : 'Create',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                          ButtonSegment<String>(
+                            value: 'DAILY',
+                            label: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text('Hàng ngày', maxLines: 1),
+                            ),
+                            icon: Icon(Icons.repeat, size: 18),
+                          ),
+                          ButtonSegment<String>(
+                            value: 'WEEKLY',
+                            label: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text('Hàng tuần', maxLines: 1),
+                            ),
+                            icon: Icon(Icons.calendar_view_week, size: 18),
+                          ),
+                        ],
+                        selected: {_selectedRepeatRule},
+                        onSelectionChanged: (newSelection) {
+                          setState(() {
+                            _selectedRepeatRule = newSelection.first;
+                          });
+                        },
+                        style: ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          padding: const WidgetStatePropertyAll(
+                            EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                          ),
+                          backgroundColor: WidgetStateProperty.resolveWith((states) {
+                            if (states.contains(WidgetState.selected)) {
+                              return const Color(0xFFD4ECE5);
+                            }
+                            return Colors.white;
+                          }),
+                          foregroundColor: WidgetStateProperty.resolveWith((states) {
+                            if (states.contains(WidgetState.selected)) {
+                              return primaryColor;
+                            }
+                            return textPrimary;
+                          }),
+                        ),
+                      ),
+                    ),
+
+                    // 4.6. NGHIỆM THU VIỆC NHÀ (CAMERA PROOF)
+                    if (_canAssignChores) ...[
+                      const SizedBox(height: 20),
+                      ChoreRewardCard(
+                        requiresProofImage: _requiresProofImage,
+                        onProofRequiredChanged: (val) =>
+                            setState(() => _requiresProofImage = val),
+                      ),
+                    ],
+
+                    if (_dateTimeError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _dateTimeError!,
+                        style: const TextStyle(
+                          color: Color(0xFFBA1A1A),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 36),
+
+                    // 5. NÚT SUBMIT
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
+                        onPressed: _isLoading ? null : _submit,
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  widget.isEditing
+                                      ? 'Cập nhật lời nhắc'
+                                      : (_selectedMember?.id == 'OPEN'
+                                          ? 'Đăng việc cho cả nhà'
+                                          : 'Lưu lời nhắc'),
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),

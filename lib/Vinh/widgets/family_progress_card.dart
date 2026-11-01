@@ -13,12 +13,13 @@ class FamilyProgressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (reminders.isEmpty) {
+    final activeReminders = reminders.where((r) => !r.isDeleted).toList();
+    if (activeReminders.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final total = reminders.length;
-    final completed = reminders.where((r) => r.isCompleted).length;
+    final total = activeReminders.length;
+    final completed = activeReminders.where((r) => r.isCompleted).length;
     final percent = total > 0 ? (completed / total) : 0.0;
     final isAllDone = total > 0 && completed == total;
 
@@ -50,28 +51,35 @@ class FamilyProgressCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    isAllDone
-                        ? Icons.celebration_outlined
-                        : Icons.task_alt_outlined,
-                    color: isAllDone ? primaryColor : accentOrange,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    isAllDone
-                        ? 'Cả nhà đã hoàn thành hết việc! 🎉'
-                        : 'Tiến độ gia đình ($dateTitle)',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF151D1B),
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      isAllDone
+                          ? Icons.celebration_outlined
+                          : Icons.task_alt_outlined,
+                      color: isAllDone ? primaryColor : accentOrange,
+                      size: 20,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        isAllDone
+                            ? 'Cả nhà đã hoàn thành hết việc! 🎉'
+                            : 'Tiến độ gia đình ($dateTitle)',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF151D1B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(

@@ -56,7 +56,9 @@ class CheckInButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              isCheckedIn ? Icons.check_circle_rounded : Icons.check_circle_outline,
+              isCheckedIn
+                  ? Icons.check_circle_rounded
+                  : Icons.check_circle_outline,
               size: 28,
               color: isCheckedIn ? const Color(0xFF005F50) : Colors.white,
             ),

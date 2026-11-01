@@ -2,14 +2,14 @@ import 'package:flutter/foundation.dart';
 import '../models/family_model.dart';
 import '../models/family_member_model.dart';
 import 'family_service_interface.dart';
-import 'mock_data_service.dart';
+import 'family_data_service.dart';
 
 class FamilyStateManager extends ChangeNotifier {
   static final FamilyStateManager _instance = FamilyStateManager._internal();
   factory FamilyStateManager() => _instance;
   FamilyStateManager._internal();
 
-  IFamilyService _service = MockDataService();
+  IFamilyService _service = FamilyDataService();
 
   void setService(IFamilyService service) {
     _service = service;

@@ -201,23 +201,31 @@ class _VoiceReminderPlayerState extends State<VoiceReminderPlayer>
                             color: primaryColor,
                           ),
                         ),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.volume_up_rounded,
-                              size: 13,
-                              color: Color(0xFF4C756B),
-                            ),
-                            const SizedBox(width: 3),
-                            Text(
-                              _isPlaying ? 'Đang phát qua Loa 🔊' : 'Loa máy 🔊',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.volume_up_rounded,
+                                size: 13,
                                 color: Color(0xFF4C756B),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 3),
+                              Flexible(
+                                child: Text(
+                                  _isPlaying ? 'Đang phát qua Loa 🔊' : 'Loa máy 🔊',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500,
+                                    color: Color(0xFF4C756B),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),

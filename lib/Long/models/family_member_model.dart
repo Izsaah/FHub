@@ -1,6 +1,7 @@
 import 'user_model.dart';
 import 'hierarchy_role.dart';
 import 'member_status.dart';
+import '../utils/long_strings.dart';
 
 enum Role { owner, member }
 
@@ -25,6 +26,8 @@ class FamilyMemberModel {
     this.lastCheckInDate,
   });
 
+  String get memberRole => hierarchyRole.code;
+
   bool get isOwner => role == Role.owner;
   bool get isActive => status == MemberStatus.active;
   bool get isDeactivated => status == MemberStatus.deactivated;
@@ -43,22 +46,54 @@ class FamilyMemberModel {
         lastCheckInAt!.day == now.day;
   }
 
+  String get roleLabel {
+    switch (hierarchyRole) {
+      case HierarchyRole.grandparent:
+        return LongStrings.t('Ông / Bà', 'Grandparent');
+      case HierarchyRole.child:
+        return LongStrings.t('Con cái', 'Child');
+      case HierarchyRole.parent:
+        return role == Role.owner
+            ? LongStrings.t('Chủ nhà', 'Owner')
+            : LongStrings.t('Bố / Mẹ', 'Parent');
+    }
+  }
+
   factory FamilyMemberModel.fromJson(Map<String, dynamic> json) {
+    final rawRole = json['role']?.toString().toUpperCase() ?? 'MEMBER';
+    final isOwner =
+        (json['isOwner'] ?? json['is_owner']) == true || rawRole == 'OWNER';
+
+    final hierarchyRaw = json['hierarchy_role'] ??
+        json['hierarchyRole'] ??
+        json['member_role'] ??
+        json['memberRole'] ??
+        (rawRole != 'OWNER' && rawRole != 'MEMBER' ? rawRole : null);
+
+    final statusRaw = json['status']?.toString();
+
+    final lastActiveRaw = json['last_active_at'] ?? json['lastActiveAt'];
+    final lastCheckInRaw = json['last_check_in_at'] ?? json['lastCheckInAt'];
+    final lastCheckInDateRaw =
+        json['last_check_in_date'] ?? json['lastCheckInDate'];
+
     return FamilyMemberModel(
-      familyId: json['family_id']?.toString() ?? '',
+      familyId: (json['family_id'] ?? json['familyId'])?.toString() ?? '',
       user: UserModel.fromJson(json['user'] ?? {}),
-      role: json['role']?.toString().toUpperCase() == 'OWNER'
-          ? Role.owner
-          : Role.member,
-      hierarchyRole: HierarchyRole.fromString(json['hierarchy_role']?.toString()),
-      status: MemberStatus.fromString(json['status']?.toString()),
-      lastActiveAt: json['last_active_at'] != null
-          ? DateTime.tryParse(json['last_active_at'].toString())
+      role: isOwner ? Role.owner : Role.member,
+      hierarchyRole: HierarchyRole.fromString(hierarchyRaw?.toString()),
+      status: MemberStatus.fromString(statusRaw),
+      lastActiveAt: lastActiveRaw != null
+          ? (lastActiveRaw is DateTime
+              ? lastActiveRaw
+              : DateTime.tryParse(lastActiveRaw.toString()))
           : null,
-      lastCheckInAt: json['last_check_in_at'] != null
-          ? DateTime.tryParse(json['last_check_in_at'].toString())
+      lastCheckInAt: lastCheckInRaw != null
+          ? (lastCheckInRaw is DateTime
+              ? lastCheckInRaw
+              : DateTime.tryParse(lastCheckInRaw.toString()))
           : null,
-      lastCheckInDate: json['last_check_in_date']?.toString(),
+      lastCheckInDate: lastCheckInDateRaw?.toString(),
     );
   }
 
@@ -68,6 +103,7 @@ class FamilyMemberModel {
       'user_id': user.id,
       'role': role.name.toUpperCase(),
       'hierarchy_role': hierarchyRole.code,
+      'member_role': hierarchyRole.code,
       'status': status.code,
       'last_active_at': lastActiveAt?.toIso8601String(),
       'last_check_in_at': lastCheckInAt?.toIso8601String(),

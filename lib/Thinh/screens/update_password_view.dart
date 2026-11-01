@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/app_colors.dart';
 import '../services/auth_service.dart';
@@ -28,7 +27,7 @@ class _UpdatePasswordViewState extends State<UpdatePasswordView> {
   String _t(String vietnamese, String english) =>
       AppLanguage.text(vietnamese, english);
 
-  bool get _hasSession => Supabase.instance.client.auth.currentSession != null;
+  bool get _hasSession => _authService.getCurrentUser() != null;
 
   Future<void> _handleUpdatePassword() async {
     final password = _passwordController.text;

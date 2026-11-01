@@ -1,16 +1,25 @@
 import 'dart:async';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
+import 'multi_tier_escalation_service.dart';
 import 'reminder_exceptions.dart';
 import 'reminder_validator.dart';
 
 // Re-export core exceptions for seamless encapsulation
+export 'firebase_reminder_repository.dart';
+export 'multi_tier_escalation_service.dart';
 export 'reminder_exceptions.dart';
 export 'supabase_reminder_repository.dart';
 
 abstract class ReminderRepository {
   Future<List<ReminderModel>> getReminders({required String familyId});
   Stream<List<ReminderModel>> watchReminders({required String familyId});
+  Future<List<ReminderModel>> getRemindersForFamilies({
+    required List<String> familyIds,
+  });
+  Stream<List<ReminderModel>> watchRemindersForFamilies({
+    required List<String> familyIds,
+  });
   Future<List<ReminderModel>> getPendingReminders({required String familyId});
   Future<List<ReminderModel>> getCompletedReminders({required String familyId});
 
@@ -31,16 +40,32 @@ abstract class ReminderRepository {
   Future<ReminderModel> completeReminder({
     required String reminderId,
     required String currentUserId,
+    String? proofImageUrl,
+  });
+
+  Future<ReminderModel> claimOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+  });
+
+  Future<ReminderModel> claimAndCompleteOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+    String? proofImageUrl,
   });
 
   Future<bool> deleteReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   });
 
   Future<bool> restoreReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   });
 }
 
@@ -61,7 +86,61 @@ class InMemoryReminderRepository implements ReminderRepository {
     final todayStr =
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
 
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayStr =
+        '${yesterday.day.toString().padLeft(2, '0')}/${yesterday.month.toString().padLeft(2, '0')}/${yesterday.year}';
+
     _reminders.addAll([
+      // 1. Việc nhà cho con: Yêu cầu chụp ảnh nghiệm thu + Thưởng 3 sao
+      ReminderModel(
+        id: 'rem_chore_1',
+        familyId: 'family_1',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Rửa bát & dọn bếp sau bữa tối',
+        date: todayStr,
+        time: '20:00',
+        status: ReminderStatus.pending,
+        repeatRule: 'DAILY',
+        requiresProofImage: true,
+        rewardStars: 3,
+        createdAt: now.subtract(const Duration(hours: 2)),
+      ),
+      // 2. Việc chung gia đình (Open Task): Cả nhà xung phong nhận việc + 2 sao
+      ReminderModel(
+        id: 'rem_open_1',
+        familyId: 'family_1',
+        creatorId: 'user_dad',
+        creatorName: 'Dad',
+        assignedTo: 'OPEN',
+        assignedToName: 'Cả nhà',
+        title: 'Dọn dẹp phòng khách đón khách',
+        date: todayStr,
+        time: '17:30',
+        status: ReminderStatus.open,
+        repeatRule: 'NONE',
+        requiresProofImage: true,
+        rewardStars: 2,
+        createdAt: now.subtract(const Duration(hours: 4)),
+      ),
+      // 3. Việc quá hạn
+      ReminderModel(
+        id: 'rem_overdue_1',
+        familyId: 'family_1',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Nộp tiền điện nước tháng này',
+        date: yesterdayStr,
+        time: '09:00',
+        status: ReminderStatus.overdue,
+        repeatRule: 'NONE',
+        createdAt: now.subtract(const Duration(days: 2)),
+      ),
+      // 4. Lời nhắc uống thuốc hàng ngày (con nhắc mẹ)
       ReminderModel(
         id: 'rem_1',
         familyId: 'family_1',
@@ -69,12 +148,14 @@ class InMemoryReminderRepository implements ReminderRepository {
         creatorName: 'Minh',
         assignedTo: 'user_mom',
         assignedToName: 'Mom',
-        title: 'Take medicine',
+        title: 'Uống thuốc huyết áp buổi sáng',
         date: todayStr,
         time: '08:00',
-        status: ReminderStatus.pending,
+        status: ReminderStatus.open,
+        repeatRule: 'DAILY',
         createdAt: now.subtract(const Duration(hours: 3)),
       ),
+      // 5. Việc mua sữa hàng tuần (nhờ bố)
       ReminderModel(
         id: 'rem_2',
         familyId: 'family_1',
@@ -82,26 +163,34 @@ class InMemoryReminderRepository implements ReminderRepository {
         creatorName: 'Minh',
         assignedTo: 'user_dad',
         assignedToName: 'Dad',
-        title: 'Buy milk',
+        title: 'Mua sữa hạt và trái cây',
         date: todayStr,
         time: '18:00',
         status: ReminderStatus.pending,
+        repeatRule: 'WEEKLY',
         createdAt: now.subtract(const Duration(hours: 1)),
       ),
+      // 6. Việc đã hoàn thành kèm ảnh nghiệm thu & 2 sao
       ReminderModel(
         id: 'rem_3',
         familyId: 'family_1',
-        creatorId: 'user_dad',
-        creatorName: 'Dad',
+        creatorId: 'user_mom',
+        creatorName: 'Mom',
         assignedTo: 'user_minh',
         assignedToName: 'Minh',
-        title: 'Buy vegetables',
+        title: 'Gấp quần áo & dọn phòng ngủ',
         date: todayStr,
         time: '12:00',
         status: ReminderStatus.completed,
+        repeatRule: 'NONE',
+        requiresProofImage: true,
+        rewardStars: 2,
+        proofImageUrl:
+            'https://images.unsplash.com/photo-1540518614846-7ede433c4ef4?auto=format&fit=crop&w=400&q=80',
         completedAt: now.subtract(const Duration(minutes: 30)),
         createdAt: now.subtract(const Duration(hours: 5)),
       ),
+      // 7. Lời nhắc thoại từ Mẹ
       ReminderModel(
         id: 'rem_voice_1',
         familyId: 'family_1',
@@ -113,18 +202,18 @@ class InMemoryReminderRepository implements ReminderRepository {
         date: todayStr,
         time: '19:30',
         status: ReminderStatus.pending,
+        repeatRule: 'NONE',
         voiceNotePath: 'assets/audio/sample_voice_reminder.wav',
         voiceDurationSeconds: 3,
-        voiceNoteDescription: 'Mẹ dặn nhớ uống 2 viên vitamin và ăn tối trước 8h nhé con!',
+        voiceNoteDescription:
+            'Mẹ dặn nhớ uống 2 viên vitamin và ăn tối trước 8h nhé con!',
         createdAt: now.subtract(const Duration(minutes: 40)),
       ),
     ]);
   }
 
   void _notify(String familyId) {
-    final active = _reminders
-        .where((r) => r.familyId == familyId && !r.isDeleted)
-        .toList();
+    final active = _reminders.where((r) => !r.isDeleted).toList();
     _controller.add(List.unmodifiable(active));
   }
 
@@ -139,7 +228,35 @@ class InMemoryReminderRepository implements ReminderRepository {
   Stream<List<ReminderModel>> watchReminders({required String familyId}) async* {
     yield await getReminders(familyId: familyId);
     yield* _controller.stream.map(
-      (list) => list.where((r) => r.familyId == familyId && !r.isDeleted).toList(),
+      (list) =>
+          list.where((r) => r.familyId == familyId && !r.isDeleted).toList(),
+    );
+  }
+
+  @override
+  Future<List<ReminderModel>> getRemindersForFamilies({
+    required List<String> familyIds,
+  }) async {
+    if (familyIds.isEmpty) return [];
+    final idSet = familyIds.toSet();
+    return _reminders
+        .where((r) => idSet.contains(r.familyId) && !r.isDeleted)
+        .toList();
+  }
+
+  @override
+  Stream<List<ReminderModel>> watchRemindersForFamilies({
+    required List<String> familyIds,
+  }) async* {
+    if (familyIds.isEmpty) {
+      yield [];
+      return;
+    }
+    final idSet = familyIds.toSet();
+    yield await getRemindersForFamilies(familyIds: familyIds);
+    yield* _controller.stream.map(
+      (list) =>
+          list.where((r) => idSet.contains(r.familyId) && !r.isDeleted).toList(),
     );
   }
 
@@ -174,8 +291,12 @@ class InMemoryReminderRepository implements ReminderRepository {
       throw ReminderValidationException(titleError);
     }
 
-    // 2. Validate Assigned Member if list provided
-    if (familyMembers != null && familyMembers.isNotEmpty) {
+    // 2. Validate Assigned Member if list provided (allow open task: OPEN / ALL)
+    if (familyMembers != null &&
+        familyMembers.isNotEmpty &&
+        reminder.assignedTo != 'OPEN' &&
+        reminder.assignedTo != 'ALL' &&
+        reminder.assignedTo.isNotEmpty) {
       final memberError = ReminderValidator.validateAssignedMember(
         reminder.assignedTo,
         familyMembers,
@@ -198,7 +319,7 @@ class InMemoryReminderRepository implements ReminderRepository {
     // 4. Validate creator matches current user
     if (reminder.creatorId != currentUserId) {
       throw ReminderPermissionException(
-        'Reminder creator must match current logged-in user',
+        'Only the creator can set their ID as creator',
       );
     }
 
@@ -206,12 +327,12 @@ class InMemoryReminderRepository implements ReminderRepository {
       id: reminder.id.isEmpty
           ? 'rem_${DateTime.now().millisecondsSinceEpoch}'
           : reminder.id,
-      status: ReminderStatus.pending,
       createdAt: now ?? DateTime.now(),
     );
 
     _reminders.add(newReminder);
-    _notify(reminder.familyId);
+    MultiTierEscalationService.instance.scheduleMultiTierEscalation(newReminder);
+    _notify(newReminder.familyId);
     return newReminder;
   }
 
@@ -222,17 +343,32 @@ class InMemoryReminderRepository implements ReminderRepository {
     List<FamilyMember>? familyMembers,
     DateTime? now,
   }) async {
-    final index = _reminders.indexWhere((r) => r.id == reminder.id && !r.isDeleted);
+    final index =
+        _reminders.indexWhere((r) => r.id == reminder.id && !r.isDeleted);
     if (index == -1) {
       throw ReminderNotFoundException();
     }
 
     final existing = _reminders[index];
 
-    // Rule: Chỉ người tạo (Creator) mới có quyền chỉnh sửa reminder.
-    if (existing.creatorId != currentUserId) {
-      throw ReminderPermissionException(
-        'Only the creator can edit this reminder',
+    // Rule: Chỉ người tạo (Creator) HOẶC Cha Mẹ/Chủ nhà mới có quyền chỉnh sửa reminder.
+    final isCreator = existing.creatorId == currentUserId;
+    bool isParentOrOwner = false;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      final currentMember = familyMembers.firstWhere(
+        (m) => m.id == currentUserId,
+        orElse: () =>
+            const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      );
+      final roleUpper = currentMember.role.toUpperCase();
+      isParentOrOwner = roleUpper.contains('PARENT') ||
+          roleUpper.contains('OWNER') ||
+          roleUpper.contains('GRANDPARENT');
+    }
+
+    if (!isCreator && !isParentOrOwner) {
+      throw const ReminderPermissionException(
+        'Only the creator or a parent/owner can edit this reminder',
       );
     }
 
@@ -243,8 +379,12 @@ class InMemoryReminderRepository implements ReminderRepository {
       throw ReminderValidationException(titleError);
     }
 
-    // 2. Validate Assigned Member if list provided
-    if (familyMembers != null && familyMembers.isNotEmpty) {
+    // 2. Validate Assigned Member if list provided (allow open task)
+    if (familyMembers != null &&
+        familyMembers.isNotEmpty &&
+        reminder.assignedTo != 'OPEN' &&
+        reminder.assignedTo != 'ALL' &&
+        reminder.assignedTo.isNotEmpty) {
       final memberError = ReminderValidator.validateAssignedMember(
         reminder.assignedTo,
         familyMembers,
@@ -254,14 +394,18 @@ class InMemoryReminderRepository implements ReminderRepository {
       }
     }
 
-    // 3. Validate Date + Time must be in the future
-    final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
-      reminder.date,
-      reminder.time,
-      now: now,
-    );
-    if (futureError != null) {
-      throw ReminderValidationException(futureError);
+    // 3. Validate Date + Time must be in the future (Chỉ kiểm tra nếu ngày hoặc giờ thay đổi)
+    final isDateTimeChanged =
+        existing.date != reminder.date || existing.time != reminder.time;
+    if (isDateTimeChanged) {
+      final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
+        reminder.date,
+        reminder.time,
+        now: now,
+      );
+      if (futureError != null) {
+        throw ReminderValidationException(futureError);
+      }
     }
 
     final updated = existing.copyWith(
@@ -270,22 +414,101 @@ class InMemoryReminderRepository implements ReminderRepository {
       assignedToName: reminder.assignedToName,
       date: reminder.date,
       time: reminder.time,
+      repeatRule: reminder.repeatRule,
+      requiresProofImage: reminder.requiresProofImage,
+      proofImageUrl: reminder.proofImageUrl,
+      rewardStars: reminder.rewardStars,
       voiceNotePath: reminder.voiceNotePath,
       voiceDurationSeconds: reminder.voiceDurationSeconds,
       voiceNoteDescription: reminder.voiceNoteDescription,
+      clearVoiceNote: reminder.voiceNotePath == null,
+      status: reminder.status,
     );
 
     _reminders[index] = updated;
+    MultiTierEscalationService.instance.scheduleMultiTierEscalation(updated);
     _notify(existing.familyId);
     return updated;
+  }
+
+  @override
+  Future<ReminderModel> claimOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+  }) async {
+    final index =
+        _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
+    if (index == -1) {
+      throw ReminderNotFoundException();
+    }
+
+    final existing = _reminders[index];
+    if (existing.isCompleted) {
+      throw ReminderValidationException('Công việc này đã hoàn thành!');
+    }
+    if (!existing.isOpenTask && existing.assignedTo != currentUserId) {
+      throw ReminderValidationException(
+        'Công việc này đã được ${existing.assignedToName.isNotEmpty ? existing.assignedToName : 'thành viên khác'} nhận trước đó!',
+      );
+    }
+
+    final updated = existing.copyWith(
+      assignedTo: currentUserId,
+      assignedToName: currentUserName,
+      status: ReminderStatus.pending,
+    );
+
+    _reminders[index] = updated;
+    MultiTierEscalationService.instance.scheduleMultiTierEscalation(updated);
+    _notify(existing.familyId);
+    return updated;
+  }
+
+  @override
+  Future<ReminderModel> claimAndCompleteOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+    String? proofImageUrl,
+  }) async {
+    await claimOpenTask(
+      reminderId: reminderId,
+      currentUserId: currentUserId,
+      currentUserName: currentUserName,
+    );
+    return completeReminder(
+      reminderId: reminderId,
+      currentUserId: currentUserId,
+      proofImageUrl: proofImageUrl,
+    );
+  }
+
+  DateTime? _calculateNextDueDate(String dateStr, String repeatRule) {
+    try {
+      final parts = dateStr.trim().split('/');
+      if (parts.length != 3) return null;
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final year = int.parse(parts[2]);
+
+      if (repeatRule == 'DAILY') {
+        return DateTime(year, month, day + 1);
+      } else if (repeatRule == 'WEEKLY') {
+        return DateTime(year, month, day + 7);
+      }
+    } catch (_) {}
+    return null;
   }
 
   @override
   Future<ReminderModel> completeReminder({
     required String reminderId,
     required String currentUserId,
+    String? proofImageUrl,
   }) async {
-    final index = _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
+    final index =
+        _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
     if (index == -1) {
       throw ReminderNotFoundException();
     }
@@ -293,19 +516,63 @@ class InMemoryReminderRepository implements ReminderRepository {
     final existing = _reminders[index];
 
     // Rule: Chỉ người được giao reminder mới được Complete.
-    // currentUser == assignedTo
     if (existing.assignedTo != currentUserId) {
       throw ReminderPermissionException(
         'Only the assigned member can complete this reminder',
       );
     }
 
+    // Rule AC3: Bắt buộc đính kèm ảnh nếu requiresProofImage == true
+    final effectiveProof = proofImageUrl ?? existing.proofImageUrl;
+    if (existing.requiresProofImage &&
+        (effectiveProof == null || effectiveProof.isEmpty)) {
+      throw ReminderValidationException(
+        'Công việc này bắt buộc phải có ảnh nghiệm thu trước khi hoàn thành!',
+      );
+    }
+
     final updated = existing.copyWith(
       status: ReminderStatus.completed,
       completedAt: DateTime.now(),
+      proofImageUrl: effectiveProof,
     );
 
     _reminders[index] = updated;
+
+    // Tự động sinh chu kỳ tiếp theo cho lời nhắc lặp lại (DAILY / WEEKLY)
+    final rule = existing.repeatRule;
+    if (rule == 'DAILY' || rule == 'WEEKLY') {
+      final nextDate = _calculateNextDueDate(existing.date, rule!);
+      if (nextDate != null) {
+        final nextDateStr =
+            '${nextDate.day.toString().padLeft(2, '0')}/${nextDate.month.toString().padLeft(2, '0')}/${nextDate.year}';
+        final nextReminder = ReminderModel(
+          id: 'rem_${DateTime.now().millisecondsSinceEpoch}_repeat',
+          familyId: existing.familyId,
+          creatorId: existing.creatorId,
+          creatorName: existing.creatorName,
+          assignedTo: existing.assignedTo,
+          assignedToName: existing.assignedToName,
+          title: existing.title,
+          date: nextDateStr,
+          time: existing.time,
+          repeatRule: existing.repeatRule,
+          status:
+              existing.isOpenTask ? ReminderStatus.open : ReminderStatus.pending,
+          requiresProofImage: existing.requiresProofImage,
+          rewardStars: 0,
+          voiceNotePath: existing.voiceNotePath,
+          voiceDurationSeconds: existing.voiceDurationSeconds,
+          voiceNoteDescription: existing.voiceNoteDescription,
+          createdAt: DateTime.now(),
+        );
+        _reminders.add(nextReminder);
+        MultiTierEscalationService.instance
+            .scheduleMultiTierEscalation(nextReminder);
+      }
+    }
+
+    MultiTierEscalationService.instance.cancelEscalation(reminderId);
     _notify(existing.familyId);
     return updated;
   }
@@ -314,18 +581,34 @@ class InMemoryReminderRepository implements ReminderRepository {
   Future<bool> deleteReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   }) async {
-    final index = _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
+    final index =
+        _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
     if (index == -1) {
       throw ReminderNotFoundException();
     }
 
     final existing = _reminders[index];
 
-    // Rule: Chỉ creator được delete: creator == currentUser. Người nhận không được delete.
-    if (existing.creatorId != currentUserId) {
+    // Rule: Cho phép xóa nếu là người tạo HOẶC là Bố/Mẹ/Ông/Bà/Chủ nhà
+    final isCreator = existing.creatorId == currentUserId;
+    bool isParentOrOwner = false;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      final currentMember = familyMembers.firstWhere(
+        (m) => m.id == currentUserId,
+        orElse: () =>
+            const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      );
+      final roleUpper = currentMember.role.toUpperCase();
+      isParentOrOwner = roleUpper.contains('PARENT') ||
+          roleUpper.contains('OWNER') ||
+          roleUpper.contains('GRANDPARENT');
+    }
+
+    if (!isCreator && !isParentOrOwner) {
       throw ReminderPermissionException(
-        'Only creator can delete this reminder',
+        'Only the creator or a parent/owner can delete this reminder',
       );
     }
 
@@ -334,6 +617,7 @@ class InMemoryReminderRepository implements ReminderRepository {
     );
 
     _reminders[index] = updated;
+    MultiTierEscalationService.instance.cancelEscalation(reminderId);
     _notify(existing.familyId);
     return true;
   }
@@ -342,6 +626,7 @@ class InMemoryReminderRepository implements ReminderRepository {
   Future<bool> restoreReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   }) async {
     final index =
         _reminders.indexWhere((r) => r.id == reminderId && r.isDeleted);
@@ -350,14 +635,37 @@ class InMemoryReminderRepository implements ReminderRepository {
     }
 
     final existing = _reminders[index];
-    if (existing.creatorId != currentUserId) {
+    final isCreator = existing.creatorId == currentUserId;
+    bool isParentOrOwner = false;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      final currentMember = familyMembers.firstWhere(
+        (m) => m.id == currentUserId,
+        orElse: () =>
+            const FamilyMember(id: '', name: '', role: '', familyId: ''),
+      );
+      final roleUpper = currentMember.role.toUpperCase();
+      isParentOrOwner = roleUpper.contains('PARENT') ||
+          roleUpper.contains('OWNER') ||
+          roleUpper.contains('GRANDPARENT');
+    }
+
+    if (!isCreator && !isParentOrOwner) {
       throw ReminderPermissionException(
-        'Only creator can restore this reminder',
+        'Only creator or parent/owner can restore this reminder',
       );
     }
 
+    final isOpenTarget = existing.assignedTo == 'OPEN' ||
+        existing.assignedTo == 'ALL' ||
+        existing.assignedTo.isEmpty;
+    final restoredStatus = isOpenTarget
+        ? ReminderStatus.open
+        : (existing.completedAt != null
+            ? ReminderStatus.completed
+            : ReminderStatus.pending);
+
     final updated = existing.copyWith(
-      status: ReminderStatus.pending,
+      status: restoredStatus,
     );
 
     _reminders[index] = updated;

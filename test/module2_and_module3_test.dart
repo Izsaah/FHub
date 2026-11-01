@@ -6,7 +6,6 @@ import 'package:fhub/Long/models/hierarchy_role.dart';
 import 'package:fhub/Long/models/member_status.dart';
 import 'package:fhub/Long/models/user_model.dart';
 import 'package:fhub/Long/services/mock_data_service.dart';
-import 'package:fhub/Long/services/family_state_manager.dart';
 import 'package:fhub/Long/widgets/check_in_button.dart';
 import 'package:fhub/Long/widgets/family_member_tile.dart';
 import 'package:fhub/Long/widgets/family_switcher_bar.dart';

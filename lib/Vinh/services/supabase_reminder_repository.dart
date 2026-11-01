@@ -14,7 +14,8 @@ class SupabaseReminderRepository implements ReminderRepository {
     SupabaseClient? client,
     InMemoryReminderRepository? fallbackRepository,
   })  : _client = client ?? SupabaseConfig.client,
-        _fallbackRepository = fallbackRepository ?? InMemoryReminderRepository();
+        _fallbackRepository =
+            fallbackRepository ?? InMemoryReminderRepository();
 
   @override
   Future<List<ReminderModel>> getReminders({required String familyId}) async {
@@ -65,6 +66,74 @@ class SupabaseReminderRepository implements ReminderRepository {
   }
 
   @override
+  Future<List<ReminderModel>> getRemindersForFamilies({
+    required List<String> familyIds,
+  }) async {
+    final cleanIds =
+        familyIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    if (cleanIds.isEmpty) return [];
+    if (cleanIds.length == 1) {
+      return getReminders(familyId: cleanIds.first);
+    }
+    final client = _client;
+    if (client == null) {
+      return _fallbackRepository.getRemindersForFamilies(familyIds: cleanIds);
+    }
+
+    try {
+      final response = await client
+          .from('reminders')
+          .select()
+          .inFilter('family_id', cleanIds)
+          .neq('status', ReminderStatus.deleted)
+          .order('date', ascending: true)
+          .order('time', ascending: true);
+
+      return (response as List)
+          .map((json) => ReminderModel.fromJson(Map<String, dynamic>.from(json)))
+          .toList();
+    } catch (_) {
+      return _fallbackRepository.getRemindersForFamilies(familyIds: cleanIds);
+    }
+  }
+
+  @override
+  Stream<List<ReminderModel>> watchRemindersForFamilies({
+    required List<String> familyIds,
+  }) async* {
+    final cleanIds =
+        familyIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    if (cleanIds.isEmpty) {
+      yield [];
+      return;
+    }
+    if (cleanIds.length == 1) {
+      yield* watchReminders(familyId: cleanIds.first);
+      return;
+    }
+    final client = _client;
+    if (client == null) {
+      yield* _fallbackRepository.watchRemindersForFamilies(familyIds: cleanIds);
+      return;
+    }
+
+    try {
+      yield await getRemindersForFamilies(familyIds: cleanIds);
+      yield* client
+          .from('reminders')
+          .stream(primaryKey: ['id'])
+          .inFilter('family_id', cleanIds)
+          .map((data) => data
+              .where((json) => json['status'] != ReminderStatus.deleted)
+              .map((json) =>
+                  ReminderModel.fromJson(Map<String, dynamic>.from(json)))
+              .toList());
+    } catch (_) {
+      yield* _fallbackRepository.watchRemindersForFamilies(familyIds: cleanIds);
+    }
+  }
+
+  @override
   Future<List<ReminderModel>> getPendingReminders({
     required String familyId,
   }) async {
@@ -93,7 +162,11 @@ class SupabaseReminderRepository implements ReminderRepository {
       throw ReminderValidationException(titleError);
     }
 
-    if (familyMembers != null && familyMembers.isNotEmpty) {
+    if (familyMembers != null &&
+        familyMembers.isNotEmpty &&
+        reminder.assignedTo != 'OPEN' &&
+        reminder.assignedTo != 'ALL' &&
+        reminder.assignedTo.isNotEmpty) {
       final memberError = ReminderValidator.validateAssignedMember(
         reminder.assignedTo,
         familyMembers,
@@ -132,13 +205,12 @@ class SupabaseReminderRepository implements ReminderRepository {
 
     try {
       final payload = sanitizedReminder.toSupabaseMap();
-      final res = await client
-          .from('reminders')
-          .insert(payload)
-          .select()
-          .single();
+      final res =
+          await client.from('reminders').insert(payload).select().single();
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(res));
+      final model = ReminderModel.fromJson(Map<String, dynamic>.from(res));
+      MultiTierEscalationService.instance.scheduleMultiTierEscalation(model);
+      return model;
     } catch (_) {
       return _fallbackRepository.createReminder(
         reminder: sanitizedReminder,
@@ -175,9 +247,23 @@ class SupabaseReminderRepository implements ReminderRepository {
       final existing =
           ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
-      if (existing.creatorId != currentUserId) {
-        throw ReminderPermissionException(
-          'Only the creator can edit this reminder',
+      final isCreator = existing.creatorId == currentUserId;
+      bool isParentOrOwner = false;
+      if (familyMembers != null && familyMembers.isNotEmpty) {
+        final currentMember = familyMembers.firstWhere(
+          (m) => m.id == currentUserId,
+          orElse: () =>
+              const FamilyMember(id: '', name: '', role: '', familyId: ''),
+        );
+        final roleUpper = currentMember.role.toUpperCase();
+        isParentOrOwner = roleUpper.contains('PARENT') ||
+            roleUpper.contains('OWNER') ||
+            roleUpper.contains('GRANDPARENT');
+      }
+
+      if (!isCreator && !isParentOrOwner) {
+        throw const ReminderPermissionException(
+          'Only the creator or a parent/owner can edit this reminder',
         );
       }
 
@@ -187,7 +273,11 @@ class SupabaseReminderRepository implements ReminderRepository {
         throw ReminderValidationException(titleError);
       }
 
-      if (familyMembers != null && familyMembers.isNotEmpty) {
+      if (familyMembers != null &&
+          familyMembers.isNotEmpty &&
+          reminder.assignedTo != 'OPEN' &&
+          reminder.assignedTo != 'ALL' &&
+          reminder.assignedTo.isNotEmpty) {
         final memberError = ReminderValidator.validateAssignedMember(
           reminder.assignedTo,
           familyMembers,
@@ -197,23 +287,34 @@ class SupabaseReminderRepository implements ReminderRepository {
         }
       }
 
-      final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
-        reminder.date,
-        reminder.time,
-        now: now,
-      );
-      if (futureError != null) {
-        throw ReminderValidationException(futureError);
+      // 3. Validate Date + Time must be in the future (Chỉ kiểm tra nếu ngày hoặc giờ thay đổi)
+      final isDateTimeChanged =
+          existing.date != reminder.date || existing.time != reminder.time;
+      if (isDateTimeChanged) {
+        final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
+          reminder.date,
+          reminder.time,
+          now: now,
+        );
+        if (futureError != null) {
+          throw ReminderValidationException(futureError);
+        }
       }
 
       final updateMap = {
         'title': sanitizedTitle,
         'assigned_to': reminder.assignedTo,
+        'assigned_to_name': reminder.assignedToName,
         'date': reminder.date,
         'time': reminder.time,
+        'repeat_rule': reminder.repeatRule ?? 'NONE',
+        'requires_proof_image': reminder.requiresProofImage,
+        'proof_image_url': reminder.proofImageUrl,
+        'reward_stars': reminder.rewardStars,
         'voice_note_path': reminder.voiceNotePath,
         'voice_duration_seconds': reminder.voiceDurationSeconds,
         'voice_note_description': reminder.voiceNoteDescription,
+        'status': reminder.status,
       };
 
       final updateRes = await client
@@ -223,7 +324,10 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .single();
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      final model =
+          ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance.scheduleMultiTierEscalation(model);
+      return model;
     } catch (e) {
       if (e is ReminderPermissionException ||
           e is ReminderValidationException) {
@@ -239,15 +343,17 @@ class SupabaseReminderRepository implements ReminderRepository {
   }
 
   @override
-  Future<ReminderModel> completeReminder({
+  Future<ReminderModel> claimOpenTask({
     required String reminderId,
     required String currentUserId,
+    required String currentUserName,
   }) async {
     final client = _client;
     if (client == null) {
-      return _fallbackRepository.completeReminder(
+      return _fallbackRepository.claimOpenTask(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        currentUserName: currentUserName,
       );
     }
 
@@ -257,11 +363,115 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .eq('id', reminderId)
           .single();
-      final existing = ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+
+      if (existing.isCompleted) {
+        throw ReminderValidationException('Công việc này đã hoàn thành!');
+      }
+      if (!existing.isOpenTask && existing.assignedTo != currentUserId) {
+        throw ReminderValidationException(
+          'Công việc này đã được ${existing.assignedToName.isNotEmpty ? existing.assignedToName : 'thành viên khác'} nhận trước đó!',
+        );
+      }
+
+      final updateRes = await client
+          .from('reminders')
+          .update({
+            'assigned_to': currentUserId,
+            'assigned_to_name': currentUserName,
+            'status': ReminderStatus.pending,
+          })
+          .eq('id', reminderId)
+          .select()
+          .single();
+
+      final claimedModel =
+          ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance
+          .scheduleMultiTierEscalation(claimedModel);
+      return claimedModel;
+    } catch (e) {
+      if (e is ReminderValidationException) rethrow;
+      return _fallbackRepository.claimOpenTask(
+        reminderId: reminderId,
+        currentUserId: currentUserId,
+        currentUserName: currentUserName,
+      );
+    }
+  }
+
+  @override
+  Future<ReminderModel> claimAndCompleteOpenTask({
+    required String reminderId,
+    required String currentUserId,
+    required String currentUserName,
+    String? proofImageUrl,
+  }) async {
+    await claimOpenTask(
+      reminderId: reminderId,
+      currentUserId: currentUserId,
+      currentUserName: currentUserName,
+    );
+    return completeReminder(
+      reminderId: reminderId,
+      currentUserId: currentUserId,
+      proofImageUrl: proofImageUrl,
+    );
+  }
+
+  DateTime? _calculateNextDueDate(String dateStr, String repeatRule) {
+    try {
+      final parts = dateStr.trim().split('/');
+      if (parts.length != 3) return null;
+      final day = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final year = int.parse(parts[2]);
+
+      if (repeatRule == 'DAILY') {
+        return DateTime(year, month, day + 1);
+      } else if (repeatRule == 'WEEKLY') {
+        return DateTime(year, month, day + 7);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  @override
+  Future<ReminderModel> completeReminder({
+    required String reminderId,
+    required String currentUserId,
+    String? proofImageUrl,
+  }) async {
+    final client = _client;
+    if (client == null) {
+      return _fallbackRepository.completeReminder(
+        reminderId: reminderId,
+        currentUserId: currentUserId,
+        proofImageUrl: proofImageUrl,
+      );
+    }
+
+    try {
+      final existingRes = await client
+          .from('reminders')
+          .select()
+          .eq('id', reminderId)
+          .single();
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
       if (existing.assignedTo != currentUserId) {
         throw ReminderPermissionException(
           'Only the assigned member can complete this reminder',
+        );
+      }
+
+      final effectiveProof = proofImageUrl ?? existing.proofImageUrl;
+      if (existing.requiresProofImage &&
+          (effectiveProof == null || effectiveProof.isEmpty)) {
+        throw ReminderValidationException(
+          'Công việc này bắt buộc phải có ảnh nghiệm thu trước khi hoàn thành!',
         );
       }
 
@@ -270,17 +480,55 @@ class SupabaseReminderRepository implements ReminderRepository {
           .update({
             'status': ReminderStatus.completed,
             'completed_at': DateTime.now().toIso8601String(),
+            'proof_image_url': effectiveProof,
           })
           .eq('id', reminderId)
           .select()
           .single();
 
-      return ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      // Tự động sinh chu kỳ tiếp theo cho lời nhắc lặp lại (DAILY / WEEKLY)
+      final rule = existing.repeatRule;
+      if (rule == 'DAILY' || rule == 'WEEKLY') {
+        final nextDate = _calculateNextDueDate(existing.date, rule!);
+        if (nextDate != null) {
+          final nextDateStr =
+              '${nextDate.day.toString().padLeft(2, '0')}/${nextDate.month.toString().padLeft(2, '0')}/${nextDate.year}';
+          try {
+            await client.from('reminders').insert({
+              'family_id': existing.familyId,
+              'creator_id': existing.creatorId,
+              'assigned_to': existing.assignedTo,
+              'title': existing.title,
+              'date': nextDateStr,
+              'time': existing.time,
+              'repeat_rule': existing.repeatRule,
+              'status': existing.isOpenTask
+                  ? ReminderStatus.open
+                  : ReminderStatus.pending,
+              'requires_proof_image': existing.requiresProofImage,
+              'reward_stars': 0,
+              'voice_note_path': existing.voiceNotePath,
+              'voice_duration_seconds': existing.voiceDurationSeconds,
+              'voice_note_description': existing.voiceNoteDescription,
+              'created_at': DateTime.now().toIso8601String(),
+            });
+          } catch (_) {}
+        }
+      }
+
+      final completed =
+          ReminderModel.fromJson(Map<String, dynamic>.from(updateRes));
+      MultiTierEscalationService.instance.cancelEscalation(reminderId);
+      return completed;
     } catch (e) {
-      if (e is ReminderPermissionException) rethrow;
+      if (e is ReminderPermissionException ||
+          e is ReminderValidationException) {
+        rethrow;
+      }
       return _fallbackRepository.completeReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        proofImageUrl: proofImageUrl,
       );
     }
   }
@@ -289,12 +537,14 @@ class SupabaseReminderRepository implements ReminderRepository {
   Future<bool> deleteReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   }) async {
     final client = _client;
     if (client == null) {
       return _fallbackRepository.deleteReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        familyMembers: familyMembers,
       );
     }
 
@@ -304,11 +554,27 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .eq('id', reminderId)
           .single();
-      final existing = ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
-      if (existing.creatorId != currentUserId) {
+      // Rule: Cho phép xóa nếu là người tạo HOẶC là Bố/Mẹ/Ông/Bà/Chủ nhà
+      final isCreator = existing.creatorId == currentUserId;
+      bool isParentOrOwner = false;
+      if (familyMembers != null && familyMembers.isNotEmpty) {
+        final currentMember = familyMembers.firstWhere(
+          (m) => m.id == currentUserId,
+          orElse: () =>
+              const FamilyMember(id: '', name: '', role: '', familyId: ''),
+        );
+        final roleUpper = currentMember.role.toUpperCase();
+        isParentOrOwner = roleUpper.contains('PARENT') ||
+            roleUpper.contains('OWNER') ||
+            roleUpper.contains('GRANDPARENT');
+      }
+
+      if (!isCreator && !isParentOrOwner) {
         throw ReminderPermissionException(
-          'Only creator can delete this reminder',
+          'Only the creator or a parent/owner can delete this reminder',
         );
       }
 
@@ -317,12 +583,14 @@ class SupabaseReminderRepository implements ReminderRepository {
           .update({'status': ReminderStatus.deleted})
           .eq('id', reminderId);
 
+      MultiTierEscalationService.instance.cancelEscalation(reminderId);
       return true;
     } catch (e) {
       if (e is ReminderPermissionException) rethrow;
       return _fallbackRepository.deleteReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        familyMembers: familyMembers,
       );
     }
   }
@@ -331,12 +599,14 @@ class SupabaseReminderRepository implements ReminderRepository {
   Future<bool> restoreReminder({
     required String reminderId,
     required String currentUserId,
+    List<FamilyMember>? familyMembers,
   }) async {
     final client = _client;
     if (client == null) {
       return _fallbackRepository.restoreReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        familyMembers: familyMembers,
       );
     }
 
@@ -346,17 +616,41 @@ class SupabaseReminderRepository implements ReminderRepository {
           .select()
           .eq('id', reminderId)
           .single();
-      final existing = ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+      final existing =
+          ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
 
-      if (existing.creatorId != currentUserId) {
+      final isCreator = existing.creatorId == currentUserId;
+      bool isParentOrOwner = false;
+      if (familyMembers != null && familyMembers.isNotEmpty) {
+        final currentMember = familyMembers.firstWhere(
+          (m) => m.id == currentUserId,
+          orElse: () =>
+              const FamilyMember(id: '', name: '', role: '', familyId: ''),
+        );
+        final roleUpper = currentMember.role.toUpperCase();
+        isParentOrOwner = roleUpper.contains('PARENT') ||
+            roleUpper.contains('OWNER') ||
+            roleUpper.contains('GRANDPARENT');
+      }
+
+      if (!isCreator && !isParentOrOwner) {
         throw ReminderPermissionException(
-          'Only creator can restore this reminder',
+          'Only creator or parent/owner can restore this reminder',
         );
       }
 
+      final isOpenTarget = existing.assignedTo == 'OPEN' ||
+          existing.assignedTo == 'ALL' ||
+          existing.assignedTo.isEmpty;
+      final restoredStatus = isOpenTarget
+          ? ReminderStatus.open
+          : (existing.completedAt != null
+              ? ReminderStatus.completed
+              : ReminderStatus.pending);
+
       await client
           .from('reminders')
-          .update({'status': ReminderStatus.pending})
+          .update({'status': restoredStatus})
           .eq('id', reminderId);
 
       return true;
@@ -365,6 +659,7 @@ class SupabaseReminderRepository implements ReminderRepository {
       return _fallbackRepository.restoreReminder(
         reminderId: reminderId,
         currentUserId: currentUserId,
+        familyMembers: familyMembers,
       );
     }
   }

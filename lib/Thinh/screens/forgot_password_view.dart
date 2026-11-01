@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
@@ -44,13 +45,45 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
       if (!mounted) return;
       setState(() => _emailSent = true);
     } catch (e) {
+      debugPrint('resetPassword error: $e');
       if (!mounted) return;
-      setState(
-        () => _formError = _t(
-          'Không thể gửi liên kết. Vui lòng thử lại.',
-          'Could not send the link. Please try again.',
-        ),
+      String errorMsg = _t(
+        'Không thể gửi liên kết. Vui lòng thử lại.',
+        'Could not send the link. Please try again.',
       );
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'user-not-found':
+            errorMsg = _t(
+              'Không tìm thấy tài khoản với email này trong hệ thống. Vui lòng kiểm tra lại hoặc tạo tài khoản mới.',
+              'No account found with this email. Please check or register a new account.',
+            );
+            break;
+          case 'invalid-email':
+            errorMsg = _t(
+              'Địa chỉ email không đúng định dạng.',
+              'Invalid email address format.',
+            );
+            break;
+          case 'too-many-requests':
+            errorMsg = _t(
+              'Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi vài phút rồi thử lại.',
+              'Too many requests. Please wait a few minutes and try again.',
+            );
+            break;
+          case 'operation-not-allowed':
+            errorMsg = _t(
+              'Phương thức đăng nhập bằng Email/Password chưa được bật trên Firebase Console (Authentication > Sign-in method).',
+              'Email/Password sign-in is disabled in Firebase Console.',
+            );
+            break;
+          default:
+            errorMsg = e.message ?? errorMsg;
+        }
+      } else {
+        errorMsg = e.toString().replaceFirst('Exception: ', '');
+      }
+      setState(() => _formError = errorMsg);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -101,8 +134,16 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
             Text(
               _emailSent
                   ? _t(
-                      'Chúng tôi đã gửi Link đến email của bạn.\n\nVui lòng mở email và click vào liên kết đó để thiết lập mật khẩu mới.',
-                      'We sent a link to your email.\n\nOpen it to set a new password.',
+                      'Chúng tôi đã gửi link đặt lại mật khẩu đến:\n${_emailController.text.trim()}\n\n'
+                      '📌 Lưu ý quan trọng:\n'
+                      '1. Kiểm tra cả hộp thư Spam / Thư rác hoặc tab Quảng cáo.\n'
+                      '2. Nếu tài khoản chưa từng đăng ký, Firebase sẽ không gửi thư để bảo mật.\n'
+                      '3. Nhấp vào liên kết trong email để đặt mật khẩu mới, sau đó quay lại app đăng nhập.',
+                      'We sent a password reset link to:\n${_emailController.text.trim()}\n\n'
+                      'Important notes:\n'
+                      '1. Check your Spam/Junk or Promotions folder.\n'
+                      '2. If the email is not registered yet, Firebase will not send an email.\n'
+                      '3. Click the link in the email to set a new password, then log in here.',
                     )
                   : _t(
                       'Nhập email của bạn và chúng tôi sẽ gửi một liên kết để đặt lại mật khẩu.',
@@ -112,6 +153,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
               style: const TextStyle(
                 fontSize: 14,
                 color: AppColors.textSecondary,
+                height: 1.5,
               ),
             ),
             const SizedBox(height: 32),
@@ -161,7 +203,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                       )
                     : Text(
                         _t('Gửi liên kết khôi phục', 'Send reset link'),
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -174,7 +216,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
                 label: Text(
                   _t('Quay lại Đăng nhập', 'Back to Login'),
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -185,6 +227,22 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _emailSent = false;
+                    _formError = null;
+                  });
+                },
+                child: Text(
+                  _t('Gửi lại hoặc thử email khác', 'Resend or try another email'),
+                  style: const TextStyle(
+                    color: AppColors.brand600,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
