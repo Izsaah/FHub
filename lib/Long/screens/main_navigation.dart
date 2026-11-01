@@ -23,14 +23,21 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   void initState() {
     super.initState();
+    FamilyDataService().ensureRealtimeSync();
     FamilyStateManager().initialize();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: AppLanguage.isEnglish,
-      builder: (context, _, child) {
+    final dataService = FamilyDataService();
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        AppLanguage.isEnglish,
+        dataService.selectedFamilyIdNotifier,
+        dataService.membershipRevisionNotifier,
+      ]),
+      builder: (context, _) {
+        final hasFamily = dataService.hasActiveSelectedFamily;
         final screens = [
           HomeScreen(
             onNavigateToFamily: () => setState(() => _currentIndex = 2),
@@ -45,7 +52,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
         return Scaffold(
           body: IndexedStack(index: _currentIndex, children: screens),
-          floatingActionButton: _currentIndex == 1
+          floatingActionButton: (_currentIndex == 1 || !hasFamily)
               ? null
               : FloatingActionButton.extended(
                   heroTag: 'family_ai_assistant_fab',
@@ -58,10 +65,12 @@ class _MainNavigationState extends State<MainNavigation> {
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   onPressed: () {
+                    final selectedFamId = dataService.selectedFamilyId;
+                    if (selectedFamId == null || selectedFamId.isEmpty) return;
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => AiChatScreen(
-                          familyId: FamilyDataService().selectedFamilyId,
+                          familyId: selectedFamId,
                         ),
                       ),
                     );

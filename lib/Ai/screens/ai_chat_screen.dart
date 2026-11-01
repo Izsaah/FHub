@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import '../../Long/services/family_data_service.dart';
 import '../../Vinh/models/family_member.dart';
@@ -18,7 +19,7 @@ class AiChatScreen extends StatefulWidget {
 
 class _AiChatScreenState extends State<AiChatScreen> {
   bool _isLoading = true;
-  String _familyId = 'f1';
+  String _familyId = '';
   String _currentUserId = 'user_current';
   String _currentUserName = 'Bạn';
   List<FamilyMember> _familyMembers = [];
@@ -32,8 +33,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Future<void> _loadFamilyContext() async {
     try {
+      final bool hasFirebase = Firebase.apps.isNotEmpty;
       final dataService = FamilyDataService();
-      final user = FirebaseAuth.instance.currentUser;
+      final user = hasFirebase ? FirebaseAuth.instance.currentUser : null;
       if (user != null) {
         _currentUserId = user.uid;
         _currentUserName =
@@ -42,13 +44,27 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 : (user.email?.split('@').first ?? 'Bạn');
       }
 
-      final myFamilies = await dataService.getMyFamilies();
+      final myFamilies = await dataService.getMyFamilies(forceRefresh: true);
       String resolvedFamId = widget.familyId ?? dataService.selectedFamilyId ?? '';
-      if (resolvedFamId.isEmpty && myFamilies.isNotEmpty) {
-        resolvedFamId = myFamilies.first.id;
-      }
-      if (resolvedFamId.isNotEmpty) {
+      if (myFamilies.isNotEmpty) {
+        if (resolvedFamId.isEmpty ||
+            !myFamilies.any((f) => f.id == resolvedFamId)) {
+          resolvedFamId = myFamilies.first.id;
+        }
         _familyId = resolvedFamId;
+      } else if (!hasFirebase || user == null) {
+        // Chỉ fallback mock 'f1' khi chạy môi trường test / offline không có Firebase Auth
+        _familyId = resolvedFamId.isNotEmpty ? resolvedFamId : 'f1';
+      } else {
+        // Người dùng thật chưa tham gia gia đình nào -> giữ rỗng để chặn sử dụng AI
+        _familyId = '';
+      }
+
+      if (_familyId.isEmpty) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+        return;
       }
 
       // Đọc tên người dùng từ collection users nếu có

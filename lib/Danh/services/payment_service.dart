@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import '../../Long/services/family_data_service.dart';
 import '../models/subscription_plan_model.dart';
@@ -12,11 +13,38 @@ class PaymentService extends ChangeNotifier {
   factory PaymentService() => _instance;
   PaymentService._internal() {
     _currentSubscription = FamilySubscriptionModel.freeDefault(_currentFamilyId);
+    FamilyDataService().selectedFamilyIdNotifier.addListener(_onGlobalFamilyChanged);
     _autoResolveFamilyId();
   }
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  bool get _isFirebaseAvailable {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool get _isAuthenticated {
+    if (!_isFirebaseAvailable) return false;
+    try {
+      return FirebaseAuth.instance.currentUser != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _firestoreSub;
+
+  void _onGlobalFamilyChanged() {
+    final newFamId = FamilyDataService().selectedFamilyIdNotifier.value;
+    if (newFamId != null && newFamId.isNotEmpty) {
+      setFamilyId(newFamId);
+    } else if (_isAuthenticated) {
+      clearFamily();
+    }
+  }
 
   String _currentFamilyId = '';
   String get currentFamilyId => _currentFamilyId;
@@ -43,28 +71,43 @@ class PaymentService extends ChangeNotifier {
       }
 
       // 2. Tra cứu theo Firestore membership
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null && uid.isNotEmpty) {
-        final snap = await _firestore
-            .collection('family_members')
-            .where('userId', isEqualTo: uid)
-            .where('status', isEqualTo: 'ACTIVE')
-            .limit(1)
-            .get();
-        if (snap.docs.isNotEmpty) {
-          final fId = snap.docs.first.data()['familyId'] as String? ?? '';
-          if (fId.isNotEmpty && _currentFamilyId.isEmpty) {
-            setFamilyId(fId);
-            return;
+      if (_isFirebaseAvailable) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null && uid.isNotEmpty) {
+          final snap = await _firestore
+              .collection('family_members')
+              .where('userId', isEqualTo: uid)
+              .where('status', isEqualTo: 'ACTIVE')
+              .limit(1)
+              .get();
+          if (snap.docs.isNotEmpty) {
+            final fId = snap.docs.first.data()['familyId'] as String? ?? '';
+            if (fId.isNotEmpty && _currentFamilyId.isEmpty) {
+              setFamilyId(fId);
+              return;
+            }
           }
+          // Tài khoản thật nhưng chưa tham gia gia đình nào -> không gán mock 'f1'
+          clearFamily();
+          return;
         }
       }
     } catch (e) {
       debugPrint('PaymentService: autoResolveFamilyId error: $e');
     }
-    if (_currentFamilyId.isEmpty) {
+    if (_currentFamilyId.isEmpty && !_isAuthenticated) {
       setFamilyId('f1');
     }
+  }
+
+  /// Xóa ngữ cảnh gia đình hiện tại khi người dùng chưa có / đã rời hết gia đình
+  void clearFamily() {
+    _firestoreSub?.cancel();
+    _firestoreSub = null;
+    if (_currentFamilyId.isEmpty && !_currentSubscription.isPremium) return;
+    _currentFamilyId = '';
+    _currentSubscription = FamilySubscriptionModel.freeDefault('');
+    notifyListeners();
   }
 
   /// Đặt familyId và kích hoạt lắng nghe Firestore Realtime

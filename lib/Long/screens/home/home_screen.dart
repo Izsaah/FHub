@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -44,8 +45,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _familydataService.ensureRealtimeSync();
     _loadData();
     _familydataService.selectedFamilyIdNotifier.addListener(
+      _onSelectedFamilyChanged,
+    );
+    _familydataService.membershipRevisionNotifier.addListener(
       _onSelectedFamilyChanged,
     );
   }
@@ -53,6 +58,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _familydataService.selectedFamilyIdNotifier.removeListener(
+      _onSelectedFamilyChanged,
+    );
+    _familydataService.membershipRevisionNotifier.removeListener(
       _onSelectedFamilyChanged,
     );
     super.dispose();
@@ -79,8 +87,8 @@ class _HomeScreenState extends State<HomeScreen> {
       acrossAllFamilies: true,
     );
 
-    // Update owner lastActiveAt on app open
-    await _familydataService.updateOwnerLastActive();
+    // Update owner lastActiveAt in background (throttled in FamilyDataService)
+    unawaited(_familydataService.updateOwnerLastActive());
 
     final pendingReminders = allReminders
         .where((r) => r.status == ReminderStatus.pending)
@@ -307,7 +315,8 @@ class _HomeScreenState extends State<HomeScreen> {
           body: FutureBuilder<Map<String, dynamic>>(
             future: _homeDataFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
 
