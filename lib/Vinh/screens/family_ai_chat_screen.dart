@@ -42,7 +42,6 @@ class FamilyAiChatScreen extends StatefulWidget {
 }
 
 class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
-  static const Color primaryColor = Color(0xFF0D7A68);
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -386,104 +385,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     }
   }
 
-  /// Hộp thoại cấu hình nhanh Gemini API Key trực tiếp trong ứng dụng
-  void _showApiKeyConfigDialog() {
-    final controller = TextEditingController(
-      text: GeminiChatService.instance.effectiveApiKey,
-    );
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.auto_awesome_rounded, color: Color(0xFF0D7A68), size: 24),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                AppLanguage.text('Cài đặt Gemini AI Key', 'Configure Gemini AI Key'),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                AppLanguage.text(
-                  'Nhập Google Gemini API Key để kích hoạt Trợ lý AI thế hệ mới (LLM chính chủ) với đầy đủ quyền năng trò chuyện thông minh như trên Web và gọi Tool tự động:',
-                  'Enter Google Gemini API Key to enable the next-gen AI Assistant (official LLM) with full web-grade conversational intelligence and automatic Tool Calling:',
-                ),
-                style: const TextStyle(fontSize: 12.5, color: Color(0xFF55625D), height: 1.4),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Gemini API Key',
-                  hintText: 'AIzaSy...',
-                  prefixIcon: const Icon(Icons.key_rounded, size: 18),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.clear_rounded, size: 18),
-                    onPressed: () => controller.clear(),
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFFF6F8F7),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                ),
-                style: const TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                AppLanguage.text(
-                  '💡 Lấy API Key miễn phí tại: https://aistudio.google.com/app/apikey',
-                  '💡 Get a free API Key at: https://aistudio.google.com/app/apikey',
-                ),
-                style: const TextStyle(fontSize: 11, color: Color(0xFF00796B), fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(AppLanguage.text('Đóng', 'Close')),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () async {
-              final newKey = controller.text.trim();
-              await GeminiChatService.instance.setCustomApiKey(newKey);
-              if (ctx.mounted) Navigator.of(ctx).pop();
-              if (mounted) {
-                setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      newKey.isNotEmpty
-                          ? AppLanguage.text('✅ Đã kích hoạt Gemini AI thành công!', '✅ Gemini AI activated successfully!')
-                          : AppLanguage.text('Đã xóa API Key tuỳ chỉnh (sử dụng .env hoặc offline engine).', 'API Key removed.'),
-                    ),
-                    backgroundColor: newKey.isNotEmpty ? primaryColor : Colors.grey.shade700,
-                  ),
-                );
-              }
-            },
-            child: Text(AppLanguage.text('Lưu & Kích hoạt', 'Save & Activate')),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   /// Tự động sinh tiêu đề ngắn gọn cho cuộc trò chuyện từ nội dung tin nhắn
   String _generateSessionTitle(String text) {
@@ -906,70 +808,6 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // 2.1. Nút trạng thái & cấu hình nhanh Gemini API Key
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _showApiKeyConfigDialog,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: GeminiChatService.instance.isConfigured
-                          ? const Color(0xFFE8F5E9)
-                          : const Color(0xFFFFF3E0),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: GeminiChatService.instance.isConfigured
-                            ? const Color(0xFF81C784)
-                            : const Color(0xFFFFB74D),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          GeminiChatService.instance.isConfigured
-                              ? Icons.auto_awesome_rounded
-                              : Icons.key_rounded,
-                          size: 15,
-                          color: GeminiChatService.instance.isConfigured
-                              ? const Color(0xFF2E7D32)
-                              : const Color(0xFFE65100),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            GeminiChatService.instance.isConfigured
-                                ? AppLanguage.text('Gemini AI: Sẵn sàng', 'Gemini AI: Ready')
-                                : AppLanguage.text('Cài đặt Gemini API Key', 'Configure Gemini Key'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: GeminiChatService.instance.isConfigured
-                                  ? const Color(0xFF2E7D32)
-                                  : const Color(0xFFE65100),
-                            ),
-                          ),
-                        ),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          size: 15,
-                          color: GeminiChatService.instance.isConfigured
-                              ? const Color(0xFF2E7D32)
-                              : const Color(0xFFE65100),
                         ),
                       ],
                     ),

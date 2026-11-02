@@ -370,5 +370,92 @@ void main() {
         isTrue,
       );
     });
+
+    test('15. Asking "hôm nay đã có những ai điểm danh rồi vậy" or "check in" returns check-in status, NEVER canned cooking boilerplate', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+        FamilyMember(
+          id: 'u_bin',
+          name: 'Bin',
+          role: FamilyMember.roleChild,
+          familyId: 'f1',
+        ),
+      ];
+
+      // Test 1: "hôm nay đã có những ai điểm danh rồi vậy"
+      final res1 = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'hôm nay đã có những ai điểm danh rồi vậy',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res1.attachedReminder, isNull);
+      expect(res1.text, isNot(contains('Tối nay nấu thịt kho')));
+      expect(res1.text, isNot(contains('kế hoạch nấu ăn')));
+      expect(res1.text.toLowerCase(), contains('điểm danh'));
+
+      // Test 2: "hôm nay đã có những ai check in rồi vậy"
+      final res2 = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'hôm nay đã có những ai check in rồi vậy',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res2.attachedReminder, isNull);
+      expect(res2.text, isNot(contains('Tối nay nấu thịt kho')));
+      expect(res2.text, isNot(contains('kế hoạch nấu ăn')));
+      expect(res2.text.toLowerCase(), contains('điểm danh'));
+    });
+
+    testWidgets('16. Drawer strictly removes "Cài đặt Gemini API Key" button for end users', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_danh',
+          name: 'Danh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FamilyAiChatScreen(
+            familyId: 'f1',
+            currentUserId: 'u_danh',
+            currentUserName: 'Danh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Open drawer
+      final historyIcon = find.byIcon(Icons.history_rounded);
+      expect(historyIcon, findsOneWidget);
+      await tester.tap(historyIcon);
+      await tester.pumpAndSettle();
+
+      // Ensure API key button is completely absent
+      expect(find.text('Cài đặt Gemini API Key'), findsNothing);
+      expect(find.text('Gemini AI: Sẵn sàng'), findsNothing);
+    });
   });
 }

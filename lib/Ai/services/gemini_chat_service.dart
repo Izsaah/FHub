@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
+import '../../Vinh/models/family_member.dart';
 import '../../Vinh/models/reminder_model.dart';
 import '../models/chat_message_model.dart';
 import 'ai_tools_declarations.dart';
@@ -47,22 +48,25 @@ class GeminiChatService {
   ];
 
   String? _customApiKey;
+  List<FamilyMember>? _cachedFamilyMembers;
 
   /// Lấy API Key hiệu lực (Ưu tiên Key người dùng lưu trong SharedPreferences -> sau đó đến .env)
   String get effectiveApiKey {
     if (_customApiKey != null && _customApiKey!.trim().isNotEmpty) {
       return _customApiKey!.trim();
     }
-    if (!dotenv.isInitialized) {
+    var key = (dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null)?.trim();
+    if (key == null || key.isEmpty) {
       try {
         dotenv.load(fileName: ".env");
+        key = dotenv.env['GEMINI_API_KEY']?.trim();
       } catch (_) {
         try {
           dotenv.load(fileName: "assets/.env");
+          key = dotenv.env['GEMINI_API_KEY']?.trim();
         } catch (_) {}
       }
     }
-    final key = (dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null)?.trim();
     return key ?? '';
   }
 
@@ -187,6 +191,9 @@ class GeminiChatService {
     }
   }
 
+  /// Kiểm tra xem câu hỏi có thuộc nghiệp vụ / ngữ cảnh gia đình không
+  bool isFamilyContextQuery(String text) => _isFamilyContextQuery(text);
+
   bool _isFamilyContextQuery(String text) {
     final lower = text.toLowerCase();
     return lower.contains('điểm danh') ||
@@ -194,14 +201,25 @@ class GeminiChatService {
         lower.contains('check in') ||
         lower.contains('check-in') ||
         lower.contains('checkin') ||
+        lower.contains('ai có mặt') ||
+        lower.contains('ai đã đến') ||
+        lower.contains('attendance') ||
+        lower.contains('who checked') ||
         lower.contains('tiến độ') ||
         lower.contains('tien do') ||
         lower.contains('tóm tắt') ||
         lower.contains('tom tat') ||
+        lower.contains('progress') ||
         lower.contains('vai trò') ||
         lower.contains('vai tro') ||
         lower.contains('tôi là ai') ||
         lower.contains('quyền của tôi') ||
+        lower.contains('đóng vai trò gì') ||
+        lower.contains('chức vụ') ||
+        lower.contains('có thể giao việc') ||
+        lower.contains('giao việc cho ai không') ||
+        lower.contains('role') ||
+        lower.contains('who am i') ||
         lower.contains('mấy gia đình') ||
         lower.contains('bao nhiêu gia đình') ||
         lower.contains('các gia đình') ||
@@ -213,7 +231,9 @@ class GeminiChatService {
         lower.contains('đẹp trai') ||
         lower.contains('xinh gái') ||
         lower.contains('đẹp gái') ||
-        lower.contains('dễ thương');
+        lower.contains('dễ thương') ||
+        lower.contains('tôi đẹp không') ||
+        lower.contains('tôi thế nào');
   }
 
   /// Gửi tin nhắn và xử lý phản hồi thông minh
@@ -223,6 +243,7 @@ class GeminiChatService {
     String? userId,
     String? userName,
     String? userRole,
+    List<FamilyMember>? familyMembers,
   }) async {
     final cleanText = text.trim();
     if (cleanText.isEmpty) {
@@ -232,6 +253,10 @@ class GeminiChatService {
         sender: ChatSender.ai,
         timestamp: DateTime.now(),
       );
+    }
+
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      _cachedFamilyMembers = familyMembers;
     }
 
     // Cập nhật ngữ cảnh nếu truyền vào
@@ -634,7 +659,9 @@ $memoriesInfo
         lower.contains('check in') ||
         lower.contains('check-in') ||
         lower.contains('checkin') ||
-        (lower.contains('ai') && (lower.contains('đã đến') || lower.contains('có mặt')))) {
+        lower.contains('attendance') ||
+        lower.contains('who checked') ||
+        (lower.contains('ai') && (lower.contains('đã đến') || lower.contains('có mặt') || lower.contains('điểm danh') || lower.contains('check in')))) {
       if (_firestore != null) {
         try {
           final membersSnap = await _firestore!
@@ -658,6 +685,12 @@ $memoriesInfo
                 isToday = true;
                 timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
               }
+            } else if (lastCheckIn is String) {
+              final dt = DateTime.tryParse(lastCheckIn);
+              if (dt != null && dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+                isToday = true;
+                timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+              }
             }
 
             if (isToday) {
@@ -667,31 +700,51 @@ $memoriesInfo
             }
           }
 
-          final buffer = StringBuffer();
-          buffer.writeln('📋 TÌNH HÌNH ĐIỂM DANH GIA ĐÌNH HÔM NAY ($todayStr):');
-          if (checkedInList.isNotEmpty) {
-            buffer.writeln('✅ Đã điểm danh (${checkedInList.length} người):');
-            for (final c in checkedInList) {
-              buffer.writeln('  • $c');
+          if (checkedInList.isNotEmpty || notCheckedInList.isNotEmpty) {
+            final buffer = StringBuffer();
+            buffer.writeln('📋 TÌNH HÌNH ĐIỂM DANH GIA ĐÌNH HÔM NAY ($todayStr):');
+            if (checkedInList.isNotEmpty) {
+              buffer.writeln('✅ Đã điểm danh (${checkedInList.length} người):');
+              for (final c in checkedInList) {
+                buffer.writeln('  • $c');
+              }
+            } else {
+              buffer.writeln('• Chưa có thành viên nào điểm danh hôm nay.');
             }
-          } else {
-            buffer.writeln('• Chưa có thành viên nào điểm danh hôm nay.');
-          }
 
-          if (notCheckedInList.isNotEmpty) {
-            buffer.writeln('\n⏳ Chưa điểm danh (${notCheckedInList.length} người):');
-            for (final nc in notCheckedInList) {
-              buffer.writeln('  • $nc');
+            if (notCheckedInList.isNotEmpty) {
+              buffer.writeln('\n⏳ Chưa điểm danh (${notCheckedInList.length} người):');
+              for (final nc in notCheckedInList) {
+                buffer.writeln('  • $nc');
+              }
             }
-          }
 
-          return ChatMessageModel(
-            id: 'msg_${now.millisecondsSinceEpoch}',
-            text: buffer.toString().trim(),
-            sender: ChatSender.ai,
-            timestamp: now,
-          );
+            return ChatMessageModel(
+              id: 'msg_${now.millisecondsSinceEpoch}',
+              text: buffer.toString().trim(),
+              sender: ChatSender.ai,
+              timestamp: now,
+            );
+          }
         } catch (_) {}
+      }
+
+      if (_cachedFamilyMembers != null && _cachedFamilyMembers!.isNotEmpty) {
+        final notChecked = _cachedFamilyMembers!.map((m) => '${m.name} (${m.roleDisplayName})').toList();
+        final buffer = StringBuffer();
+        buffer.writeln('📋 TÌNH HÌNH ĐIỂM DANH GIA ĐÌNH HÔM NAY ($todayStr):');
+        buffer.writeln('• Chưa có thành viên nào ghi nhận điểm danh hôm nay.');
+        buffer.writeln('\n⏳ Danh sách thành viên gia đình:');
+        for (final nc in notChecked) {
+          buffer.writeln('  • $nc');
+        }
+        buffer.write('\nDạ $salutation, cả nhà nhớ mở app bấm Điểm danh hôm nay để nhận sao thưởng nhé! ❤️');
+        return ChatMessageModel(
+          id: 'msg_${now.millisecondsSinceEpoch}',
+          text: buffer.toString().trim(),
+          sender: ChatSender.ai,
+          timestamp: now,
+        );
       }
 
       return ChatMessageModel(
@@ -797,7 +850,12 @@ $memoriesInfo
         lower.contains('tôi là ai') ||
         lower.contains('quyền của tôi') ||
         lower.contains('đóng vai trò gì') ||
-        lower.contains('chức vụ')) {
+        lower.contains('chức vụ') ||
+        lower.contains('có thể giao việc') ||
+        lower.contains('giao việc cho ai không') ||
+        lower.contains('role') ||
+        lower.contains('who am i') ||
+        lower.contains('my role')) {
       final roleLower = _currentUserRole.toLowerCase();
       final isParent = roleLower.contains('parent') || roleLower.contains('bố') || roleLower.contains('mẹ');
       final isChild = roleLower.contains('child') || roleLower.contains('con');
@@ -821,7 +879,7 @@ $memoriesInfo
       }
 
       final desc = isParent
-          ? 'Bạn giữ quyền **Phụ huynh (Quản trị gia đình)**: Có toàn quyền giao việc cho các con, tạo việc chung, nạp quỹ hũ và phát lệnh Nổ Hũ 30 giây cho cả nhà! 👑'
+          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho các con, tạo việc chung, nạp quỹ hũ và phát lệnh Nổ Hũ 30 giây cho cả nhà! 👑'
           : (isChild
               ? 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận việc chung, hoàn thành nhiệm vụ để tích lũy sao thưởng và tham gia lắc hũ nhận thưởng về ví cá nhân nhé! 🌟'
               : 'Bạn là **Thành viên yêu thương của gia đình**: Có thể gắn kết, chia sẻ việc nhà và cùng tham gia các hoạt động ấm cúng! 🏡');

@@ -249,8 +249,11 @@ class FamilyAiAssistantService {
       );
     }
 
-    // ƯU TIÊN SỐ 1: KHI ĐÃ CÓ GEMINI_API_KEY -> GEMINI LLM LÀ NÃO BỘ ĐIỀU PHỐI DUY NHẤT (Nắm toàn quyền hệ thống, trả lời tự nhiên như trên web)
-    if (GeminiChatService.instance.isConfigured) {
+    // ƯU TIÊN SỐ 1: GỌI GEMINI LLM HOẶC DỰ PHÒNG THÔNG MINH (Nắm toàn quyền hệ thống, trả lời tự nhiên như trên web)
+    final isGeminiReady = GeminiChatService.instance.isConfigured;
+    final isContextQuery = GeminiChatService.instance.isFamilyContextQuery(query);
+
+    if (isGeminiReady || isContextQuery) {
       try {
         final myMember = familyMembers.where((m) => m.id == currentUserId).firstOrNull;
         final myRole = myMember?.roleDisplayName ?? (myMember?.isParent == true ? 'Phụ huynh' : 'Thành viên');
@@ -261,6 +264,7 @@ class FamilyAiAssistantService {
           userId: currentUserId,
           userName: currentUserName,
           userRole: myRole,
+          familyMembers: familyMembers,
         );
 
         if (!geminiRes.isError && geminiRes.text.trim().isNotEmpty) {
@@ -285,6 +289,27 @@ class FamilyAiAssistantService {
       } catch (e) {
         // Fallback về engine nội bộ khi Gemini gặp sự cố mạng
       }
+    }
+
+    // 1.5. CASE: HỎI VỀ ĐIỂM DANH / CHECK-IN HÔM NAY
+    if (_isCheckInIntent(lower)) {
+      final buffer = StringBuffer();
+      buffer.writeln('📋 TÌNH HÌNH ĐIỂM DANH GIA ĐÌNH HÔM NAY ($todayStr):');
+      buffer.writeln('• Chưa có thành viên nào ghi nhận điểm danh hôm nay.');
+      if (familyMembers.isNotEmpty) {
+        buffer.writeln('\n⏳ Danh sách thành viên gia đình:');
+        for (final m in familyMembers) {
+          buffer.writeln('  • ${m.name} (${m.roleDisplayName})');
+        }
+      }
+      buffer.write('\nDạ $salutation, cả nhà nhớ mở app bấm Điểm danh hôm nay để nhận sao thưởng nhé! ❤️');
+
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: buffer.toString().trim(),
+        timestamp: DateTime.now(),
+      );
     }
 
     // 2. CASE 1: GIAO VIỆC MỞ CHO CÁC CON (OPEN TASK)
@@ -952,8 +977,10 @@ class FamilyAiAssistantService {
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
       isUser: false,
       text: AppLanguage.text(
-        'Dạ em nghe đây ạ! $salutation có thể giao việc, chia sẻ kế hoạch nấu ăn (VD: "Tối nay nấu thịt kho"), hoặc hỏi thăm tiến độ gia đình bất cứ lúc nào nhé. Em luôn sẵn sàng hỗ trợ! 😊',
-        'I am listening $salutation! You can assign tasks, share cooking plans, or check family progress anytime. I am always ready to help! 😊',
+        'Dạ em đã nhận được tin nhắn của $salutation rồi ạ! ❤️\n'
+        'Em luôn sẵn sàng hỗ trợ $salutation kiểm tra tình hình điểm danh ("ai đã điểm danh"), tóm tắt tiến độ việc nhà ("tiến độ hôm nay"), kiểm tra quỹ hũ niềm vui, hoặc giao việc cho các thành viên nhé!',
+        'I received your message, $salutation! ❤️\n'
+        'I am ready to help you check family attendance ("who checked in"), summarize chores progress, check the family jackpot, or assign tasks anytime!',
       ),
       timestamp: DateTime.now(),
     );
@@ -1098,6 +1125,21 @@ class FamilyAiAssistantService {
                 text.contains('hôm nay')));
   }
 
+  bool _isCheckInIntent(String lower) {
+    return lower.contains('điểm danh') ||
+        lower.contains('diem danh') ||
+        lower.contains('check in') ||
+        lower.contains('check-in') ||
+        lower.contains('checkin') ||
+        lower.contains('attendance') ||
+        lower.contains('who checked') ||
+        (lower.contains('ai') &&
+            (lower.contains('đã đến') ||
+                lower.contains('có mặt') ||
+                lower.contains('điểm danh') ||
+                lower.contains('check in')));
+  }
+
   bool _isDeleteTaskIntent(String text) {
     return text.startsWith('xóa task') ||
         text.startsWith('xóa việc') ||
@@ -1183,7 +1225,7 @@ class FamilyAiAssistantService {
       return const [];
     }
 
-    // Tránh tuyệt đối bắt nhầm câu hỏi, thắc mắc quyền hạn, hỏi vai trò, hoặc tự vấn
+    // Tránh tuyệt đối bắt nhầm câu hỏi, thắc mắc quyền hạn, hỏi vai trò, điểm danh hoặc tự vấn
     if (lower.contains('?') ||
         lower.contains('vai trò') ||
         lower.contains('vai tro') ||
@@ -1195,6 +1237,11 @@ class FamilyAiAssistantService {
         lower.contains('ai không') ||
         lower.contains('không?') ||
         lower.contains('đóng vai trò gì') ||
+        lower.contains('điểm danh') ||
+        lower.contains('diem danh') ||
+        lower.contains('check in') ||
+        lower.contains('check-in') ||
+        lower.contains('checkin') ||
         lower.startsWith('tôi là') ||
         lower.startsWith('tôi có thể')) {
       return const [];
