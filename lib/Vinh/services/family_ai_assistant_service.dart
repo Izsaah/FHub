@@ -249,6 +249,44 @@ class FamilyAiAssistantService {
       );
     }
 
+    // ƯU TIÊN SỐ 1: KHI ĐÃ CÓ GEMINI_API_KEY -> GEMINI LLM LÀ NÃO BỘ ĐIỀU PHỐI DUY NHẤT (Nắm toàn quyền hệ thống, trả lời tự nhiên như trên web)
+    if (GeminiChatService.instance.isConfigured) {
+      try {
+        final myMember = familyMembers.where((m) => m.id == currentUserId).firstOrNull;
+        final myRole = myMember?.roleDisplayName ?? (myMember?.isParent == true ? 'Phụ huynh' : 'Thành viên');
+
+        final geminiRes = await GeminiChatService.instance.sendMessage(
+          query,
+          familyId: familyId,
+          userId: currentUserId,
+          userName: currentUserName,
+          userRole: myRole,
+        );
+
+        if (!geminiRes.isError && geminiRes.text.trim().isNotEmpty) {
+          if (geminiRes.createdTask != null) {
+            try {
+              await repository.createReminder(
+                reminder: geminiRes.createdTask!,
+                currentUserId: currentUserId,
+                familyMembers: familyMembers,
+              );
+            } catch (_) {}
+          }
+          return AiChatMessage(
+            id: geminiRes.id,
+            isUser: false,
+            text: geminiRes.text.trim(),
+            timestamp: geminiRes.timestamp,
+            attachedReminder: geminiRes.createdTask,
+            attachedReminders: geminiRes.createdTask != null ? [geminiRes.createdTask!] : const [],
+          );
+        }
+      } catch (e) {
+        // Fallback về engine nội bộ khi Gemini gặp sự cố mạng
+      }
+    }
+
     // 2. CASE 1: GIAO VIỆC MỞ CHO CÁC CON (OPEN TASK)
     if (_isOpenTaskIntent(lower)) {
       String choreTitle = 'Phụ làm việc nhà';
