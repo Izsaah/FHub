@@ -158,6 +158,10 @@ class GeminiChatService {
         lower.contains('vai tro') ||
         lower.contains('tôi là ai') ||
         lower.contains('quyền của tôi') ||
+        lower.contains('mấy gia đình') ||
+        lower.contains('bao nhiêu gia đình') ||
+        lower.contains('các gia đình') ||
+        lower.contains('danh sách gia đình') ||
         lower.contains('hũ niềm vui') ||
         lower.contains('quỹ hũ') ||
         lower.contains('nổ hũ') ||
@@ -512,12 +516,25 @@ Người đang trò chuyện với bạn: $_currentUserName (ID: $_currentUserId
 Vai trò của người dùng trong gia đình: $_currentUserRole.
 Gia đình hiện tại: $_currentFamilyName (Mã: $_currentFamilyId).
 
-=== QUY TẮC XƯNG HÔ BẮT BUỘC (TUYỆT ĐỐI TUÂN THỦ) ===
+=== QUY TẮC XƯNG HÔ BẮT BUỘC (TUYỆT ĐỐI ĐỘNG THEO PROFILE - CẤM HARDCODE) ===
 - KHÔNG ĐƯỢC mặc định gọi "Mẹ" hoặc xưng "Chào mẹ" nếu người dùng không phải là Mẹ!
-- Nếu người dùng có vai trò là Con cái (Child/Con): Gọi tên người dùng (hoặc xưng em/mình), KHÔNG BAO GIỜ gọi là "Mẹ"!
-- Nếu người dùng là Bố/Ba (Parent - Bố): Gọi "Bố" hoặc "Bác/Chú".
-- Nếu người dùng là Mẹ (Parent - Mẹ): Gọi "Mẹ".
-- Nếu người dùng là Ông/Bà (Grandparent): Xưng con/cháu, gọi "Ông/Bà".
+- Đọc chính xác tên thật của người dùng: "$_currentUserName" và vai trò thật: "$_currentUserRole".
+- Nếu người dùng có vai trò là Con cái (Child/Con): Xưng em/mình và gọi tên "$_currentUserName", TUYỆT ĐỐI KHÔNG xưng "chào mẹ"!
+- Nếu người dùng là Bố/Ba (Parent - Bố): Xưng con/em, gọi "Bố".
+- Nếu người dùng là Mẹ (Parent - Mẹ): Xưng con/em, gọi "Mẹ".
+- Nếu người dùng là Ông/Bà (Grandparent): Xưng cháu/con, gọi "Ông/Bà".
+
+=== NGUYÊN TẮC ĐA GIA ĐÌNH & PHÂN LẬP DỮ LIỆU (MULTI-FAMILY SCOPING) ===
+- Người dùng có thể tham gia nhiều gia đình trong ứng dụng FHub.
+- Phiên trò chuyện này ĐANG HOẠT ĐỘNG TRONG GIA ĐÌNH: "$_currentFamilyName" (Mã: $_currentFamilyId).
+- Khi người dùng hỏi chung chung ("tiến độ", "ai điểm danh", "việc nhà", "quỹ hũ"):
+  + Báo cáo chính xác theo không gian của gia đình "$_currentFamilyName".
+  + Luôn nêu rõ tên gia đình ở câu trả lời (VD: "Dạ trong gia đình $_currentFamilyName, tiến độ hôm nay là...").
+  + Nếu người dùng hỏi tổng thể về các gia đình (VD: "tôi có mấy gia đình?"), giải thích rõ người dùng đang ở không gian gia đình "$_currentFamilyName", và nhắc người dùng có thể đổi gia đình trên thanh chọn (Family Selector).
+
+=== HỖ TRỢ ĐA NGÔN NGỮ (VIETNAMESE / ENGLISH) ===
+- Nếu người dùng hỏi bằng Tiếng Anh (English): Trả lời hoàn toàn bằng Tiếng Anh tự nhiên, ấm áp.
+- Nếu người dùng hỏi bằng Tiếng Việt: Trả lời bằng Tiếng Việt chuẩn mực, đúng văn hóa gia đình.
 
 === DANH SÁCH THÀNH VIÊN VÀ TRẠNG THÁI ĐIỂM DANH HÔM NAY ===
 $membersInfo
@@ -698,6 +715,23 @@ $memoriesInfo
       );
     }
 
+    // 2.5 HỎI VỀ ĐA GIA ĐÌNH CỦA NGƯỜI DÙNG
+    if (lower.contains('mấy gia đình') ||
+        lower.contains('bao nhiêu gia đình') ||
+        lower.contains('danh sách gia đình') ||
+        lower.contains('các gia đình')) {
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: '🏡 **KHÔNG GIAN GIA ĐÌNH CỦA BẠN**:\n'
+            '• Gia đình đang hoạt động: **$_currentFamilyName** (Mã: $_currentFamilyId)\n'
+            '• Vai trò của bạn tại gia đình này: **$_currentUserRole**\n'
+            '• Phạm vi dữ liệu: Toàn bộ việc nhà, điểm danh và hũ niềm vui được tách bạch an toàn theo từng gia đình.\n\n'
+            '💡 *Mẹo: Nếu bạn tham gia nhiều gia đình, bạn có thể dễ dàng chuyển đổi qua lại trên thanh chọn gia đình ở đầu màn hình bất cứ lúc nào!*',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
     // 3. HỎI VỀ VAI TRÒ CỦA MÌNH TRONG GIA ĐÌNH
     if (lower.contains('vai trò') ||
         lower.contains('vai tro') ||
@@ -785,13 +819,19 @@ $memoriesInfo
     final role = _currentUserRole.toLowerCase();
     final name = _currentUserName.toLowerCase();
 
+    if (name.contains('ông') || role.contains('ông') || role.contains('grandpa') || role.contains('grandfather')) {
+      return 'Ông';
+    }
+    if (name.contains('bà') || role.contains('bà') || role.contains('grandma') || role.contains('grandmother')) {
+      return 'Bà';
+    }
     if (name.contains('mẹ') || name.contains('mom') || name.contains('má') || (role.contains('mẹ') && !role.contains('bố'))) {
       return 'Mẹ';
     }
     if (name.contains('bố') || name.contains('ba') || name.contains('dad') || name.contains('cha') || (role.contains('bố') && !role.contains('mẹ'))) {
       return 'Bố';
     }
-    return _currentUserName;
+    return _currentUserName.isNotEmpty ? _currentUserName : 'bạn';
   }
 
   /// Chuẩn hóa định dạng ngày

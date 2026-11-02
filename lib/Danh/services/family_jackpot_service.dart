@@ -547,10 +547,13 @@ class FamilyJackpotService extends ChangeNotifier {
       targetUserName: name,
     );
 
+    final formattedDeposit = amount.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.");
     unawaited(NotificationService.instance.addNotification(
       familyId: _currentFamilyId ?? 'f1',
       title: 'Quỹ Hũ Niềm Vui được nạp thêm',
-      body: '$name vừa đóng góp ${amount.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ vào Hũ Niềm Vui!',
+      titleEn: 'Family Pot Received a Deposit',
+      body: '$name vừa đóng góp $formattedDeposit đ vào Hũ Niềm Vui!',
+      bodyEn: '$name just deposited $formattedDeposit đ into the Family Pot!',
       type: 'jackpot_deposit',
     ));
   }
@@ -608,7 +611,9 @@ class FamilyJackpotService extends ChangeNotifier {
     unawaited(NotificationService.instance.addNotification(
       familyId: _currentFamilyId ?? 'f1',
       title: 'Trận chiến Nổ Hũ 30 giây bắt đầu!',
+      titleEn: '30s Pot Shake Battle Has Started!',
       body: '$starterName vừa phát lệnh Nổ Hũ! Cả nhà cùng vào lắc điện thoại nhận thưởng!',
+      bodyEn: '$starterName initiated the Pot Shake! Join now and shake to win prizes!',
       type: 'jackpot_shake',
     ));
   }
@@ -760,7 +765,9 @@ class FamilyJackpotService extends ChangeNotifier {
         unawaited(NotificationService.instance.addNotification(
           familyId: _currentFamilyId ?? 'f1',
           title: 'Kết quả Nổ Hũ Gia Đình! 🎉',
+          titleEn: 'Family Pot Battle Results! 🎉',
           body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize đ!',
+          bodyEn: '$winnerName won 1st Prize with a reward of $formattedPrize đ!',
           type: 'jackpot_win',
         ));
       }
@@ -834,6 +841,17 @@ class FamilyJackpotService extends ChangeNotifier {
         bankShortName: myBankInfo.bankShortName,
         accountNumber: myBankInfo.accountNumber,
       );
+
+      final formattedWithdraw = amount.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.");
+      unawaited(NotificationService.instance.addNotification(
+        familyId: fId,
+        targetUserId: uid,
+        title: 'Yêu cầu rút tiền về ${myBankInfo.bankShortName}',
+        titleEn: 'Bank Withdrawal to ${myBankInfo.bankShortName}',
+        body: 'Bạn đã rút $formattedWithdraw đ về STK: ${myBankInfo.accountNumber}',
+        bodyEn: 'You withdrew $formattedWithdraw đ to account: ${myBankInfo.accountNumber}',
+        type: 'wallet_withdraw',
+      ));
 
       return true;
     } catch (e) {

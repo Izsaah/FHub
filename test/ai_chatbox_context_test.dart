@@ -162,5 +162,34 @@ void main() {
       expect(aiService.currentFamilyId, 'fam_B');
       expect(aiService.currentUserRole, 'Bố');
     });
+
+    test('8. Grandparent role and dynamic salutation (calls Ông/Bà, never "chào mẹ")', () async {
+      await aiService.initChat(
+        familyId: 'fam_grand',
+        userId: 'u_grandpa',
+        userName: 'Ông Tuấn',
+        userRole: 'Ông (Grandparent)',
+        familyName: 'Đại Gia Đình Tuấn',
+      );
+
+      final res = await aiService.sendMessage('tôi là ai trong gia đình này?');
+      expect(res.text, isNot(contains('chào mẹ')));
+      expect(res.text, contains('Ông'));
+    });
+
+    test('9. User asking about multiple families receives active family context clarity', () async {
+      await aiService.initChat(
+        familyId: 'fam_main',
+        userId: 'u_member',
+        userName: 'Khoa',
+        userRole: 'Phụ huynh',
+        familyName: 'Gia Đình Khoa',
+      );
+
+      final res = await aiService.sendMessage('tôi có bao nhiêu gia đình?');
+      expect(res.text, contains('Gia Đình Khoa'));
+      expect(res.text, contains('fam_main'));
+      expect(res.text, isNot(contains('chào mẹ')));
+    });
   });
 }

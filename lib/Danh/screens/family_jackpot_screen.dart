@@ -1,3 +1,4 @@
+import '../../Thinh/theme/app_language.dart';
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -67,9 +68,12 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _jackpotService,
-      builder: (context, _) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, isEn, _) {
+        return ListenableBuilder(
+          listenable: _jackpotService,
+          builder: (context, _) {
         final jackpot = _jackpotService.jackpot;
         final currentShakeCount = _jackpotService.myShakeCount;
 
@@ -102,12 +106,12 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: DanhColors.brand800),
               onPressed: () => Navigator.pop(context),
             ),
-            title: const FittedBox(
+            title: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
-                'Hũ Niềm Vui Gia Đình',
-                style: TextStyle(
+                AppLanguage.text('Hũ Niềm Vui Gia Đình', 'Family Happiness Pot'),
+                style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16.5,
                   color: DanhColors.brand800,
@@ -127,7 +131,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     alignment: Alignment.center,
                     children: [
                       IconButton(
-                        tooltip: 'Thông báo gia đình',
+                        tooltip: AppLanguage.text('Thông báo gia đình', 'Family Notifications'),
                         icon: const Icon(Icons.notifications_outlined, color: DanhColors.brand800),
                         onPressed: _openNotificationsModal,
                       ),
@@ -158,7 +162,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 },
               ),
               IconButton(
-                tooltip: 'Luật chơi & Giải thưởng',
+                tooltip: AppLanguage.text('Luật chơi & Giải thưởng', 'Pot Rules & Guidelines'),
                 icon: const Icon(Icons.help_outline_rounded, color: DanhColors.brand800),
                 onPressed: _showRulesModal,
               ),
@@ -236,6 +240,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         );
       },
     );
+      },
+    );
   }
 
   /// Thẻ Hũ Vàng trung tâm với biểu tượng SVG và tổng quỹ A + Ví cá nhân
@@ -269,8 +275,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'TỔNG QUỸ HŨ NIỀM VUI',
+                    Text(
+                      AppLanguage.text('TỔNG QUỸ HŨ NIỀM VUI', 'TOTAL HAPPINESS POT'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -313,7 +319,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    'Người nạp nhiều nhất: ${jackpot.topContributorName}',
+                    AppLanguage.text('Người nạp nhiều nhất: ${jackpot.topContributorName}', 'Top Contributor: ${jackpot.topContributorName}'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -366,11 +372,11 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Ví Thưởng Của Tôi',
+                        Text(
+                          AppLanguage.text('Ví Thưởng Của Tôi', 'My Reward Wallet'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
+                          style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
                         ),
                         Text(
                           '${_jackpotService.myWalletBalance} đ',
@@ -404,9 +410,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         onPressed: _openWalletHistoryModal,
-                        child: const Text(
-                          'Lịch Sử',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        child: Text(
+                          AppLanguage.text('Lịch Sử', 'History'),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
@@ -424,9 +430,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         onPressed: _openBankAndWithdrawModal,
-                        child: const Text(
-                          'Rút Tiền',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        child: Text(
+                          AppLanguage.text('Rút Tiền', 'Withdraw'),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
@@ -474,8 +480,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           spacing: 8,
           runSpacing: 4,
           children: [
-            const Text(
-              '1. Nạp Tiền Vào Quỹ Hũ (VietQR)',
+            Text(
+              AppLanguage.text('1. Nạp Tiền Vào Quỹ Hũ (VietQR)', '1. Deposit into Pot (VietQR)'),
               style: TextStyle(
                 fontSize: 15.5,
                 fontWeight: FontWeight.bold,
@@ -512,8 +518,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         ),
         const SizedBox(height: 24),
 
-        const Text(
-          '2. Bảng Vinh Danh Thành Viên Đóng Góp',
+        Text(
+          AppLanguage.text('2. Bảng Vinh Danh Thành Viên Đóng Góp', '2. Contributor Leaderboard'),
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -542,10 +548,10 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 : const Icon(Icons.lock_clock_rounded, size: 22),
             label: Text(
               jackpot.totalPoolAmount <= 0
-                  ? 'Hãy Nạp Tiền Vào Hũ Trước Khi Lắc'
+                  ? AppLanguage.text('Hãy Nạp Tiền Vào Hũ Trước Khi Lắc', 'Deposit into Pot Before Shaking')
                   : (isTopContributor
-                      ? 'BẮT ĐẦU NỔ HŨ (30 GIÂY LẮC)'
-                      : 'Chờ ${jackpot.topContributorName} phát động Nổ Hũ'),
+                      ? AppLanguage.text('BẮT ĐẦU NỔ HŨ (30 GIÂY LẮC)', 'START POT SHAKE (30 SECONDS)')
+                      : AppLanguage.text('Chờ ${jackpot.topContributorName} phát động Nổ Hũ', 'Waiting for ${jackpot.topContributorName} to start shake')),
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
             onPressed: () {
@@ -1424,23 +1430,23 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Row(
                         children: [
-                          Icon(Icons.receipt_long_rounded, color: DanhColors.brand800, size: 22),
+                          const Icon(Icons.receipt_long_rounded, color: DanhColors.brand800, size: 22),
                           SizedBox(width: 8),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Lịch Sử Biến Động Ví & Quỹ',
-                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+                                  AppLanguage.text('Lịch Sử Biến Động Ví & Quỹ', 'Wallet & Pot Transaction History'),
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: DanhColors.brand800),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
-                                  'Lưu trữ tự động trong 15 ngày gần nhất',
-                                  style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
+                                  AppLanguage.text('Lưu trữ tự động trong 15 ngày gần nhất', 'Auto-stored for the last 15 days'),
+                                  style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],
@@ -1607,10 +1613,10 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Ví Thưởng & Rút Tiền Về Ngân Hàng',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: DanhColors.brand900),
+                            AppLanguage.text('Ví Thưởng & Rút Tiền Về Ngân Hàng', 'Reward Wallet & Bank Withdrawal'),
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: DanhColors.brand900),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1776,7 +1782,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                             });
                           }
                         },
-                        child: const Text('Lưu Tài Khoản Ngân Hàng', style: TextStyle(color: DanhColors.brand800, fontWeight: FontWeight.bold)),
+                        child: Text(AppLanguage.text('Lưu Tài Khoản Ngân Hàng', 'Save Bank Account'), style: const TextStyle(color: DanhColors.brand800, fontWeight: FontWeight.bold)),
                       ),
                     ),
                     const Divider(height: 28),
@@ -1808,7 +1814,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                               sheetError = null;
                             });
                           },
-                          child: const Text('Rút Hết', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFE65100))),
+                          child: Text(AppLanguage.text('Rút Hết', 'Withdraw All'), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFE65100))),
                         ),
                       ],
                     ),
@@ -2264,23 +2270,23 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Row(
                         children: [
-                          Icon(Icons.notifications_active_rounded, color: DanhColors.brand800, size: 22),
+                          const Icon(Icons.notifications_active_rounded, color: DanhColors.brand800, size: 22),
                           SizedBox(width: 8),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Thông Báo Gia Đình',
-                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+                                  AppLanguage.text('Thông Báo Gia Đình', 'Family Notifications'),
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: DanhColors.brand800),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
-                                  'Lưu trữ tự động trong 15 ngày gần nhất',
-                                  style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
+                                  AppLanguage.text('Lưu trữ tự động trong 15 ngày gần nhất', 'Auto-stored for the last 15 days'),
+                                  style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],
@@ -2299,7 +2305,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                               currentUserId: currentUserId,
                             );
                           },
-                          child: const Text('Đã đọc tất cả', style: TextStyle(fontSize: 12, color: DanhColors.brand800)),
+                          child: Text(AppLanguage.text('Đã đọc tất cả', 'Mark all as read'), style: const TextStyle(fontSize: 12, color: DanhColors.brand800)),
                         ),
                         IconButton(
                           icon: const Icon(Icons.close_rounded, size: 20),
@@ -2330,13 +2336,13 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           children: [
                             Icon(Icons.notifications_none_rounded, size: 48, color: Colors.grey.shade400),
                             const SizedBox(height: 12),
-                            const Text(
-                              'Chưa có thông báo nào mới',
-                              style: TextStyle(fontSize: 14, color: DanhColors.textMuted),
+                            Text(
+                              AppLanguage.text('Chưa có thông báo nào mới', 'No new notifications'),
+                              style: const TextStyle(fontSize: 14, color: DanhColors.textMuted),
                             ),
                             const SizedBox(height: 4),
-                            const Text(
-                              'Các sự kiện nạp quỹ, lắc hũ và rút tiền sẽ hiển thị tại đây.',
+                            Text(
+                              AppLanguage.text('Các sự kiện nạp quỹ, lắc hũ và rút tiền sẽ hiển thị tại đây.', 'Pot deposits, shake events, and withdrawals will appear here.'),
                               style: TextStyle(fontSize: 11.5, color: DanhColors.textMuted),
                             ),
                           ],
@@ -2402,7 +2408,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        n.title,
+                                        n.localizedTitle(AppLanguage.isEnglish.value),
                                         style: TextStyle(
                                           fontSize: 13.5,
                                           fontWeight: n.isRead ? FontWeight.w600 : FontWeight.bold,
@@ -2411,7 +2417,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                                       ),
                                       const SizedBox(height: 3),
                                       Text(
-                                        n.body,
+                                        n.localizedBody(AppLanguage.isEnglish.value),
                                         style: const TextStyle(fontSize: 12, color: DanhColors.textSecondary, height: 1.35),
                                       ),
                                       const SizedBox(height: 4),
@@ -2471,10 +2477,10 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Luật Chơi Hũ Niềm Vui Gia Đình 📜',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: DanhColors.brand900),
+                      AppLanguage.text('Luật Chơi Hũ Niềm Vui Gia Đình 📜', 'Family Pot Rules & Guidelines 📜'),
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: DanhColors.brand900),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -2509,7 +2515,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Đã Hiểu', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: Text(AppLanguage.text('Đã Hiểu', 'Understood'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],

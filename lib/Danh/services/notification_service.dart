@@ -29,11 +29,13 @@ class NotificationService {
         .collection('notifications');
   }
 
-  /// Gửi một thông báo mới vào Notification Hub của gia đình
+  /// Gửi một thông báo mới vào Notification Hub của gia đình (Hỗ trợ song ngữ VI / EN)
   Future<NotificationModel?> addNotification({
     required String familyId,
     required String title,
+    String? titleEn,
     required String body,
+    String? bodyEn,
     required String type,
     String targetUserId = 'ALL',
     Map<String, dynamic>? metadata,
@@ -47,7 +49,9 @@ class NotificationService {
       familyId: familyId,
       targetUserId: targetUserId,
       title: title,
+      titleEn: titleEn,
       body: body,
+      bodyEn: bodyEn,
       type: type,
       isRead: false,
       createdAt: now,

@@ -109,5 +109,37 @@ void main() {
       expect(recent.createdAt.isAfter(cutoff), isTrue);
       expect(olderThan15Days.createdAt.isBefore(cutoff), isTrue);
     });
+
+    test('4. Bilingual notification support (Vietnamese & English localization)', () {
+      final notif = NotificationModel(
+        id: 'n_bilingual',
+        familyId: 'f1',
+        title: 'Quỹ Hũ Niềm Vui được nạp thêm',
+        titleEn: 'Family Pot Received a Deposit',
+        body: 'Khoa vừa đóng góp 20.000 đ vào Hũ Niềm Vui!',
+        bodyEn: 'Khoa just deposited 20.000 đ into the Family Pot!',
+        type: 'jackpot_deposit',
+        createdAt: DateTime.now(),
+      );
+
+      // In Vietnamese mode (isEnglish = false)
+      expect(notif.localizedTitle(false), 'Quỹ Hũ Niềm Vui được nạp thêm');
+      expect(notif.localizedBody(false), contains('Khoa vừa đóng góp'));
+
+      // In English mode (isEnglish = true)
+      expect(notif.localizedTitle(true), 'Family Pot Received a Deposit');
+      expect(notif.localizedBody(true), contains('Khoa just deposited'));
+
+      // Automatic English fallback for legacy notifications missing titleEn
+      final legacyNotif = NotificationModel(
+        id: 'n_legacy',
+        familyId: 'f1',
+        title: 'Trận chiến Nổ Hũ 30 giây bắt đầu!',
+        body: 'Cả nhà vào lắc nhận thưởng!',
+        type: 'jackpot_shake',
+        createdAt: DateTime.now(),
+      );
+      expect(legacyNotif.localizedTitle(true), contains('30s Pot Shake Battle Has Started!'));
+    });
   });
 }
