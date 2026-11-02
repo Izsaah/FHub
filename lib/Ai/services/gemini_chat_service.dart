@@ -160,7 +160,8 @@ class GeminiChatService {
         lower.contains('quyền của tôi') ||
         lower.contains('hũ niềm vui') ||
         lower.contains('quỹ hũ') ||
-        lower.contains('nổ hũ');
+        lower.contains('nổ hũ') ||
+        lower.contains('lắc hũ');
   }
 
   /// Gửi tin nhắn và xử lý phản hồi thông minh

@@ -1424,24 +1424,30 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.receipt_long_rounded, color: DanhColors.brand800, size: 22),
-                        SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Lịch Sử Biến Động Ví & Quỹ',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+                    const Expanded(
+                      child: Row(
+                        children: [
+                          Icon(Icons.receipt_long_rounded, color: DanhColors.brand800, size: 22),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Lịch Sử Biến Động Ví & Quỹ',
+                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  'Lưu trữ tự động trong 15 ngày gần nhất',
+                                  style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
-                            Text(
-                              'Lưu trữ tự động trong 15 ngày gần nhất',
-                              style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close_rounded, size: 20),
@@ -1601,9 +1607,12 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Ví Thưởng & Rút Tiền Về Ngân Hàng',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: DanhColors.brand900),
+                        const Expanded(
+                          child: Text(
+                            'Ví Thưởng & Rút Tiền Về Ngân Hàng',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: DanhColors.brand900),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         IconButton(
                           icon: const Icon(Icons.close_rounded),
@@ -1626,12 +1635,14 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Số Dư Ví Khả Dụng', style: TextStyle(fontSize: 12, color: Color(0xFF8A5300))),
-                              Text('Tiền thưởng sau các lần nổ hũ', style: TextStyle(fontSize: 10, color: Color(0xFF8A5300))),
-                            ],
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Số Dư Ví Khả Dụng', style: TextStyle(fontSize: 12, color: Color(0xFF8A5300))),
+                                Text('Tiền thưởng sau các lần nổ hũ', style: TextStyle(fontSize: 10, color: Color(0xFF8A5300))),
+                              ],
+                            ),
                           ),
                           Text(
                             '$balance đ',
@@ -1683,6 +1694,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       initialValue: selectedBankCode,
+                      isExpanded: true,
                       decoration: InputDecoration(
                         labelText: 'Ngân hàng nhận tiền',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -1781,7 +1793,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                             controller: withdrawAmountController,
                             keyboardType: TextInputType.number,
                             decoration: InputDecoration(
-                              labelText: 'Số tiền muốn rút (VND)',
+                              labelText: 'Số tiền muốn rút (VNĐ)',
                               hintText: 'VD: 50000',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -2252,26 +2264,33 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.notifications_active_rounded, color: DanhColors.brand800, size: 22),
-                        SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Thông Báo Gia Đình',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+                    const Expanded(
+                      child: Row(
+                        children: [
+                          Icon(Icons.notifications_active_rounded, color: DanhColors.brand800, size: 22),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Thông Báo Gia Đình',
+                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  'Lưu trữ tự động trong 15 ngày gần nhất',
+                                  style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
-                            Text(
-                              'Lưu trữ tự động trong 15 ngày gần nhất',
-                              style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         TextButton(
                           onPressed: () async {
@@ -2432,51 +2451,69 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   void _showRulesModal() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 24,
-          right: 24,
-          top: 24,
-          bottom: MediaQuery.of(ctx).padding.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Luật Chơi Hũ Niềm Vui Gia Đình 📜',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: DanhColors.brand900),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              '1. Thành viên cùng nạp tiền vào Quỹ Hũ bằng mã VietQR Napas (SePay) realtime.\n'
-              '2. Người nạp nhiều nhất trở thành "Đại Gia Đình" và có quyền bấm Nổ Hũ.\n'
-              '3. Trận chiến Lắc 30s: Cả nhà cùng lắc điện thoại (hoặc bấm Lắc Ngay). Mỗi lần lắc = +1 vé may mắn!\n'
-              '4. Vừa hết 30s: Lộ diện ngay "Quán Quân Lắc Tay", sau đó 10s thần may mắn công bố kết quả trao thưởng.\n'
-              '5. Công thức chia thưởng tổng quỹ A: Giải Nhất nhận 3/4 của A, Giải Nhì nhận 3/5 phần còn lại, tiếp theo nhận 3/4 của 2 phần còn lại, chia trọn vẹn 100% quỹ cho cả nhà.\n'
-              '6. Đặc biệt: Nếu mất gói Premium khi hũ chưa lắc -> Toàn bộ tiền trong hũ bị tiêu hủy!\n'
-              '7. Ai lắc nhiều nhất nhà mà trượt Giải Nhất sẽ nhận thêm tấm Poster "Ý TRỜI"! 🤣',
-              style: TextStyle(fontSize: 13, height: 1.45, color: DanhColors.textPrimary),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: DanhColors.brand800,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Đã Hiểu', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.82,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Luật Chơi Hũ Niềm Vui Gia Đình 📜',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: DanhColors.brand900),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              const Flexible(
+                child: SingleChildScrollView(
+                  child: Text(
+                    '1. Thành viên cùng nạp tiền vào Quỹ Hũ bằng mã VietQR Napas (SePay) realtime.\n'
+                    '2. Người nạp nhiều nhất trở thành "Đại Gia Đình" và có quyền bấm Nổ Hũ.\n'
+                    '3. Trận chiến Lắc 30s: Cả nhà cùng lắc điện thoại (hoặc bấm Lắc Ngay). Mỗi lần lắc = +1 vé may mắn!\n'
+                    '4. Vừa hết 30s: Lộ diện ngay "Quán Quân Lắc Tay", sau đó 10s thần may mắn công bố kết quả trao thưởng.\n'
+                    '5. Công thức chia thưởng tổng quỹ A: Giải Nhất nhận 3/4 của A, Giải Nhì nhận 3/5 phần còn lại, tiếp theo nhận 3/4 của 2 phần còn lại, chia trọn vẹn 100% quỹ cho cả nhà.\n'
+                    '6. Đặc biệt: Nếu mất gói Premium khi hũ chưa lắc -> Toàn bộ tiền trong hũ bị tiêu hủy!\n'
+                    '7. Ai lắc nhiều nhất nhà mà trượt Giải Nhất sẽ nhận thêm tấm Poster "Ý TRỜI"! 🤣',
+                    style: TextStyle(fontSize: 13, height: 1.45, color: DanhColors.textPrimary),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: DanhColors.brand800,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Đã Hiểu', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
