@@ -46,7 +46,13 @@ class GeminiChatService {
     'gemini-1.5-pro',
   ];
 
-  bool get isConfigured {
+  String? _customApiKey;
+
+  /// Lấy API Key hiệu lực (Ưu tiên Key người dùng lưu trong SharedPreferences -> sau đó đến .env)
+  String get effectiveApiKey {
+    if (_customApiKey != null && _customApiKey!.trim().isNotEmpty) {
+      return _customApiKey!.trim();
+    }
     if (!dotenv.isInitialized) {
       try {
         dotenv.load(fileName: ".env");
@@ -57,7 +63,41 @@ class GeminiChatService {
       }
     }
     final key = (dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null)?.trim();
-    return key != null && key.isNotEmpty;
+    return key ?? '';
+  }
+
+  bool get isConfigured => effectiveApiKey.isNotEmpty;
+
+  /// Cài đặt API Key tuỳ chỉnh trong ứng dụng (lưu đồng bộ vào Firestore user profile)
+  Future<void> setCustomApiKey(String key) async {
+    _customApiKey = key.trim();
+    if (_firestore != null && _currentUserId.isNotEmpty) {
+      try {
+        await _firestore!.collection('users').doc(_currentUserId).set(
+          {'customGeminiApiKey': _customApiKey},
+          SetOptions(merge: true),
+        );
+      } catch (_) {}
+    }
+    await initChat();
+  }
+
+  /// Tải API Key đã lưu từ Firestore user profile
+  Future<void> loadSavedApiKey() async {
+    if (_firestore != null && _currentUserId.isNotEmpty) {
+      try {
+        final doc = await _firestore!.collection('users').doc(_currentUserId).get();
+        final saved = doc.data()?['customGeminiApiKey']?.toString().trim();
+        if (saved != null && saved.isNotEmpty) {
+          _customApiKey = saved;
+        }
+      } catch (_) {}
+    }
+  }
+
+  /// Đặt lại phiên trò chuyện hiện tại (Bắt đầu cuộc trò chuyện mới)
+  void resetChatSession() {
+    _chat = null;
   }
 
   /// Khởi tạo hoặc làm mới ngữ cảnh gia đình cho AI Chatbot
@@ -68,6 +108,10 @@ class GeminiChatService {
     String? userRole,
     String? familyName,
   }) async {
+    if (_customApiKey == null) {
+      await loadSavedApiKey();
+    }
+
     if (!dotenv.isInitialized) {
       try {
         await dotenv.load(fileName: ".env");
@@ -78,7 +122,7 @@ class GeminiChatService {
       }
     }
 
-    final apiKey = (dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null)?.trim() ?? '';
+    final apiKey = effectiveApiKey;
     final configuredModel = (dotenv.isInitialized ? dotenv.env['GEMINI_MODEL'] : null)?.trim();
 
     // Cập nhật thông tin định danh

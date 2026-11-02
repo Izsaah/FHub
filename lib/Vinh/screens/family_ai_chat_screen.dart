@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
+import '../../Ai/models/ai_chat_session.dart';
+import '../../Ai/services/gemini_chat_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -39,9 +42,16 @@ class FamilyAiChatScreen extends StatefulWidget {
 }
 
 class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
+  static const Color primaryColor = Color(0xFF0D7A68);
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<AiChatMessage> _messages = [];
+
+  List<AiChatSession> _sessions = [];
+  String _currentSessionId = '';
+  String _currentSessionTitle = '';
+  bool _isLoadingSessions = false;
 
   bool _isThinking = false;
   bool _isListening = false;
@@ -53,7 +63,18 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
 
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
-  CollectionReference<Map<String, dynamic>> get _chatCollection => _firestore
+  CollectionReference<Map<String, dynamic>> get _sessionsCollection => _firestore
+      .collection('families')
+      .doc(widget.familyId)
+      .collection('ai_chats')
+      .doc(widget.currentUserId)
+      .collection('sessions');
+
+  CollectionReference<Map<String, dynamic>> _messagesCollection(String sid) => _sessionsCollection
+      .doc(sid)
+      .collection('messages');
+
+  CollectionReference<Map<String, dynamic>> get _legacyChatCollection => _firestore
       .collection('families')
       .doc(widget.familyId)
       .collection('ai_chats')
@@ -67,7 +88,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
       _hasFamilyAccess = false;
     } else {
       _watchFamilyAccess();
-      _loadChatHistory();
+      _loadSessionsAndHistory();
     }
   }
 
@@ -121,29 +142,131 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     } catch (_) {}
   }
 
-  Future<void> _loadChatHistory() async {
+  /// Nạp danh sách các phiên trò chuyện và tin nhắn (Tự dọn dẹp sau 15 ngày)
+  Future<void> _loadSessionsAndHistory() async {
+    if (Firebase.apps.isEmpty || widget.familyId.trim().isEmpty) {
+      if (mounted && _messages.isEmpty) {
+        setState(() => _initWelcomeMessage());
+      }
+      return;
+    }
+
+    setState(() => _isLoadingSessions = true);
     try {
-      final snap = await _chatCollection
+      final cutoffDate = DateTime.now().subtract(const Duration(days: 15));
+      final snap = await _sessionsCollection
+          .orderBy('updatedAt', descending: true)
+          .get()
+          .timeout(const Duration(seconds: 4));
+
+      final List<AiChatSession> loadedSessions = [];
+      for (final doc in snap.docs) {
+        final session = AiChatSession.fromMap(doc.id, doc.data());
+        if (session.updatedAt.isAfter(cutoffDate)) {
+          loadedSessions.add(session);
+        } else {
+          // Tự động dọn dẹp các phiên trò chuyện cũ hơn 15 ngày
+          _deleteSession(doc.id, silent: true);
+        }
+      }
+
+      // Tự động chuyển đổi các tin nhắn cũ từ legacy collection sang phiên đầu tiên
+      if (loadedSessions.isEmpty) {
+        try {
+          final legacySnap = await _legacyChatCollection
+              .orderBy('timestamp', descending: false)
+              .get()
+              .timeout(const Duration(seconds: 3));
+
+          if (legacySnap.docs.isNotEmpty) {
+            final List<AiChatMessage> legacyMsgs = [];
+            for (final doc in legacySnap.docs) {
+              final m = AiChatMessage.fromMap(doc.id, doc.data());
+              if (m.timestamp.isAfter(cutoffDate)) {
+                legacyMsgs.add(m);
+              }
+            }
+
+            if (legacyMsgs.isNotEmpty) {
+              final firstUser = legacyMsgs.firstWhere(
+                (m) => m.isUser,
+                orElse: () => legacyMsgs.first,
+              );
+              final sid = 'session_${DateTime.now().millisecondsSinceEpoch}';
+              final migratedSession = AiChatSession(
+                id: sid,
+                title: _generateSessionTitle(firstUser.text),
+                createdAt: legacyMsgs.first.timestamp,
+                updatedAt: legacyMsgs.last.timestamp,
+                lastMessage: legacyMsgs.last.text,
+              );
+              await _sessionsCollection.doc(sid).set(migratedSession.toMap());
+              for (final m in legacyMsgs) {
+                await _messagesCollection(sid).doc(m.id).set(m.toMap());
+                _legacyChatCollection.doc(m.id).delete().catchError((_) {});
+              }
+              loadedSessions.add(migratedSession);
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        setState(() {
+          _sessions = loadedSessions;
+          _isLoadingSessions = false;
+        });
+
+        if (_sessions.isNotEmpty) {
+          await _selectSession(_sessions.first.id);
+        } else {
+          _startNewChat(closeDrawer: false);
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoadingSessions = false;
+          if (_messages.isEmpty) _initWelcomeMessage();
+        });
+      }
+    }
+  }
+
+  /// Chọn một cuộc trò chuyện từ Slide Bar / Lịch sử
+  Future<void> _selectSession(String sessionId) async {
+    final session = _sessions.where((s) => s.id == sessionId).firstOrNull;
+    setState(() {
+      _currentSessionId = sessionId;
+      _currentSessionTitle = session?.title ?? '';
+      _speakingMessageId = null;
+    });
+
+    AiSpeechPlatform.instance.stopSpeaking();
+    GeminiChatService.instance.resetChatSession();
+
+    if (Firebase.apps.isEmpty) {
+      if (_messages.isEmpty) {
+        setState(() => _initWelcomeMessage());
+      }
+      return;
+    }
+
+    try {
+      final cutoffDate = DateTime.now().subtract(const Duration(days: 15));
+      final snap = await _messagesCollection(sessionId)
           .orderBy('timestamp', descending: false)
           .get()
           .timeout(const Duration(seconds: 4));
 
-      final cutoffDate = DateTime.now().subtract(const Duration(days: 15));
       final List<AiChatMessage> loaded = [];
-      final List<String> oldDocIds = [];
-
       for (final doc in snap.docs) {
-        final msg = AiChatMessage.fromMap(doc.id, doc.data());
-        if (msg.timestamp.isAfter(cutoffDate)) {
-          loaded.add(msg);
+        final m = AiChatMessage.fromMap(doc.id, doc.data());
+        if (m.timestamp.isAfter(cutoffDate)) {
+          loaded.add(m);
         } else {
-          oldDocIds.add(doc.id);
+          _messagesCollection(sessionId).doc(doc.id).delete().catchError((_) {});
         }
-      }
-
-      // Tự động dọn dẹp các tin nhắn cũ hơn 15 ngày để giữ cơ sở dữ liệu nhẹ và an toàn
-      for (final oldId in oldDocIds) {
-        _chatCollection.doc(oldId).delete().catchError((_) {});
       }
 
       if (mounted) {
@@ -159,16 +282,268 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
       }
     } catch (_) {
       if (mounted && _messages.isEmpty) {
-        setState(() {
-          _initWelcomeMessage();
-        });
+        setState(() => _initWelcomeMessage());
       }
     }
   }
 
-  Future<void> _persistMessage(AiChatMessage msg) async {
+  /// Bắt đầu một cuộc trò chuyện mới tinh (+ New Chat)
+  void _startNewChat({bool closeDrawer = true}) {
+    if (closeDrawer && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    AiSpeechPlatform.instance.stopSpeaking();
+    GeminiChatService.instance.resetChatSession();
+    setState(() {
+      _speakingMessageId = null;
+      _currentSessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
+      _currentSessionTitle = '';
+      _messages.clear();
+      _initWelcomeMessage();
+    });
+  }
+
+  /// Xóa cuộc trò chuyện
+  Future<void> _deleteSession(String sessionId, {bool silent = false}) async {
     try {
-      await _chatCollection.doc(msg.id).set(msg.toMap());
+      await _sessionsCollection.doc(sessionId).delete().catchError((_) {});
+      try {
+        final snap = await _messagesCollection(sessionId).get();
+        for (final doc in snap.docs) {
+          _messagesCollection(sessionId).doc(doc.id).delete().catchError((_) {});
+        }
+      } catch (_) {}
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _sessions.removeWhere((s) => s.id == sessionId);
+        if (_currentSessionId == sessionId) {
+          if (_sessions.isNotEmpty) {
+            _selectSession(_sessions.first.id);
+          } else {
+            _startNewChat(closeDrawer: false);
+          }
+        }
+      });
+      if (!silent) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                'Đã xóa cuộc trò chuyện',
+                'Conversation deleted',
+              ),
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Xác nhận xóa cuộc trò chuyện
+  Future<void> _confirmDeleteSession(AiChatSession session) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          AppLanguage.text('Xóa cuộc trò chuyện?', 'Delete conversation?'),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+        ),
+        content: Text(
+          AppLanguage.text(
+            'Bạn có chắc muốn xóa "${session.title}"? Toàn bộ tin nhắn trong cuộc trò chuyện này sẽ bị xóa.',
+            'Are you sure you want to delete "${session.title}"? All messages in this chat will be removed.',
+          ),
+          style: const TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              AppLanguage.text('Hủy', 'Cancel'),
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFBA1A1A),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(AppLanguage.text('Xóa', 'Delete')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deleteSession(session.id);
+    }
+  }
+
+  /// Hộp thoại cấu hình nhanh Gemini API Key trực tiếp trong ứng dụng
+  void _showApiKeyConfigDialog() {
+    final controller = TextEditingController(
+      text: GeminiChatService.instance.effectiveApiKey,
+    );
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.auto_awesome_rounded, color: Color(0xFF0D7A68), size: 24),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                AppLanguage.text('Cài đặt Gemini AI Key', 'Configure Gemini AI Key'),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                AppLanguage.text(
+                  'Nhập Google Gemini API Key để kích hoạt Trợ lý AI thế hệ mới (LLM chính chủ) với đầy đủ quyền năng trò chuyện thông minh như trên Web và gọi Tool tự động:',
+                  'Enter Google Gemini API Key to enable the next-gen AI Assistant (official LLM) with full web-grade conversational intelligence and automatic Tool Calling:',
+                ),
+                style: const TextStyle(fontSize: 12.5, color: Color(0xFF55625D), height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Gemini API Key',
+                  hintText: 'AIzaSy...',
+                  prefixIcon: const Icon(Icons.key_rounded, size: 18),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.clear_rounded, size: 18),
+                    onPressed: () => controller.clear(),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF6F8F7),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                ),
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                AppLanguage.text(
+                  '💡 Lấy API Key miễn phí tại: https://aistudio.google.com/app/apikey',
+                  '💡 Get a free API Key at: https://aistudio.google.com/app/apikey',
+                ),
+                style: const TextStyle(fontSize: 11, color: Color(0xFF00796B), fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(AppLanguage.text('Đóng', 'Close')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              final newKey = controller.text.trim();
+              await GeminiChatService.instance.setCustomApiKey(newKey);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (mounted) {
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      newKey.isNotEmpty
+                          ? AppLanguage.text('✅ Đã kích hoạt Gemini AI thành công!', '✅ Gemini AI activated successfully!')
+                          : AppLanguage.text('Đã xóa API Key tuỳ chỉnh (sử dụng .env hoặc offline engine).', 'API Key removed.'),
+                    ),
+                    backgroundColor: newKey.isNotEmpty ? primaryColor : Colors.grey.shade700,
+                  ),
+                );
+              }
+            },
+            child: Text(AppLanguage.text('Lưu & Kích hoạt', 'Save & Activate')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Tự động sinh tiêu đề ngắn gọn cho cuộc trò chuyện từ nội dung tin nhắn
+  String _generateSessionTitle(String text) {
+    final clean = text.replaceAll('\n', ' ').trim();
+    if (clean.isEmpty) {
+      return AppLanguage.text('Cuộc trò chuyện mới', 'New conversation');
+    }
+    if (clean.length <= 32) return clean;
+    return '${clean.substring(0, 30)}...';
+  }
+
+  /// Định dạng thời gian hiển thị tương đối cho cuộc trò chuyện
+  String _formatSessionTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+    if (diff.inMinutes < 1) return AppLanguage.text('Vừa xong', 'Just now');
+    if (diff.inHours < 1) return AppLanguage.text('${diff.inMinutes} phút trước', '${diff.inMinutes}m ago');
+    if (diff.inDays < 1) return AppLanguage.text('${diff.inHours} giờ trước', '${diff.inHours}h ago');
+    if (diff.inDays == 1) return AppLanguage.text('Hôm qua', 'Yesterday');
+    if (diff.inDays < 15) return AppLanguage.text('${diff.inDays} ngày trước', '${diff.inDays}d ago');
+    return '${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}';
+  }
+
+  /// Lưu tin nhắn vào phiên trò chuyện hiện tại trên Firestore
+  Future<void> _persistMessage(AiChatMessage msg) async {
+    if (Firebase.apps.isEmpty || widget.familyId.trim().isEmpty || widget.currentUserId.trim().isEmpty) {
+      return;
+    }
+    try {
+      if (_currentSessionId.isEmpty) {
+        _currentSessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
+      }
+
+      final existingIndex = _sessions.indexWhere((s) => s.id == _currentSessionId);
+      if (existingIndex == -1) {
+        final title = _generateSessionTitle(msg.text);
+        final newSession = AiChatSession(
+          id: _currentSessionId,
+          title: title,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+          lastMessage: msg.text,
+        );
+        _sessions.insert(0, newSession);
+        _currentSessionTitle = title;
+        await _sessionsCollection.doc(_currentSessionId).set(newSession.toMap());
+      } else {
+        final updated = _sessions[existingIndex].copyWith(
+          updatedAt: DateTime.now(),
+          lastMessage: msg.text,
+        );
+        _sessions.removeAt(existingIndex);
+        _sessions.insert(0, updated);
+        await _sessionsCollection.doc(_currentSessionId).update({
+          'updatedAt': Timestamp.fromDate(DateTime.now()),
+          'lastMessage': msg.text,
+        }).catchError((_) {});
+      }
+
+      await _messagesCollection(_currentSessionId).doc(msg.id).set(msg.toMap());
     } catch (e) {
       debugPrint('Error saving AI chat message to Firestore: $e');
     }
@@ -447,15 +822,366 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     }
   }
 
+  /// Widget Slide Bar / Drawer hiển thị lịch sử cuộc trò chuyện (Kiểu Web ChatGPT / Claude)
+  Widget _buildChatHistoryDrawer(BuildContext context) {
+    const primaryColor = Color(0xFF0D7A68);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final drawerWidth = math.min(320.0, screenWidth * 0.85);
+
+    return Drawer(
+      width: drawerWidth,
+      backgroundColor: const Color(0xFFF9FBFB),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 1. Header: Tiêu đề & Nút đóng
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 10, 8),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.auto_awesome_rounded,
+                    color: primaryColor,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      AppLanguage.text('Lịch sử trò chuyện', 'Chat History'),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF151D1B),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF55625D)),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+
+            // 2. Nút "➕ Cuộc trò chuyện mới" (New Chat)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _startNewChat(closeDrawer: true),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: primaryColor,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: primaryColor.withValues(alpha: 0.25),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.add_rounded,
+                          color: Colors.white,
+                          size: 19,
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text('Cuộc trò chuyện mới', 'New conversation'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // 2.1. Nút trạng thái & cấu hình nhanh Gemini API Key
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _showApiKeyConfigDialog,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: GeminiChatService.instance.isConfigured
+                          ? const Color(0xFFE8F5E9)
+                          : const Color(0xFFFFF3E0),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: GeminiChatService.instance.isConfigured
+                            ? const Color(0xFF81C784)
+                            : const Color(0xFFFFB74D),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          GeminiChatService.instance.isConfigured
+                              ? Icons.auto_awesome_rounded
+                              : Icons.key_rounded,
+                          size: 15,
+                          color: GeminiChatService.instance.isConfigured
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFFE65100),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            GeminiChatService.instance.isConfigured
+                                ? AppLanguage.text('Gemini AI: Sẵn sàng', 'Gemini AI: Ready')
+                                : AppLanguage.text('Cài đặt Gemini API Key', 'Configure Gemini Key'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: GeminiChatService.instance.isConfigured
+                                  ? const Color(0xFF2E7D32)
+                                  : const Color(0xFFE65100),
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 15,
+                          color: GeminiChatService.instance.isConfigured
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFFE65100),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 6),
+
+            // 3. Phân loại: "Gần đây"
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      AppLanguage.text(
+                        'Gần đây (${_sessions.length})',
+                        'Recent (${_sessions.length})',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF6E7A75),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.filter_list_rounded,
+                    size: 16,
+                    color: Color(0xFF6E7A75),
+                  ),
+                ],
+              ),
+            ),
+
+            const Divider(height: 1, color: Color(0xFFE5EBE8)),
+
+            // 4. Danh sách các cuộc trò chuyện
+            Expanded(
+              child: _isLoadingSessions
+                  ? const Center(
+                      child: CircularProgressIndicator(color: primaryColor, strokeWidth: 2.5),
+                    )
+                  : _sessions.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.chat_bubble_outline_rounded,
+                                  size: 40,
+                                  color: Colors.grey.shade400,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  AppLanguage.text(
+                                    'Chưa có cuộc trò chuyện nào',
+                                    'No conversations yet',
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          itemCount: _sessions.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 4),
+                          itemBuilder: (ctx, index) {
+                            final session = _sessions[index];
+                            final isActive = session.id == _currentSessionId;
+
+                            return Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  _selectSession(session.id);
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                                  decoration: BoxDecoration(
+                                    color: isActive ? const Color(0xFFE6F4F0) : Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isActive ? primaryColor : const Color(0xFFE5EBE8),
+                                      width: isActive ? 1.2 : 0.8,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        isActive
+                                            ? Icons.chat_bubble_rounded
+                                            : Icons.chat_bubble_outline_rounded,
+                                        size: 17,
+                                        color: isActive ? primaryColor : const Color(0xFF6E7A75),
+                                      ),
+                                      const SizedBox(width: 9),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              session.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13.5,
+                                                fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                                                color: isActive ? primaryColor : const Color(0xFF151D1B),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              _formatSessionTime(session.updatedAt),
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Color(0xFF889691),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 17,
+                                          color: Color(0xFF9EABA6),
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                        onPressed: () => _confirmDeleteSession(session),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+            ),
+
+            // 5. Footer: Dọn dẹp 15 ngày
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF1F5F4),
+                border: Border(top: BorderSide(color: Color(0xFFE5EBE8))),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.history_toggle_off_rounded,
+                    size: 15,
+                    color: Color(0xFF6E7A75),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      AppLanguage.text(
+                        'Tự động dọn dẹp sau 15 ngày',
+                        'Auto-cleaned after 15 days',
+                      ),
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Color(0xFF6E7A75),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF0D7A68);
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: AppLanguage.isEnglish,
-      builder: (context, _, child) {
-        return Scaffold(
-          backgroundColor: const Color(0xFFF6F8F7),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 100) {
+          return const SizedBox.shrink();
+        }
+
+        return ValueListenableBuilder<bool>(
+          valueListenable: AppLanguage.isEnglish,
+          builder: (context, _, child) {
+            return Scaffold(
+              key: _scaffoldKey,
+              drawer: _buildChatHistoryDrawer(context),
+              backgroundColor: const Color(0xFFF6F8F7),
           appBar: AppBar(
             titleSpacing: 0,
             backgroundColor: Colors.white,
@@ -468,118 +1194,141 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
               ),
               onPressed: () => Navigator.of(context).pop(),
             ),
-            title: Row(
-              children: [
-                Stack(
+            title: InkWell(
+              onTap: () => _scaffoldKey.currentState?.openDrawer(),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                child: Row(
                   children: [
-                    const CircleAvatar(
-                      radius: 20,
-                      backgroundColor: Color(0xFFE0F2EC),
-                      child: Icon(
-                        Icons.auto_awesome_rounded,
-                        color: primaryColor,
-                        size: 22,
-                      ),
-                    ),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00C853),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                    Stack(
+                      children: [
+                        const CircleAvatar(
+                          radius: 19,
+                          backgroundColor: Color(0xFFE0F2EC),
+                          child: Icon(
+                            Icons.auto_awesome_rounded,
+                            color: primaryColor,
+                            size: 21,
+                          ),
                         ),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00C853),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _currentSessionTitle.isNotEmpty
+                                ? _currentSessionTitle
+                                : AppLanguage.text(
+                                    'Trợ lý AI Gia đình',
+                                    'Family AI Assistant',
+                                  ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF151D1B),
+                            ),
+                          ),
+                          Text(
+                            AppLanguage.text('Trực tuyến', 'Online'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              color: Color(0xFF0D7A68),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        AppLanguage.text(
-                          'Trợ lý AI Gia đình',
-                          'Family AI Assistant',
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF151D1B),
-                        ),
-                      ),
-                      Text(
-                        AppLanguage.text('Trực tuyến', 'Online'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          color: Color(0xFF0D7A68),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
             actions: !_hasFamilyAccess
                 ? const []
                 : [
-              // Nút bật/tắt Tự động đọc phản hồi (TTS Auto-Speak)
+              // 1. Nút mở Slide Bar Lịch sử cuộc trò chuyện
               IconButton(
-                tooltip: AppLanguage.text(
-                  _autoSpeak ? 'Đang bật tự động đọc' : 'Bật tự động đọc phản hồi',
-                  _autoSpeak ? 'Auto-speak ON' : 'Turn on auto-speak',
-                ),
-                icon: Icon(
-                  _autoSpeak
-                      ? Icons.volume_up_rounded
-                      : Icons.volume_off_outlined,
-                  color: _autoSpeak ? primaryColor : const Color(0xFF6E7A75),
+                tooltip: AppLanguage.text('Lịch sử cuộc trò chuyện', 'Chat history'),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: const EdgeInsets.all(6),
+                icon: const Icon(
+                  Icons.history_rounded,
+                  color: Color(0xFF151D1B),
                   size: 22,
                 ),
-                onPressed: () {
-                  setState(() {
-                    _autoSpeak = !_autoSpeak;
-                  });
-                  if (!_autoSpeak) {
-                    AiSpeechPlatform.instance.stopSpeaking();
-                    setState(() => _speakingMessageId = null);
-                  }
-                  ScaffoldMessenger.of(context).clearSnackBars();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      duration: const Duration(seconds: 2),
-                      content: Text(
-                        _autoSpeak
-                            ? AppLanguage.text(
-                                '🔊 Đã bật chế độ AI tự động đọc phản hồi',
-                                '🔊 Auto-speak AI responses enabled',
-                              )
-                            : AppLanguage.text(
-                                '🔇 Đã tắt chế độ tự động đọc',
-                                '🔇 Auto-speak disabled',
-                              ),
-                      ),
-                    ),
-                  );
-                },
+                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
               ),
+              // 2. Nút tạo Cuộc trò chuyện mới (+ New Chat)
+              IconButton(
+                tooltip: AppLanguage.text('Cuộc trò chuyện mới', 'New conversation'),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: const EdgeInsets.all(6),
+                icon: const Icon(
+                  Icons.add_comment_outlined,
+                  color: primaryColor,
+                  size: 20,
+                ),
+                onPressed: () => _startNewChat(closeDrawer: false),
+              ),
+              // 3. Popup Menu Tùy chọn (Tự động đọc TTS, Xóa thói quen)
               PopupMenuButton<String>(
                 tooltip: AppLanguage.text('Tùy chọn AI', 'AI Options'),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: const EdgeInsets.all(6),
                 icon: const Icon(
                   Icons.more_vert_rounded,
                   color: Color(0xFF151D1B),
+                  size: 20,
                 ),
                 onSelected: (val) {
-                  if (val == 'clear_memory') {
+                  if (val == 'toggle_speak') {
+                    setState(() {
+                      _autoSpeak = !_autoSpeak;
+                    });
+                    if (!_autoSpeak) {
+                      AiSpeechPlatform.instance.stopSpeaking();
+                      setState(() => _speakingMessageId = null);
+                    }
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        duration: const Duration(seconds: 2),
+                        content: Text(
+                          _autoSpeak
+                              ? AppLanguage.text(
+                                  '🔊 Đã bật chế độ AI tự động đọc phản hồi',
+                                  '🔊 Auto-speak AI responses enabled',
+                                )
+                              : AppLanguage.text(
+                                  '🔇 Đã tắt chế độ tự động đọc',
+                                  '🔇 Auto-speak disabled',
+                                ),
+                        ),
+                      ),
+                    );
+                  } else if (val == 'clear_memory') {
                     FamilyMemoryService.instance.clearMemory(widget.familyId);
                     FamilyAiAssistantService.instance.reset(widget.familyId);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -593,15 +1342,32 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                       ),
                     );
                   } else if (val == 'clear_chat') {
-                    AiSpeechPlatform.instance.stopSpeaking();
-                    setState(() {
-                      _speakingMessageId = null;
-                      _messages.clear();
-                      _initWelcomeMessage();
-                    });
+                    _startNewChat(closeDrawer: false);
                   }
                 },
                 itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'toggle_speak',
+                    child: Row(
+                      children: [
+                        Icon(
+                          _autoSpeak ? Icons.volume_up_rounded : Icons.volume_off_outlined,
+                          size: 18,
+                          color: _autoSpeak ? primaryColor : Colors.grey,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            _autoSpeak
+                                ? AppLanguage.text('Tắt tự động đọc', 'Disable auto-speak')
+                                : AppLanguage.text('Bật tự động đọc', 'Enable auto-speak'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'clear_memory',
                     child: Row(
@@ -730,6 +1496,8 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         );
       },
     );
+  },
+);
   }
 
   Widget _buildNoFamilyGuard(BuildContext context, Color primaryColor) {

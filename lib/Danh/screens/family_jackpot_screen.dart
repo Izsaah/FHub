@@ -353,7 +353,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
             ),
             child: LayoutBuilder(
               builder: (ctx, constraints) {
-                final isNarrow = constraints.maxWidth < 355;
+                final isNarrow = constraints.maxWidth < 460;
 
                 final walletInfo = Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1344,34 +1344,24 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 8,
-                        runSpacing: 4,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 240),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: DanhColors.brand800),
-                                ),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    AppLanguage.text('Đang tự động kiểm tra SePay...', 'Checking SePay automatically...'),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11.5, color: DanhColors.textMuted),
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: DanhColors.brand800),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              AppLanguage.text('Đang tự động kiểm tra SePay...', 'Checking SePay automatically...'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11.5, color: DanhColors.textMuted),
                             ),
                           ),
+                          const SizedBox(width: 6),
                           TextButton(
                             style: TextButton.styleFrom(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -2563,7 +2553,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
             left: 24,
             right: 24,
             top: 20,
-            bottom: max(24.0, MediaQuery.of(ctx).viewPadding.bottom + 20.0),
+            bottom: max(32.0, MediaQuery.of(context).viewPadding.bottom + 24.0),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,

@@ -1,7 +1,13 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fhub/Ai/models/ai_chat_session.dart';
 import 'package:fhub/Ai/models/chat_message_model.dart';
 import 'package:fhub/Ai/services/gemini_chat_service.dart';
+import 'package:fhub/Vinh/models/family_member.dart';
 import 'package:fhub/Vinh/models/reminder_model.dart';
+import 'package:fhub/Vinh/screens/family_ai_chat_screen.dart';
+import 'package:fhub/Vinh/services/family_ai_assistant_service.dart';
+import 'package:fhub/Vinh/services/reminder_repository.dart';
 
 void main() {
   group('Phase 2: AI Chatbox Context & Brain Overhaul Tests', () {
@@ -190,6 +196,179 @@ void main() {
       expect(res.text, contains('Gia Đình Khoa'));
       expect(res.text, contains('fam_main'));
       expect(res.text, isNot(contains('chào mẹ')));
+    });
+
+    test('10. AiChatSession serialization and 15-day rolling persistence cutoff', () {
+      final now = DateTime.now();
+      final session = AiChatSession(
+        id: 's_01',
+        title: 'Bản chất của cạnh tranh',
+        createdAt: now,
+        updatedAt: now,
+        lastMessage: 'AI giải thích về cạnh tranh',
+      );
+
+      final map = session.toMap();
+      expect(map['id'], 's_01');
+      expect(map['title'], 'Bản chất của cạnh tranh');
+
+      final parsed = AiChatSession.fromMap('s_01', {
+        'title': 'Bản chất của cạnh tranh',
+        'createdAt': now.toIso8601String(),
+        'updatedAt': now.toIso8601String(),
+        'lastMessage': 'AI giải thích về cạnh tranh',
+      });
+      expect(parsed.title, 'Bản chất của cạnh tranh');
+
+      final cutoff = now.subtract(const Duration(days: 15));
+      final oldSession = session.copyWith(updatedAt: now.subtract(const Duration(days: 16)));
+      expect(session.updatedAt.isAfter(cutoff), isTrue);
+      expect(oldSession.updatedAt.isBefore(cutoff), isTrue);
+    });
+
+    testWidgets('11. Multi-session slide bar (Drawer) opens, displays New Chat and history with 0 overflow', (tester) async {
+      FlutterErrorDetails? caughtDetails;
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        caughtDetails = details;
+        debugPrint('CAPTURED DETAILS: ${details.toString()}');
+      };
+      addTearDown(() => FlutterError.onError = originalOnError);
+
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_danh',
+          name: 'Danh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FamilyAiChatScreen(
+            familyId: 'f1',
+            currentUserId: 'u_danh',
+            currentUserName: 'Danh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      debugPrint('EX AFTER INITIAL PUMP: ${tester.takeException()}');
+
+      // Verify app bar title
+      expect(find.text('Trợ lý AI Gia đình'), findsOneWidget);
+
+      // Verify history icon exists in AppBar
+      final historyIcon = find.byIcon(Icons.history_rounded);
+      expect(historyIcon, findsOneWidget);
+
+      // Tap history icon to slide out the Drawer
+      await tester.tap(historyIcon);
+      await tester.pumpAndSettle();
+      final tapHistoryEx = tester.takeException();
+      if (tapHistoryEx is FlutterError) {
+        debugPrint('DRAWER OPEN OVERFLOW: ${tapHistoryEx.toStringDeep()}');
+      }
+      expect(tapHistoryEx, isNull);
+
+      // Verify drawer header and New Chat button appear
+      expect(find.text('Lịch sử trò chuyện'), findsOneWidget);
+      expect(find.text('Cuộc trò chuyện mới'), findsOneWidget);
+      expect(find.text('Tự động dọn dẹp sau 15 ngày'), findsOneWidget);
+
+      // Tap "Cuộc trò chuyện mới" button
+      await tester.tap(find.text('Cuộc trò chuyện mới'));
+      await tester.pumpAndSettle();
+      debugPrint('EX AFTER TAP NEW CHAT: ${tester.takeException()}');
+
+      // Verify drawer closed and returned to chat view
+      expect(find.text('Lịch sử trò chuyện'), findsNothing);
+      final ex = tester.takeException();
+      if (ex is FlutterError) {
+        debugPrint('DIAGNOSTICS: ${ex.diagnostics.map((d) => d.toString()).join('\n')}');
+      }
+      expect(ex, isNull);
+      expect(caughtDetails, isNull);
+    });
+
+    test('12. In-app Gemini API Key configuration allows live activation without restart', () async {
+      final initialConfigured = GeminiChatService.instance.isConfigured;
+      // Set custom API key live
+      await GeminiChatService.instance.setCustomApiKey('AIzaSyTestKeyLive123456');
+      expect(GeminiChatService.instance.isConfigured, isTrue);
+      expect(GeminiChatService.instance.effectiveApiKey, 'AIzaSyTestKeyLive123456');
+
+      // Clear custom key
+      await GeminiChatService.instance.setCustomApiKey('');
+      expect(GeminiChatService.instance.effectiveApiKey, '');
+      expect(GeminiChatService.instance.isConfigured, initialConfigured);
+    });
+
+    test('13. Asking "tôi đẹp trai không" returns smart conversational response, never robotic reminder template', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'tôi đẹp trai không',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.attachedReminder, isNull);
+      expect(res.attachedReminders.isEmpty, isTrue);
+      expect(res.text.contains('đã soạn và tạo'), isFalse);
+      expect(
+        res.text.contains('tuyệt vời') || res.text.contains('phong độ') || res.text.contains('Lương Diệu Vinh'),
+        isTrue,
+      );
+    });
+
+    test('14. Asking "tôi đóng vai trò gì trong căn nhà này, tôi có thể giao việc cho ai không" does NOT create tasks', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'tôi đóng vai trò gì trong căn nhà này, tôi có thể giao việc cho ai không',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      // Must NOT create reminders for questions!
+      expect(res.attachedReminder, isNull);
+      expect(res.attachedReminders.isEmpty, isTrue);
+      expect(res.text.contains('đã soạn và tạo'), isFalse);
+      expect(
+        res.text.contains('vai trò') || res.text.contains('giao việc') || res.text.contains('Phụ huynh') || res.text.contains('Bố'),
+        isTrue,
+      );
     });
   });
 }

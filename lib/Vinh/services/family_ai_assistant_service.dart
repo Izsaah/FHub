@@ -883,12 +883,77 @@ class FamilyAiAssistantService {
       } catch (_) {}
     }
 
+    // 14. TRÒ CHUYỆN TỰ NHIÊN THÔNG MINH (CONVERSATIONAL FALLBACK ENGINE)
+    // Tự nhiên, ấm áp, hóm hỉnh và tuyệt đối không bao giờ trả về mẫu câu robot cứng nhắc
+    if (lower.contains('đẹp trai') ||
+        lower.contains('xinh gái') ||
+        lower.contains('đẹp gái') ||
+        lower.contains('dễ thương') ||
+        lower.contains('khen tôi') ||
+        lower.contains('tôi thế nào')) {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ $salutation lúc nào cũng rất tuyệt vời, phong độ và là niềm tự hào của cả gia đình mình ạ! ✨ Hôm nay có kế hoạch gì vui cần em phụ giúp sắp xếp không $salutation?',
+          'You are always wonderful, charming, and the pride of our family! ✨ Is there anything I can help you organize today?',
+        ),
+        timestamp: DateTime.now(),
+      );
+    }
+
+    if (lower.contains('bạn là ai') ||
+        lower.contains('bạn tên gì') ||
+        lower.contains('ai tạo') ||
+        lower.contains('trợ lý gì')) {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ em là Trợ lý AI Gia đình của Family Hub (FHub)! 🏡 Em nắm rõ lịch điểm danh, tiến độ việc nhà, quỹ Hũ Niềm Vui và thói quen sinh hoạt để phục vụ gia đình mình một cách chu đáo nhất ạ!',
+          'I am your Family Hub AI Assistant! 🏡 I know your family check-ins, tasks, happiness jackpot, and habits to support your home seamlessly!',
+        ),
+        timestamp: DateTime.now(),
+      );
+    }
+
+    if (lower.contains('lắc hộ') ||
+        lower.contains('lắc hũ hộ') ||
+        lower.contains('nổ hũ hộ') ||
+        lower.contains('lắc giùm')) {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ em là AI nên không có tay để cầm điện thoại lắc hộ $salutation được đâu ạ! 😂 $salutation hãy mở ngay tab "Hũ Niềm Vui" và tự tay lắc điện thoại thật sung trong 30 giây để cùng cả nhà tranh giải Quán Quân Lắc Tay nhé!',
+          'I am an AI, so I don\'t have hands to shake your phone for you! 😂 Open the "Family Pot" tab and shake your phone for 30 seconds to compete for the jackpot!',
+        ),
+        timestamp: DateTime.now(),
+      );
+    }
+
+    if (lower.startsWith('chào') ||
+        lower.startsWith('hello') ||
+        lower.startsWith('hi') ||
+        lower.contains('buổi sáng') ||
+        lower.contains('buổi tối')) {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ em chào $salutation ạ! Chúc $salutation và cả nhà một ngày thật ấm áp, ngập tràn tiếng cười và nhiều năng lượng nhé! 🌟 $salutation cần em hỗ trợ việc gì nào?',
+          'Hello $salutation! Wishing you and your family a wonderful day filled with joy and energy! 🌟 How can I assist you today?',
+        ),
+        timestamp: DateTime.now(),
+      );
+    }
+
     return AiChatMessage(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
       isUser: false,
       text: AppLanguage.text(
-        'Dạ em đã nhận được lời nhắn của $salutation rồi ạ! $salutation có thể giao việc, chia sẻ dự định nấu ăn (VD: "Tối nay nấu thịt kho"), hoặc hỏi thăm tiến độ gia đình bất cứ lúc nào nhé. Em luôn sẵn sàng hỗ trợ! 😊',
-        'I received your message $salutation! You can assign tasks, share cooking plans (e.g. "Cooking dinner tonight"), or check progress anytime. I am always here to assist! 😊',
+        'Dạ em nghe đây ạ! $salutation có thể giao việc, chia sẻ kế hoạch nấu ăn (VD: "Tối nay nấu thịt kho"), hoặc hỏi thăm tiến độ gia đình bất cứ lúc nào nhé. Em luôn sẵn sàng hỗ trợ! 😊',
+        'I am listening $salutation! You can assign tasks, share cooking plans, or check family progress anytime. I am always ready to help! 😊',
       ),
       timestamp: DateTime.now(),
     );
