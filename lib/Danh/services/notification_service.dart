@@ -21,6 +21,17 @@ class NotificationService {
 
   FirebaseFirestore? get _firestore => _hasFirebase ? FirebaseFirestore.instance : null;
 
+  /// 1. Reactive In-App Event Bus (Decoupled Pub/Sub Stream cho toàn bộ ứng dụng)
+  final StreamController<NotificationModel> _eventBus = StreamController<NotificationModel>.broadcast();
+  Stream<NotificationModel> get onNotificationDispatched => _eventBus.stream;
+
+  /// 2. Idempotency & Deduplication Engine (Sliding-window cache 4s ngăn chặn trùng lặp gói tin)
+  final Map<String, int> _dedupCache = {};
+
+  /// 3. Resilient Outbox Queue (Đệm thông báo khi ngoại tuyến hoặc mạng chập chờn - At-least-once Delivery)
+  final List<NotificationModel> _outboxQueue = [];
+  List<NotificationModel> get outboxQueue => List.unmodifiable(_outboxQueue);
+
   CollectionReference<Map<String, dynamic>>? _notificationsRef(String familyId) {
     if (_firestore == null) return null;
     return _firestore!
@@ -30,6 +41,7 @@ class NotificationService {
   }
 
   /// Gửi một thông báo mới vào Notification Hub của gia đình (Hỗ trợ song ngữ VI / EN)
+  /// Tích hợp cơ chế Idempotency Deduplication và Outbox Buffer
   Future<NotificationModel?> addNotification({
     required String familyId,
     required String title,
@@ -43,7 +55,18 @@ class NotificationService {
     if (familyId.isEmpty) return null;
 
     final now = DateTime.now();
-    final notifId = 'notif_${now.millisecondsSinceEpoch}_${now.microsecond % 1000}';
+    final nowMs = now.millisecondsSinceEpoch;
+
+    // Kiểm tra Idempotency để loại bỏ duplicate events phát tán liên tục trong 4 giây
+    final dedupKey = '${familyId}_${type}_${title}_$targetUserId';
+    _dedupCache.removeWhere((_, time) => nowMs - time > 10000);
+    if (_dedupCache.containsKey(dedupKey) && (nowMs - _dedupCache[dedupKey]! < 4000)) {
+      debugPrint('NotificationService: Duplicate notification suppressed by Idempotency Filter: $dedupKey');
+      return null;
+    }
+    _dedupCache[dedupKey] = nowMs;
+
+    final notifId = 'notif_${nowMs}_${now.microsecond % 1000}';
     final notif = NotificationModel(
       id: notifId,
       familyId: familyId,
@@ -58,7 +81,11 @@ class NotificationService {
       metadata: metadata,
     );
 
+    // Bắn ngay vào Reactive Event Bus in-memory để các widget phản hồi tức thì 0ms latency
+    _eventBus.add(notif);
+
     if (_notificationsRef(familyId) == null) {
+      _outboxQueue.add(notif);
       return notif;
     }
 
@@ -68,9 +95,33 @@ class NotificationService {
       unawaited(pruneOldNotifications(familyId));
       return notif;
     } catch (e) {
-      debugPrint('NotificationService.addNotification error: $e');
+      debugPrint('NotificationService.addNotification error: $e, buffered to Outbox');
+      _outboxQueue.add(notif);
       return notif;
     }
+  }
+
+  /// Xả hàng đợi Outbox khi kết nối mạng được phục hồi (At-least-once Delivery)
+  Future<int> flushOutbox() async {
+    if (_outboxQueue.isEmpty) return 0;
+    int flushedCount = 0;
+    final pending = List<NotificationModel>.from(_outboxQueue);
+    _outboxQueue.clear();
+
+    for (final notif in pending) {
+      final ref = _notificationsRef(notif.familyId);
+      if (ref != null) {
+        try {
+          await ref.doc(notif.id).set(notif.toMap());
+          flushedCount++;
+        } catch (_) {
+          _outboxQueue.add(notif);
+        }
+      } else {
+        _outboxQueue.add(notif);
+      }
+    }
+    return flushedCount;
   }
 
   /// Lắng nghe danh sách thông báo của gia đình trong vòng 15 ngày gần nhất

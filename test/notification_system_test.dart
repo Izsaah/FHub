@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fhub/Danh/models/notification_model.dart';
+import 'package:fhub/Danh/services/notification_service.dart';
 
 void main() {
   group('Notification System Tests (Module 6 & Module 7)', () {
@@ -140,6 +141,55 @@ void main() {
         createdAt: DateTime.now(),
       );
       expect(legacyNotif.localizedTitle(true), contains('30s Pot Shake Battle Has Started!'));
+    });
+
+    test('5. Reactive Event Bus & Idempotency Deduplication suppresses rapid duplicate events', () async {
+      final notifService = NotificationService.instance;
+
+      NotificationModel? receivedOnBus;
+      final sub = notifService.onNotificationDispatched.listen((event) {
+        receivedOnBus = event;
+      });
+      addTearDown(() => sub.cancel());
+
+      // Send first notification
+      final first = await notifService.addNotification(
+        familyId: 'f_test_bus',
+        title: 'Nổ Hũ Test',
+        body: 'Thử nghiệm Event Bus',
+        type: 'jackpot_shake',
+        targetUserId: 'ALL',
+      );
+      expect(first, isNotNull);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(receivedOnBus?.title, 'Nổ Hũ Test');
+
+      // Send immediate duplicate notification (same family, type, title, target)
+      final duplicate = await notifService.addNotification(
+        familyId: 'f_test_bus',
+        title: 'Nổ Hũ Test',
+        body: 'Thử nghiệm Event Bus',
+        type: 'jackpot_shake',
+        targetUserId: 'ALL',
+      );
+      // Suppressed by Idempotency Filter
+      expect(duplicate, isNull);
+    });
+
+    test('6. Resilient Outbox Queue buffers notifications when offline', () async {
+      final notifService = NotificationService.instance;
+      final initialQueueLength = notifService.outboxQueue.length;
+
+      // When Firebase is not initialized, addNotification buffers to outbox
+      final queued = await notifService.addNotification(
+        familyId: 'f_offline_test_${DateTime.now().millisecondsSinceEpoch}',
+        title: 'Offline Event',
+        body: 'Will be buffered in Outbox',
+        type: 'system',
+      );
+      expect(queued, isNotNull);
+      expect(notifService.outboxQueue.length, greaterThan(initialQueueLength));
+      expect(notifService.outboxQueue.any((n) => n.title == 'Offline Event'), isTrue);
     });
   });
 }

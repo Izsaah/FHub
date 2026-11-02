@@ -1186,14 +1186,24 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
             titleSpacing: 0,
             backgroundColor: Colors.white,
             elevation: 0.5,
-            leading: IconButton(
-              icon: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: Color(0xFF151D1B),
-                size: 20,
-              ),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
+            leading: Navigator.of(context).canPop()
+                ? IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Color(0xFF151D1B),
+                      size: 20,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                  )
+                : IconButton(
+                    tooltip: AppLanguage.text('Lịch sử trò chuyện', 'Chat history'),
+                    icon: const Icon(
+                      Icons.menu_rounded,
+                      color: Color(0xFF151D1B),
+                      size: 24,
+                    ),
+                    onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                  ),
             title: InkWell(
               onTap: () => _scaffoldKey.currentState?.openDrawer(),
               borderRadius: BorderRadius.circular(8),

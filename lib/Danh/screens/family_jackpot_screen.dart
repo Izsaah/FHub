@@ -1147,15 +1147,18 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     return Expanded(
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
           side: const BorderSide(color: DanhColors.brand500),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           backgroundColor: Colors.white,
         ),
         onPressed: () => _openDepositQrDialog(amount),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+          ),
         ),
       ),
     );
