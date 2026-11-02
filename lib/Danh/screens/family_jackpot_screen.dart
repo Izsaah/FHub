@@ -185,28 +185,36 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
             children: [
               DanhSvgs.goldenPot(size: 56),
               const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'TỔNG QUỸ HŨ NIỀM VUI',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF8A5300),
-                      letterSpacing: 0.8,
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'TỔNG QUỸ HŨ NIỀM VUI',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF8A5300),
+                        letterSpacing: 0.8,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    formattedAmount,
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF663C00),
+                    const SizedBox(height: 4),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        formattedAmount,
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF663C00),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -223,12 +231,16 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               children: [
                 DanhSvgs.crown(size: 16),
                 const SizedBox(width: 6),
-                Text(
-                  'Người nạp nhiều nhất: ${jackpot.topContributorName}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: DanhColors.brand900,
+                Flexible(
+                  child: Text(
+                    'Người nạp nhiều nhất: ${jackpot.topContributorName}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: DanhColors.brand900,
+                    ),
                   ),
                 ),
               ],
@@ -238,7 +250,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
 
           // Thẻ hiển thị Ví cá nhân tích lũy & Nút Rút tiền về Ngân hàng
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
@@ -254,36 +266,45 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF3E0),
-                        borderRadius: BorderRadius.circular(10),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3E0),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFFE65100), size: 20),
                       ),
-                      child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFFE65100), size: 20),
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Ví Thưởng Của Tôi',
-                          style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Ví Thưởng Của Tôi',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11, color: DanhColors.textMuted),
+                            ),
+                            Text(
+                              '${_jackpotService.myWalletBalance} đ',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFE65100),
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          '${_jackpotService.myWalletBalance} đ',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFE65100),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 6),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -294,7 +315,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           backgroundColor: const Color(0xFFFFF3E0),
                           foregroundColor: const Color(0xFFE65100),
                           side: const BorderSide(color: Color(0xFFFFB74D), width: 1.2),
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -302,19 +323,19 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         icon: const Icon(Icons.receipt_long_rounded, size: 14),
                         label: const Text(
                           'Lịch Sử',
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                         ),
                         onPressed: _openWalletHistoryModal,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     SizedBox(
                       height: 32,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFE65100),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                           elevation: 0,
                           minimumSize: Size.zero,
@@ -323,7 +344,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         icon: const Icon(Icons.account_balance_wallet_rounded, size: 14),
                         label: const Text(
                           'Rút Tiền',
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                         ),
                         onPressed: _openBankAndWithdrawModal,
                       ),
@@ -349,14 +370,19 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              '1. Nạp Tiền Vào Quỹ Hũ (VietQR)',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: DanhColors.brand900,
+            const Expanded(
+              child: Text(
+                '1. Nạp Tiền Vào Quỹ Hũ (VietQR)',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: DanhColors.brand900,
+                ),
               ),
             ),
+            const SizedBox(width: 8),
             Text(
               'MBBank 0000000001',
               style: TextStyle(fontSize: 11, color: Colors.blue.shade800, fontWeight: FontWeight.w600),

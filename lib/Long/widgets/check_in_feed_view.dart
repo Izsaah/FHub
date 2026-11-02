@@ -27,12 +27,16 @@ class CheckInFeedView extends StatelessWidget {
                   Icon(Icons.photo_library_outlined,
                       size: 18, color: Color(0xFF005F50)),
                   SizedBox(width: 8),
-                  Text(
-                    'Khoảnh khắc Check-in hôm nay',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF151D1B),
+                  Expanded(
+                    child: Text(
+                      'Khoảnh khắc Check-in hôm nay',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF151D1B),
+                      ),
                     ),
                   ),
                 ],
@@ -96,15 +100,19 @@ class CheckInFeedView extends StatelessWidget {
                             children: [
                               Row(
                                 children: [
-                                  Text(
-                                    feed.userName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: Color(0xFF005F50),
+                                  Expanded(
+                                    child: Text(
+                                      feed.userName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: Color(0xFF005F50),
+                                      ),
                                     ),
                                   ),
-                                  const Spacer(),
+                                  const SizedBox(width: 6),
                                   Text(
                                     timeStr,
                                     style: const TextStyle(

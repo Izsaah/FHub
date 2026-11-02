@@ -609,7 +609,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   setState(_loadData);
                 },
                 child: ListView(
-                  padding: const EdgeInsets.all(20.0),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
                   children: [
                     FamilySelectorBar(
                       families: families,
@@ -731,24 +731,31 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.family_restroom,
-                                    color: Color(0xFF005F50),
-                                    size: 26,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    family.name,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF151D1B),
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.family_restroom,
+                                      color: Color(0xFF005F50),
+                                      size: 26,
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        family.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF151D1B),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               InkWell(
                                 onTap: () => _handleInviteMember(
                                   family.joinCode,
@@ -765,6 +772,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                   child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text(
                                         LongStrings.codePrefix,
@@ -799,12 +807,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                '${LongStrings.familyMembersHeader(members.length)} · ${LongStrings.t("Chạm để quản trị", "Tap to manage")}',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF6E7A75),
+                              Expanded(
+                                child: Text(
+                                  '${LongStrings.familyMembersHeader(members.length)} · ${LongStrings.t("Chạm để quản trị", "Tap to manage")}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF6E7A75),
+                                  ),
                                 ),
                               ),
                             ],

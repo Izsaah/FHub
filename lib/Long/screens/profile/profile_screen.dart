@@ -546,7 +546,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final FamilyModel? family = data['family'];
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
             child: Column(
               children: [
                 Container(
@@ -662,6 +662,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 const SizedBox(height: 6),
                                 Text(
                                   user.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontSize: 20,
                                     fontWeight: FontWeight.bold,
@@ -670,6 +672,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                                 Text(
                                   user.email,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontSize: 13,
                                     color: Color(0xFF3E4946),

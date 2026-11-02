@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../Thinh/theme/app_language.dart';
 import '../services/family_state_manager.dart';
 
 class CheckInSheet extends StatefulWidget {
@@ -60,9 +61,14 @@ class _CheckInSheetState extends State<CheckInSheet> {
       Navigator.pop(context);
       widget.onCheckInSuccess();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✓ Check-in nhanh thành công! Gia đình đã yên tâm.'),
-          backgroundColor: Color(0xFF005F50),
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              '✓ Check-in thành công! Đã cập nhật trạng thái an toàn cho tất cả gia đình của bạn.',
+              '✓ Checked in successfully! Updated safety status across all your families.',
+            ),
+          ),
+          backgroundColor: const Color(0xFF005F50),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -103,9 +109,14 @@ class _CheckInSheetState extends State<CheckInSheet> {
       Navigator.pop(context);
       widget.onCheckInSuccess();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✓ Check-in kèm ảnh thành công! Đã đăng vào Kỷ niệm gia đình.'),
-          backgroundColor: Color(0xFF005F50),
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              '✓ Check-in kèm ảnh thành công! Đã đồng bộ lên tất cả gia đình của bạn.',
+              '✓ Photo check-in succeeded! Synced across all your families.',
+            ),
+          ),
+          backgroundColor: const Color(0xFF005F50),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -139,20 +150,26 @@ class _CheckInSheetState extends State<CheckInSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Row(
-                  children: [
-                    Icon(Icons.verified_user_rounded,
-                        color: Color(0xFF005F50), size: 26),
-                    SizedBox(width: 8),
-                    Text(
-                      "Check-in: I'M OK",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF151D1B),
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified_user_rounded,
+                          color: Color(0xFF005F50), size: 26),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          "Check-in: I'M OK",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF151D1B),
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.grey),
@@ -161,9 +178,12 @@ class _CheckInSheetState extends State<CheckInSheet> {
               ],
             ),
             const SizedBox(height: 6),
-            const Text(
-              'Chọn cách check-in hôm nay để báo tin an vui đến gia đình:',
-              style: TextStyle(fontSize: 13, color: Color(0xFF5A6F68)),
+            Text(
+              AppLanguage.text(
+                'Chỉ cần 1 lần Check-in để báo tin an vui đồng loạt cho tất cả gia đình bạn đang tham gia:',
+                'Check in once to update your safety status across all families you belong to:',
+              ),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF5A6F68)),
             ),
             const SizedBox(height: 18),
 
@@ -181,18 +201,24 @@ class _CheckInSheetState extends State<CheckInSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '⚡ Check-in Nhanh (1 Chạm)',
-                    style: TextStyle(
+                  Text(
+                    AppLanguage.text(
+                      '⚡ Check-in Nhanh (1 Chạm • Toàn Bộ Gia Đình)',
+                      '⚡ Quick Check-in (1 Tap • All Families)',
+                    ),
+                    style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF005F50),
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Cập nhật trạng thái an toàn ngay tức thì lên mục Family Today.',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF5A6F68)),
+                  Text(
+                    AppLanguage.text(
+                      'Cập nhật trạng thái an toàn ngay tức thì cho tất cả tổ ấm của bạn.',
+                      'Instantly update your safety status across all your families.',
+                    ),
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF5A6F68)),
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -201,15 +227,25 @@ class _CheckInSheetState extends State<CheckInSheet> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF005F50),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                       icon: const Icon(Icons.touch_app),
-                      label: const Text(
-                        'Check-in 1 chạm ngay',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      label: Flexible(
+                        child: Text(
+                          AppLanguage.text(
+                            'Check-in 1 chạm ngay',
+                            '1-Tap Check-in Now',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                       onPressed: _isLoading ? null : _handleQuickCheckIn,
                     ),
@@ -337,15 +373,25 @@ class _CheckInSheetState extends State<CheckInSheet> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFF49D37),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 icon: const Icon(Icons.photo_camera),
-                label: const Text(
-                  'Đăng Check-in Kèm Ảnh lên Feed',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                label: Flexible(
+                  child: Text(
+                    AppLanguage.text(
+                      'Đăng Check-in Kèm Ảnh lên Feed',
+                      'Post Check-in with Photo to Feed',
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
                 onPressed: _isLoading ? null : _handlePhotoCheckIn,
               ),

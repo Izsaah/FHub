@@ -577,6 +577,8 @@ class FamilyDataService implements IFamilyService {
           if (userId.isEmpty) continue;
 
           UserModel userModel;
+          DateTime? userLastCheckInAt;
+          String? userLastCheckInDate;
           try {
             final userDoc =
                 await _firestore.collection('users').doc(userId).get();
@@ -589,6 +591,14 @@ class FamilyDataService implements IFamilyService {
                 avatarType: userData['avatar_type']?.toString() ?? 'default',
                 avatarUrl: userData['avatarUrl']?.toString() ?? '',
               );
+              final rawUserCheckIn =
+                  userData['lastCheckInAt'] ?? userData['last_check_in_at'];
+              if (rawUserCheckIn is Timestamp) {
+                userLastCheckInAt = rawUserCheckIn.toDate();
+              } else if (rawUserCheckIn is String) {
+                userLastCheckInAt = DateTime.tryParse(rawUserCheckIn);
+              }
+              userLastCheckInDate = userData['lastCheckInDate']?.toString();
             } else {
               userModel = UserModel(
                 id: userId,
@@ -628,6 +638,22 @@ class FamilyDataService implements IFamilyService {
           } else if (rawCheckIn is String) {
             lastCheckInAt = DateTime.tryParse(rawCheckIn);
           }
+          String? lastCheckInDate = memberData['lastCheckInDate']?.toString();
+
+          // Đồng bộ trạng thái Check-in toàn tài khoản từ users/{userId} nếu mới hơn
+          if (userLastCheckInAt != null &&
+              (lastCheckInAt == null ||
+                  userLastCheckInAt.isAfter(lastCheckInAt))) {
+            lastCheckInAt = userLastCheckInAt;
+            lastCheckInDate = userLastCheckInDate ?? lastCheckInDate;
+            // Tự động làm lành (heal) bản ghi family_members trong nền
+            memberDoc.reference.update({
+              'lastCheckInAt': Timestamp.fromDate(userLastCheckInAt),
+              'lastCheckInDate': ?lastCheckInDate,
+            }).catchError((_) {});
+          } else if (lastCheckInDate == null && userLastCheckInDate != null) {
+            lastCheckInDate = userLastCheckInDate;
+          }
 
           members.add(
             FamilyMemberModel(
@@ -638,7 +664,7 @@ class FamilyDataService implements IFamilyService {
               status: MemberStatus.fromString(statusRaw),
               lastActiveAt: lastActiveAt,
               lastCheckInAt: lastCheckInAt,
-              lastCheckInDate: memberData['lastCheckInDate']?.toString(),
+              lastCheckInDate: lastCheckInDate,
             ),
           );
         }
@@ -801,12 +827,9 @@ class FamilyDataService implements IFamilyService {
     String? caption,
     String? familyId,
   }) async {
-    final targetFamilyId = familyId ?? await _getCurrentFamilyId();
-    if (targetFamilyId == null || targetFamilyId.isEmpty) {
-      if (!_isFirebaseAvailable || !_isAuthenticated) {
-        await _mock.checkIn(userId,
-            imageUrl: imageUrl, caption: caption, familyId: familyId);
-      }
+    if (!_isFirebaseAvailable || !_isAuthenticated) {
+      await _mock.checkIn(userId,
+          imageUrl: imageUrl, caption: caption, familyId: familyId);
       return;
     }
 
@@ -814,38 +837,115 @@ class FamilyDataService implements IFamilyService {
     final dateStr =
         "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-    if (!_isFirebaseAvailable) {
-      await _mock.checkIn(userId,
-          imageUrl: imageUrl, caption: caption, familyId: targetFamilyId);
-      return;
-    }
-
     try {
-      final memberDocId = '${targetFamilyId}_$userId';
-      final memberRef =
-          _firestore.collection('family_members').doc(memberDocId);
+      // 1. Tập hợp TẤT CẢ gia đình mà người dùng này đang tham gia (ACTIVE)
+      final myFamilies = await getMyFamilies(forceRefresh: true);
+      final targetFamilyIds = <String>{
+        for (final f in myFamilies)
+          if (f.id.trim().isNotEmpty) f.id.trim(),
+      };
+      final currentFamId = familyId ?? await _getCurrentFamilyId();
+      if (currentFamId != null && currentFamId.trim().isNotEmpty) {
+        targetFamilyIds.add(currentFamId.trim());
+      }
 
-      await memberRef.update({
+      // Truy vấn tất cả bản ghi family_members của userId để cập nhật đồng loạt
+      final updatedDocPaths = <String>{};
+      final checkInPayload = <String, dynamic>{
         'lastCheckInAt': Timestamp.fromDate(now),
         'lastCheckInDate': dateStr,
         'lastActiveAt': FieldValue.serverTimestamp(),
-      });
+      };
 
-      if (imageUrl != null || caption != null) {
-        final currentUserObj = await getCurrentUser();
-        await _firestore.collection('check_in_feeds').add({
-          'familyId': targetFamilyId,
-          'userId': userId,
-          'userName': currentUserObj.name,
-          'imageUrl': imageUrl,
-          'caption': caption,
-          'createdAt': Timestamp.fromDate(now),
-        });
+      try {
+        final snap1 = await _firestore
+            .collection('family_members')
+            .where('userId', isEqualTo: userId)
+            .get();
+        for (final doc in snap1.docs) {
+          final data = doc.data();
+          final status = (data['status'] ?? 'ACTIVE').toString().toUpperCase();
+          if (status == 'ACTIVE') {
+            final fid =
+                (data['familyId'] ?? data['family_id'])?.toString().trim() ?? '';
+            if (fid.isNotEmpty) {
+              targetFamilyIds.add(fid);
+            }
+            await doc.reference.update(checkInPayload);
+            updatedDocPaths.add(doc.reference.path);
+          }
+        }
+      } catch (_) {}
+
+      try {
+        final snap2 = await _firestore
+            .collection('family_members')
+            .where('user_id', isEqualTo: userId)
+            .get();
+        for (final doc in snap2.docs) {
+          if (updatedDocPaths.contains(doc.reference.path)) continue;
+          final data = doc.data();
+          final status = (data['status'] ?? 'ACTIVE').toString().toUpperCase();
+          if (status == 'ACTIVE') {
+            final fid =
+                (data['familyId'] ?? data['family_id'])?.toString().trim() ?? '';
+            if (fid.isNotEmpty) {
+              targetFamilyIds.add(fid);
+            }
+            await doc.reference.update(checkInPayload);
+            updatedDocPaths.add(doc.reference.path);
+          }
+        }
+      } catch (_) {}
+
+      // Đảm bảo mọi familyId trong targetFamilyIds đều được cập nhật theo khóa chuẩn {fid}_{userId}
+      for (final fid in targetFamilyIds) {
+        final memberRef =
+            _firestore.collection('family_members').doc('${fid}_$userId');
+        if (!updatedDocPaths.contains(memberRef.path)) {
+          try {
+            await memberRef.update(checkInPayload);
+            updatedDocPaths.add(memberRef.path);
+          } catch (_) {}
+        }
       }
+
+      // 2. Lưu trạng thái Check-in lên cả hồ sơ users/{userId} để đồng bộ xuyên suốt toàn tài khoản
+      try {
+        await _firestore.collection('users').doc(userId).set(
+          {
+            'lastCheckInAt': Timestamp.fromDate(now),
+            'lastCheckInDate': dateStr,
+            'lastActiveAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      } catch (_) {}
+
+      // 3. Nếu đính kèm ảnh hoặc lời nhắn, đăng lên bảng tin của TẤT CẢ gia đình đang tham gia
+      if ((imageUrl != null || caption != null) && targetFamilyIds.isNotEmpty) {
+        final currentUserObj = await getCurrentUser();
+        for (final fid in targetFamilyIds) {
+          await _firestore.collection('check_in_feeds').add({
+            'familyId': fid,
+            'userId': userId,
+            'userName': currentUserObj.name,
+            'imageUrl': imageUrl,
+            'caption': caption,
+            'createdAt': Timestamp.fromDate(now),
+          });
+        }
+      }
+
+      // 4. Hủy lời nhắc điểm danh trong ngày trên tất cả gia đình & phát tín hiệu cập nhật UI
+      for (final fid in targetFamilyIds) {
+        _mock.cancelRemindersForUser(userId, familyId: fid);
+      }
+      membershipRevisionNotifier.value++;
     } catch (e) {
       debugPrint('Firestore checkIn fallback: $e');
       await _mock.checkIn(userId,
-          imageUrl: imageUrl, caption: caption, familyId: targetFamilyId);
+          imageUrl: imageUrl, caption: caption, familyId: familyId);
     }
   }
 

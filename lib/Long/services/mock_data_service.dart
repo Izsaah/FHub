@@ -279,6 +279,16 @@ class MockDataService implements IFamilyService {
 
     _families.add(newFamily);
 
+    final existingCheckedIn = _allMembers
+        .where((m) => m.user.id == currentUserId && m.isCheckedInToday)
+        .toList();
+    final syncedCheckInAt = existingCheckedIn.isNotEmpty
+        ? existingCheckedIn.first.lastCheckInAt
+        : null;
+    final syncedCheckInDate = existingCheckedIn.isNotEmpty
+        ? existingCheckedIn.first.lastCheckInDate
+        : null;
+
     final newMember = FamilyMemberModel(
       familyId: newFamilyId,
       user: currentUser,
@@ -286,7 +296,8 @@ class MockDataService implements IFamilyService {
       hierarchyRole: hierarchyRole,
       status: MemberStatus.active,
       lastActiveAt: DateTime.now(),
-      lastCheckInAt: null,
+      lastCheckInAt: syncedCheckInAt,
+      lastCheckInDate: syncedCheckInDate,
     );
 
     _allMembers.add(newMember);
@@ -319,6 +330,16 @@ class MockDataService implements IFamilyService {
       throw Exception('Bạn đã là thành viên của ${targetFamily.name} rồi.');
     }
 
+    final existingCheckedIn = _allMembers
+        .where((m) => m.user.id == currentUserId && m.isCheckedInToday)
+        .toList();
+    final syncedCheckInAt = existingCheckedIn.isNotEmpty
+        ? existingCheckedIn.first.lastCheckInAt
+        : null;
+    final syncedCheckInDate = existingCheckedIn.isNotEmpty
+        ? existingCheckedIn.first.lastCheckInDate
+        : null;
+
     final newMember = FamilyMemberModel(
       familyId: targetFamily.id,
       user: currentUser,
@@ -326,7 +347,8 @@ class MockDataService implements IFamilyService {
       hierarchyRole: hierarchyRole,
       status: MemberStatus.active,
       lastActiveAt: DateTime.now(),
-      lastCheckInAt: null,
+      lastCheckInAt: syncedCheckInAt,
+      lastCheckInDate: syncedCheckInDate,
     );
 
     _allMembers.add(newMember);
@@ -524,43 +546,61 @@ class MockDataService implements IFamilyService {
       throw Exception('Mỗi người chỉ được check-in cho chính mình, không được check-in hộ.');
     }
 
-    final memberIndex = _allMembers.indexWhere(
-      (m) => m.familyId == targetFamId && m.user.id == userId,
-    );
+    // Tìm tất cả gia đình mà người dùng này đang là thành viên ACTIVE
+    final activeMemberships = _allMembers
+        .where((m) => m.user.id == userId && m.status == MemberStatus.active)
+        .toList();
 
-    if (memberIndex == -1) {
-      throw Exception('Không tìm thấy thành viên trong gia đình.');
+    if (activeMemberships.isEmpty) {
+      final memberIndex = _allMembers.indexWhere(
+        (m) => m.familyId == targetFamId && m.user.id == userId,
+      );
+      if (memberIndex == -1) {
+        throw Exception('Không tìm thấy thành viên trong gia đình.');
+      }
+      activeMemberships.add(_allMembers[memberIndex]);
     }
 
-    final member = _allMembers[memberIndex];
-
-    // Rule: AC1 - Check-in 1 time per day
-    if (member.isCheckedInToday) {
+    // Rule: AC1 - Nếu tất cả các gia đình đang tham gia đều đã Check-in hôm nay thì chặn trùng lặp
+    if (activeMemberships.every((m) => m.isCheckedInToday)) {
       throw Exception("You're already checked in.");
     }
 
     final now = DateTime.now();
-    member.lastCheckInAt = now;
-    member.lastCheckInDate =
+    final dateStr =
         "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-    // If attached photo or caption, push to feed
-    if (imageUrl != null || caption != null) {
-      final newFeed = CheckInFeedModel(
-        id: 'feed_${now.millisecondsSinceEpoch}',
-        familyId: targetFamId,
-        userId: currentUserId,
-        userName: currentUser.name,
-        userAvatarType: currentUser.avatarType,
-        imageUrl: imageUrl,
-        caption: caption,
-        createdAt: now,
-      );
-      _feeds.insert(0, newFeed);
+    final updatedFamilyIds = <String>{};
+
+    // 1 lần Check-in ("I'M OK") cập nhật đồng loạt cho TẤT CẢ gia đình mà người dùng đang tham gia
+    for (final member in activeMemberships) {
+      member.lastCheckInAt = now;
+      member.lastCheckInDate = dateStr;
+      member.lastActiveAt = now;
+      updatedFamilyIds.add(member.familyId);
     }
 
-    // Cancel reminders for today
-    cancelRemindersForUser(userId, familyId: targetFamId);
+    // Nếu có đính kèm ảnh hoặc lời nhắn, đăng lên bảng tin của tất cả gia đình đang tham gia
+    if (imageUrl != null || caption != null) {
+      for (final fid in updatedFamilyIds) {
+        final newFeed = CheckInFeedModel(
+          id: 'feed_${now.millisecondsSinceEpoch}_$fid',
+          familyId: fid,
+          userId: currentUserId,
+          userName: currentUser.name,
+          userAvatarType: currentUser.avatarType,
+          imageUrl: imageUrl,
+          caption: caption,
+          createdAt: now,
+        );
+        _feeds.insert(0, newFeed);
+      }
+    }
+
+    // Hủy lời nhắc điểm danh trong ngày trên tất cả gia đình của người dùng
+    for (final fid in updatedFamilyIds) {
+      cancelRemindersForUser(userId, familyId: fid);
+    }
 
     _broadcastMembers();
   }

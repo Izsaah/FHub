@@ -102,17 +102,21 @@ class CheckInReminderCard extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              r.slot.label,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: isCancelled
-                                    ? const Color(0xFF2E7D32)
-                                    : const Color(0xFF151D1B),
+                            Expanded(
+                              child: Text(
+                                r.slot.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isCancelled
+                                      ? const Color(0xFF2E7D32)
+                                      : const Color(0xFF151D1B),
+                                ),
                               ),
                             ),
-                            const Spacer(),
+                            const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 6, vertical: 2),

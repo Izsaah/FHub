@@ -122,13 +122,17 @@ class FamilyMemberTile extends StatelessWidget {
                     children: [
                       Icon(Icons.spa, size: 13, color: Color(0xFFB08D57)),
                       SizedBox(width: 4),
-                      Text(
-                        'Tưởng niệm · Kỷ niệm mãi lưu giữ',
-                        style: TextStyle(
-                          color: Color(0xFF8D7B68),
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
-                          fontWeight: FontWeight.w500,
+                      Flexible(
+                        child: Text(
+                          'Tưởng niệm · Kỷ niệm mãi lưu giữ',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Color(0xFF8D7B68),
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ],
@@ -222,11 +226,15 @@ class FamilyMemberTile extends StatelessWidget {
                       Icon(Icons.pause_circle_outline,
                           size: 14, color: Color(0xFF86928E)),
                       SizedBox(width: 4),
-                      Text(
-                        'Tài khoản đang tạm khóa kết nối',
-                        style: TextStyle(
-                          color: Color(0xFF86928E),
-                          fontSize: 12,
+                      Flexible(
+                        child: Text(
+                          'Tài khoản đang tạm khóa kết nối',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Color(0xFF86928E),
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],
@@ -355,18 +363,22 @@ class FamilyMemberTile extends StatelessWidget {
                             : const Color(0xFF6E7A75),
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        isCheckedIn
-                            ? 'Checked in · $timeString'
-                            : 'Not checked in',
-                        style: TextStyle(
-                          color: isCheckedIn
-                              ? const Color(0xFF005F50)
-                              : const Color(0xFF6E7A75),
-                          fontSize: 12,
-                          fontWeight: isCheckedIn
-                              ? FontWeight.w500
-                              : FontWeight.normal,
+                      Flexible(
+                        child: Text(
+                          isCheckedIn
+                              ? 'Checked in · $timeString'
+                              : 'Not checked in',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: isCheckedIn
+                                ? const Color(0xFF005F50)
+                                : const Color(0xFF6E7A75),
+                            fontSize: 12,
+                            fontWeight: isCheckedIn
+                                ? FontWeight.w500
+                                : FontWeight.normal,
+                          ),
                         ),
                       ),
                     ],
