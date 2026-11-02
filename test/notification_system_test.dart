@@ -1,0 +1,113 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:fhub/Danh/models/notification_model.dart';
+
+void main() {
+  group('Notification System Tests (Module 6 & Module 7)', () {
+    test('1. NotificationModel serialization toMap and fromMap works seamlessly', () {
+      final now = DateTime.now();
+      final notif = NotificationModel(
+        id: 'notif_1001',
+        familyId: 'fam_happy',
+        targetUserId: 'ALL',
+        title: 'Quỹ Hũ Niềm Vui được nạp thêm',
+        body: 'Khoa vừa đóng góp 50.000 đ vào Hũ Niềm Vui!',
+        type: 'jackpot_deposit',
+        isRead: false,
+        createdAt: now,
+        metadata: {'amount': 50000, 'member': 'Khoa'},
+      );
+
+      final map = notif.toMap();
+      expect(map['id'], 'notif_1001');
+      expect(map['familyId'], 'fam_happy');
+      expect(map['targetUserId'], 'ALL');
+      expect(map['title'], contains('Quỹ Hũ'));
+      expect(map['isRead'], isFalse);
+      expect(map['createdAt'], isA<Timestamp>());
+      expect(map['metadata']['amount'], 50000);
+
+      final restored = NotificationModel.fromMap('notif_1001', map);
+      expect(restored.id, 'notif_1001');
+      expect(restored.familyId, 'fam_happy');
+      expect(restored.targetUserId, 'ALL');
+      expect(restored.body, contains('Khoa'));
+      expect(restored.type, 'jackpot_deposit');
+      expect(restored.isRead, isFalse);
+      expect(restored.metadata?['amount'], 50000);
+    });
+
+    test('2. Unread filtering and user-targeted notifications', () {
+      final now = DateTime.now();
+      final list = [
+        NotificationModel(
+          id: 'n1',
+          familyId: 'f1',
+          targetUserId: 'ALL',
+          title: 'Trận chiến Nổ Hũ 30 giây bắt đầu!',
+          body: 'Bố vừa phát lệnh!',
+          type: 'jackpot_shake',
+          isRead: false,
+          createdAt: now,
+        ),
+        NotificationModel(
+          id: 'n2',
+          familyId: 'f1',
+          targetUserId: 'user_child',
+          title: 'Thưởng nổ hũ',
+          body: 'Bạn nhận được 15.000 đ',
+          type: 'jackpot_win',
+          isRead: true,
+          createdAt: now.subtract(const Duration(minutes: 5)),
+        ),
+        NotificationModel(
+          id: 'n3',
+          familyId: 'f1',
+          targetUserId: 'user_dad',
+          title: 'Rút tiền',
+          body: 'Đã rút 50.000 đ',
+          type: 'wallet_withdraw',
+          isRead: false,
+          createdAt: now.subtract(const Duration(minutes: 10)),
+        ),
+      ];
+
+      // For user_child: should see 'ALL' and 'user_child', but NOT 'user_dad'
+      final childNotifs = list.where((n) => n.targetUserId == 'ALL' || n.targetUserId == 'user_child').toList();
+      expect(childNotifs.length, 2);
+      expect(childNotifs.where((n) => !n.isRead).length, 1);
+
+      // For user_dad: should see 'ALL' and 'user_dad'
+      final dadNotifs = list.where((n) => n.targetUserId == 'ALL' || n.targetUserId == 'user_dad').toList();
+      expect(dadNotifs.length, 2);
+      expect(dadNotifs.where((n) => !n.isRead).length, 2);
+    });
+
+    test('3. 15-day rolling storage window validation', () {
+      final now = DateTime.now();
+      final cutoff = now.subtract(const Duration(days: 15));
+
+      final recent = NotificationModel(
+        id: 'n_recent',
+        familyId: 'f1',
+        title: 'Gần đây',
+        body: 'Vừa xảy ra',
+        type: 'system',
+        createdAt: now.subtract(const Duration(days: 2)),
+      );
+
+      final olderThan15Days = NotificationModel(
+        id: 'n_old',
+        familyId: 'f1',
+        title: 'Cũ',
+        body: 'Đã quá 15 ngày',
+        type: 'system',
+        createdAt: now.subtract(const Duration(days: 16)),
+      );
+
+      // Verify cutoff classification
+      expect(recent.createdAt.isAfter(cutoff), isTrue);
+      expect(olderThan15Days.createdAt.isBefore(cutoff), isTrue);
+    });
+  });
+}

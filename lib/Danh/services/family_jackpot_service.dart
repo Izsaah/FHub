@@ -9,6 +9,7 @@ import '../models/family_jackpot_model.dart';
 import '../models/user_bank_info.dart';
 import '../models/wallet_transaction_model.dart';
 import 'jackpot_algorithm.dart';
+import 'notification_service.dart';
 import 'payment_service.dart';
 
 /// Dịch vụ quản lý Hũ Niềm Vui Gia Đình (Realtime Jackpot & Shake)
@@ -533,6 +534,13 @@ class FamilyJackpotService extends ChangeNotifier {
       targetUserId: uid,
       targetUserName: name,
     );
+
+    unawaited(NotificationService.instance.addNotification(
+      familyId: _currentFamilyId ?? 'f1',
+      title: 'Quỹ Hũ Niềm Vui được nạp thêm',
+      body: '$name vừa đóng góp ${amount.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ vào Hũ Niềm Vui!',
+      type: 'jackpot_deposit',
+    ));
   }
 
   /// Bắt đầu 30s Nổ Hũ (Chỉ người nạp nhiều nhất mới được gọi)
@@ -583,6 +591,14 @@ class FamilyJackpotService extends ChangeNotifier {
     _ensureCountdownTimerRunning();
     notifyListeners();
     await _saveToFirestore();
+
+    final starterName = updatedNames[currentUserId] ?? currentUserName;
+    unawaited(NotificationService.instance.addNotification(
+      familyId: _currentFamilyId ?? 'f1',
+      title: 'Trận chiến Nổ Hũ 30 giây bắt đầu!',
+      body: '$starterName vừa phát lệnh Nổ Hũ! Cả nhà cùng vào lắc điện thoại nhận thưởng!',
+      type: 'jackpot_shake',
+    ));
   }
 
   void _stopCountdownTimer() {
@@ -659,6 +675,8 @@ class FamilyJackpotService extends ChangeNotifier {
 
       notifyListeners();
       await _saveToFirestore();
+
+
     } finally {
       _isTransitioningPhase = false;
       _ensureCountdownTimerRunning();
@@ -718,6 +736,22 @@ class FamilyJackpotService extends ChangeNotifier {
 
       notifyListeners();
       await _saveToFirestore();
+
+      final winnerId = result.firstPrizeWinnerId;
+      final winnerPrize = winnerId != null ? (result.prizes[winnerId] ?? 0) : 0;
+      if (winnerId != null && winnerPrize > 0) {
+        final winnerName = _jackpot.memberNames[winnerId] ?? 'Thành viên';
+        final formattedPrize = winnerPrize.toString().replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]}.',
+        );
+        unawaited(NotificationService.instance.addNotification(
+          familyId: _currentFamilyId ?? 'f1',
+          title: 'Kết quả Nổ Hũ Gia Đình! 🎉',
+          body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize đ!',
+          type: 'jackpot_win',
+        ));
+      }
     } finally {
       _isTransitioningPhase = false;
     }
