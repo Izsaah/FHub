@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import '../../Long/services/family_data_service.dart';
@@ -9,6 +10,7 @@ import '../models/family_jackpot_model.dart';
 import '../models/user_bank_info.dart';
 import '../models/wallet_transaction_model.dart';
 import 'jackpot_algorithm.dart';
+import 'notification_service.dart';
 import 'payment_service.dart';
 
 /// Dịch vụ quản lý Hũ Niềm Vui Gia Đình (Realtime Jackpot & Shake)
@@ -18,8 +20,16 @@ class FamilyJackpotService extends ChangeNotifier {
   static final FamilyJackpotService instance = FamilyJackpotService._();
   factory FamilyJackpotService() => instance;
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  bool get _hasFirebase {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  FirebaseFirestore? get _firestore => _hasFirebase ? FirebaseFirestore.instance : null;
+  FirebaseAuth? get _auth => _hasFirebase ? FirebaseAuth.instance : null;
 
   StreamSubscription<DocumentSnapshot>? _jackpotSub;
   StreamSubscription<AccelerometerEvent>? _sensorSub;
@@ -47,14 +57,14 @@ class FamilyJackpotService extends ChangeNotifier {
 
   FamilyJackpotModel get jackpot => _jackpot;
   int get myShakeCount => _localMyShakeCount;
-  String get currentUserId => _auth.currentUser?.uid ?? FamilyDataService().currentUserId;
+  String get currentUserId => _auth?.currentUser?.uid ?? FamilyDataService().currentUserId;
   String get currentUserName {
     if (_resolvedUserName != null && _resolvedUserName!.trim().isNotEmpty) {
       return _resolvedUserName!.trim();
     }
-    final name = _auth.currentUser?.displayName;
+    final name = _auth?.currentUser?.displayName;
     if (name != null && name.trim().isNotEmpty) return name.trim();
-    final email = _auth.currentUser?.email;
+    final email = _auth?.currentUser?.email;
     if (email != null && email.contains('@')) return email.split('@').first;
     return 'Bạn (Chủ gia đình)';
   }
@@ -113,7 +123,8 @@ class FamilyJackpotService extends ChangeNotifier {
 
     _loadFamilyMembers(effectiveFamilyId);
 
-    final docRef = _firestore
+    if (_firestore == null) return;
+    final docRef = _firestore!
         .collection('families')
         .doc(effectiveFamilyId)
         .collection('jackpot')
@@ -134,7 +145,7 @@ class FamilyJackpotService extends ChangeNotifier {
           ..._jackpot.memberNames,
           ..._cachedFamilyMembers,
         };
-        if (_auth.currentUser != null && _auth.currentUser!.uid != 'u1') {
+        if (_auth?.currentUser != null && _auth?.currentUser?.uid != 'u1') {
           mergedMembers.remove('u1');
         }
         if (currentUserId.isNotEmpty) {
@@ -198,7 +209,7 @@ class FamilyJackpotService extends ChangeNotifier {
           final uid = m.user.id;
           final name = m.user.name.trim();
           if (uid.isNotEmpty && name.isNotEmpty && name != 'Thành viên' && name != 'Người dùng') {
-            if (uid == 'u1' && _auth.currentUser != null && _auth.currentUser!.uid != 'u1') {
+            if (uid == 'u1' && _auth?.currentUser != null && _auth?.currentUser?.uid != 'u1') {
               continue;
             }
             loaded[uid] = name;
@@ -208,7 +219,8 @@ class FamilyJackpotService extends ChangeNotifier {
 
       // 2. Đọc thêm từ collection family_members để tránh bỏ sót thành viên
       try {
-        final snap = await _firestore
+        if (_firestore == null) return;
+        final snap = await _firestore!
             .collection('family_members')
             .where('familyId', isEqualTo: familyId)
             .where('status', isEqualTo: 'ACTIVE')
@@ -218,14 +230,14 @@ class FamilyJackpotService extends ChangeNotifier {
           final d = doc.data();
           final uid = d['userId'] as String? ?? '';
           if (uid.isEmpty) continue;
-          if (uid == 'u1' && _auth.currentUser != null && _auth.currentUser!.uid != 'u1') continue;
+          if (uid == 'u1' && _auth?.currentUser != null && _auth?.currentUser?.uid != 'u1') continue;
 
           // Nếu đã có tên thật từ FamilyDataService -> giữ nguyên
           if (loaded.containsKey(uid) && loaded[uid]!.isNotEmpty) continue;
 
           // Thử đọc tên từ users collection
           try {
-            final userDoc = await _firestore.collection('users').doc(uid).get();
+            final userDoc = await _firestore!.collection('users').doc(uid).get();
             final rawName = userDoc.data()?['name']?.toString();
             final userName = rawName?.trim();
             if (userName != null && userName.isNotEmpty && userName != 'Người dùng') {
@@ -280,7 +292,7 @@ class FamilyJackpotService extends ChangeNotifier {
           ..addAll(loaded);
 
         final merged = Map<String, String>.from(_jackpot.memberNames)..addAll(loaded);
-        if (_auth.currentUser != null && _auth.currentUser!.uid != 'u1') {
+        if (_auth?.currentUser != null && _auth?.currentUser?.uid != 'u1') {
           merged.remove('u1');
         }
         _jackpot = _jackpot.copyWith(
@@ -381,9 +393,9 @@ class FamilyJackpotService extends ChangeNotifier {
 
   /// Chỉ cập nhật đúng trường số lần lắc của user hiện tại lên Firestore để tránh ghi đè dữ liệu của thành viên khác
   Future<void> _saveMyShakeCountOnly(String uid, int count) async {
-    if (_currentFamilyId == null || _currentFamilyId!.isEmpty) return;
+    if (_currentFamilyId == null || _currentFamilyId!.isEmpty || _firestore == null) return;
     try {
-      await _firestore
+      await _firestore!
           .collection('families')
           .doc(_currentFamilyId)
           .collection('jackpot')
@@ -410,9 +422,9 @@ class FamilyJackpotService extends ChangeNotifier {
     String? targetUserName,
   }) async {
     final fId = _currentFamilyId;
-    if (fId == null || fId.isEmpty || amount <= 0) return;
+    if (fId == null || fId.isEmpty || amount <= 0 || _firestore == null) return;
     try {
-      final txDoc = _firestore
+      final txDoc = _firestore!
           .collection('families')
           .doc(fId)
           .collection('wallet_transactions')
@@ -444,7 +456,8 @@ class FamilyJackpotService extends ChangeNotifier {
         ? familyId
         : (_currentFamilyId ?? 'f1');
     final cutoffDate = DateTime.now().subtract(const Duration(days: 15));
-    return _firestore
+    if (_firestore == null) return Stream.value(const []);
+    return _firestore!
         .collection('families')
         .doc(targetFamilyId)
         .collection('wallet_transactions')
@@ -464,7 +477,7 @@ class FamilyJackpotService extends ChangeNotifier {
           // Dọn dẹp tự động các bản ghi cũ hơn 15 ngày để bảo vệ dung lượng database
           if (oldDocIds.isNotEmpty) {
             for (final oldId in oldDocIds) {
-              _firestore
+              _firestore!
                   .collection('families')
                   .doc(targetFamilyId)
                   .collection('wallet_transactions')
@@ -533,6 +546,16 @@ class FamilyJackpotService extends ChangeNotifier {
       targetUserId: uid,
       targetUserName: name,
     );
+
+    final formattedDeposit = amount.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.");
+    unawaited(NotificationService.instance.addNotification(
+      familyId: _currentFamilyId ?? 'f1',
+      title: 'Quỹ Hũ Niềm Vui được nạp thêm',
+      titleEn: 'Family Pot Received a Deposit',
+      body: '$name vừa đóng góp $formattedDeposit đ vào Hũ Niềm Vui!',
+      bodyEn: '$name just deposited $formattedDeposit đ into the Family Pot!',
+      type: 'jackpot_deposit',
+    ));
   }
 
   /// Bắt đầu 30s Nổ Hũ (Chỉ người nạp nhiều nhất mới được gọi)
@@ -556,7 +579,7 @@ class FamilyJackpotService extends ChangeNotifier {
       ..._cachedFamilyMembers,
       ..._jackpot.memberNames,
     };
-    if (_auth.currentUser != null && _auth.currentUser!.uid != 'u1') {
+    if (_auth?.currentUser != null && _auth?.currentUser?.uid != 'u1') {
       updatedNames.remove('u1');
     }
     if (currentUserId.isNotEmpty) {
@@ -583,6 +606,16 @@ class FamilyJackpotService extends ChangeNotifier {
     _ensureCountdownTimerRunning();
     notifyListeners();
     await _saveToFirestore();
+
+    final starterName = updatedNames[currentUserId] ?? currentUserName;
+    unawaited(NotificationService.instance.addNotification(
+      familyId: _currentFamilyId ?? 'f1',
+      title: 'Trận chiến Nổ Hũ 30 giây bắt đầu!',
+      titleEn: '30s Pot Shake Battle Has Started!',
+      body: '$starterName vừa phát lệnh Nổ Hũ! Cả nhà cùng vào lắc điện thoại nhận thưởng!',
+      bodyEn: '$starterName initiated the Pot Shake! Join now and shake to win prizes!',
+      type: 'jackpot_shake',
+    ));
   }
 
   void _stopCountdownTimer() {
@@ -659,6 +692,8 @@ class FamilyJackpotService extends ChangeNotifier {
 
       notifyListeners();
       await _saveToFirestore();
+
+
     } finally {
       _isTransitioningPhase = false;
       _ensureCountdownTimerRunning();
@@ -718,6 +753,24 @@ class FamilyJackpotService extends ChangeNotifier {
 
       notifyListeners();
       await _saveToFirestore();
+
+      final winnerId = result.firstPrizeWinnerId;
+      final winnerPrize = winnerId != null ? (result.prizes[winnerId] ?? 0) : 0;
+      if (winnerId != null && winnerPrize > 0) {
+        final winnerName = _jackpot.memberNames[winnerId] ?? 'Thành viên';
+        final formattedPrize = winnerPrize.toString().replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]}.',
+        );
+        unawaited(NotificationService.instance.addNotification(
+          familyId: _currentFamilyId ?? 'f1',
+          title: 'Kết quả Nổ Hũ Gia Đình! 🎉',
+          titleEn: 'Family Pot Battle Results! 🎉',
+          body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize đ!',
+          bodyEn: '$winnerName won 1st Prize with a reward of $formattedPrize đ!',
+          type: 'jackpot_win',
+        ));
+      }
     } finally {
       _isTransitioningPhase = false;
     }
@@ -743,15 +796,16 @@ class FamilyJackpotService extends ChangeNotifier {
     final fId = _currentFamilyId;
     if (fId == null || fId.isEmpty) return false;
 
+    if (_firestore == null) return true;
     try {
-      final docRef = _firestore
+      final docRef = _firestore!
           .collection('families')
           .doc(fId)
           .collection('jackpot')
           .doc('current');
 
       // Atomic Transaction: Đảm bảo kiểm tra số dư và trừ ví không bao giờ bị xung đột đồng thời
-      await _firestore.runTransaction((transaction) async {
+      await _firestore!.runTransaction((transaction) async {
         final snap = await transaction.get(docRef);
         if (!snap.exists || snap.data() == null) {
           throw Exception('Hũ không tồn tại');
@@ -788,6 +842,17 @@ class FamilyJackpotService extends ChangeNotifier {
         accountNumber: myBankInfo.accountNumber,
       );
 
+      final formattedWithdraw = amount.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.");
+      unawaited(NotificationService.instance.addNotification(
+        familyId: fId,
+        targetUserId: uid,
+        title: 'Yêu cầu rút tiền về ${myBankInfo.bankShortName}',
+        titleEn: 'Bank Withdrawal to ${myBankInfo.bankShortName}',
+        body: 'Bạn đã rút $formattedWithdraw đ về STK: ${myBankInfo.accountNumber}',
+        bodyEn: 'You withdrew $formattedWithdraw đ to account: ${myBankInfo.accountNumber}',
+        type: 'wallet_withdraw',
+      ));
+
       return true;
     } catch (e) {
       debugPrint('FamilyJackpotService.withdrawToBank error: $e');
@@ -822,9 +887,9 @@ class FamilyJackpotService extends ChangeNotifier {
 
   /// Ghi đè toàn bộ trạng thái Hũ hiện tại lên Firestore (không dùng merge: true để xóa sạch các Map rỗng khi reset)
   Future<void> _saveToFirestore() async {
-    if (_currentFamilyId == null || _currentFamilyId!.isEmpty) return;
+    if (_currentFamilyId == null || _currentFamilyId!.isEmpty || _firestore == null) return;
     try {
-      await _firestore
+      await _firestore!
           .collection('families')
           .doc(_currentFamilyId)
           .collection('jackpot')

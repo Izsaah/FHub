@@ -8,7 +8,10 @@ class AiToolsDeclarations {
   static final FunctionDeclaration createFamilyTaskDeclaration =
       FunctionDeclaration(
     'createFamilyTask',
-    'Tạo một công việc hoặc lời nhắc mới cho gia đình. '
+    'CHỈ GỌI KHI người dùng trực tiếp ra lệnh tạo việc nhà cụ thể (VD: "Giao việc rửa bát lúc 18h", "Nhắc Bin quét nhà"). '
+        'CẤM TUYỆT ĐỐI gọi tool này khi người dùng đang hỏi thắc mắc, hỏi quyền hạn, hỏi vai trò, hỏi tiến độ, hoặc tâm sự '
+        '(VD: "tôi đóng vai trò gì?", "tôi có thể giao việc cho ai không?", "hôm nay có việc gì?"). '
+        'Với câu hỏi thắc mắc, hãy trả lời bằng lời nói trực tiếp, cấm gọi tool này. '
         'Nếu là việc mở cho các con nhận (Open Task), đặt assignedTo="ALL" và isOpenTask=true.',
     Schema.object(
       properties: {

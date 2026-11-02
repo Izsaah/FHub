@@ -12,7 +12,7 @@ class QuickReplyItem {
   });
 }
 
-/// Thanh các nút gợi ý câu hỏi nhanh (Quick Replies) để người lớn tuổi thao tác 1 chạm
+/// Thanh các nút gợi ý câu hỏi nhanh (Quick Replies) để người dùng thao tác 1 chạm tiện lợi
 class QuickReplyBar extends StatelessWidget {
   final ValueChanged<String> onSelectPrompt;
   final bool enabled;
@@ -31,17 +31,17 @@ class QuickReplyBar extends StatelessWidget {
     ),
     QuickReplyItem(
       label: 'Tìm người phụ việc nhà',
-      prompt: 'Hôm nay mẹ muốn làm việc nhà, có đứa nào phụ không?',
+      prompt: 'Hôm nay có ai rảnh phụ việc nhà cùng cả nhà không?',
       icon: Icons.cleaning_services_outlined,
     ),
     QuickReplyItem(
       label: 'Nhắc mua sữa',
-      prompt: 'Nhắc bố mua sữa',
+      prompt: 'Nhắc mua sữa',
       icon: Icons.shopping_cart_outlined,
     ),
     QuickReplyItem(
       label: 'Ai chưa check-in?',
-      prompt: 'Hôm nay trong nhà mình những ai chưa check-in?',
+      prompt: 'Hôm nay trong nhà mình những ai chưa điểm danh?',
       icon: Icons.how_to_reg_outlined,
     ),
   ];

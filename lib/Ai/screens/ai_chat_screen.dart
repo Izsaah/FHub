@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -6,8 +7,10 @@ import '../../Long/services/family_data_service.dart';
 import '../../Vinh/models/family_member.dart';
 import '../../Vinh/screens/family_ai_chat_screen.dart';
 import '../../Vinh/services/reminder_repository.dart';
+import '../services/gemini_chat_service.dart';
 
 /// Màn hình điều phối Trợ lý AI Gia đình dùng chung cho toàn bộ các tab (Home, Family, Profile, Reminders)
+/// Tự động nạp ngữ cảnh thời gian thực (Vai trò, danh sách thành viên, việc nhà) vào Gemini LLM
 class AiChatScreen extends StatefulWidget {
   final String? familyId;
 
@@ -133,6 +136,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
         );
       }
       _familyMembers = members;
+
+      // Nạp ngữ cảnh vào GeminiChatService thời gian thực
+      final myMember = _familyMembers.where((m) => m.id == _currentUserId).firstOrNull;
+      final myRole = myMember?.role ?? 'Thành viên';
+      unawaited(GeminiChatService.instance.initChat(
+        familyId: _familyId,
+        userId: _currentUserId,
+        userName: _currentUserName,
+        userRole: myRole,
+      ));
     } catch (_) {}
 
     if (mounted) {
@@ -151,12 +164,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
       );
     }
 
-    return FamilyAiChatScreen(
-      familyId: _familyId,
-      currentUserId: _currentUserId,
-      currentUserName: _currentUserName,
-      familyMembers: _familyMembers,
-      repository: _repository,
+    return SafeArea(
+      top: false,
+      bottom: true,
+      child: FamilyAiChatScreen(
+        familyId: _familyId,
+        currentUserId: _currentUserId,
+        currentUserName: _currentUserName,
+        familyMembers: _familyMembers,
+        repository: _repository,
+      ),
     );
   }
 }
