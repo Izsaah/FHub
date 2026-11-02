@@ -661,9 +661,25 @@ class FamilyAiAssistantService {
     // 8. CASE 7: HỎI VỀ VAI TRÒ & QUYỀN HẠN CỦA BẢN THÂN TRONG GIA ĐÌNH
     if (_isRoleOrIdentityIntent(lower)) {
       final myMember = familyMembers.where((m) => m.id == currentUserId).firstOrNull;
-      final roleDisplay = myMember?.roleDisplayName ?? (myMember?.isParent == true ? 'Bố Mẹ (Phụ huynh)' : 'Thành viên');
+      String roleDisplay;
+      if (myMember?.isParent == true) {
+        final nameLower = currentUserName.toLowerCase();
+        if (nameLower.contains('mẹ') || nameLower.contains('má') || nameLower.contains('mom')) {
+          roleDisplay = 'Mẹ (Phụ huynh)';
+        } else if (nameLower.contains('bố') || nameLower.contains('ba') || nameLower.contains('cha') || nameLower.contains('dad')) {
+          roleDisplay = 'Bố (Phụ huynh)';
+        } else {
+          roleDisplay = 'Phụ huynh (Quản trị gia đình)';
+        }
+      } else if (myMember?.isChild == true) {
+        roleDisplay = 'Con cái (Thành viên tích cực)';
+      } else if (myMember?.isGrandparent == true) {
+        roleDisplay = 'Ông Bà (Trưởng bối)';
+      } else {
+        roleDisplay = 'Thành viên gia đình';
+      }
       final desc = myMember?.isParent == true
-          ? 'Bạn giữ quyền **Phụ huynh (Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, nạp quỹ hũ và phát lệnh Nổ Hũ 30 giây cho cả nhà nhé! 👑'
+          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, nạp quỹ hũ và phát lệnh Nổ Hũ 30 giây cho cả nhà nhé! 👑'
           : (myMember?.isGrandparent == true
               ? 'Bạn là **Ông Bà (Trưởng bối)**: Có quyền giao việc, gắn kết các thế hệ và cùng theo dõi tiến độ gia đình ấm cúng! 🏡'
               : 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận các công việc chung trên bảng việc, hoàn thành nhiệm vụ để tích lũy sao thưởng và tham gia nổ hũ nhận thưởng về ví cá nhân nhé! 🌟');
@@ -745,6 +761,25 @@ class FamilyAiAssistantService {
           createdAt: DateTime.now(),
           voiceNoteDescription: 'Chuẩn bị nguyên liệu tươi ngon làm bữa tiệc ấm cúng theo kế hoạch của $currentUserName.',
         ),
+      );
+    }
+
+    // 11.5. CASE: KHEN NGỢI, TÂM SỰ & HỎI ĐỘ ĐẸP TRAI / TỰ TIN
+    if (lower.contains('đẹp trai') ||
+        lower.contains('xinh gái') ||
+        lower.contains('đẹp gái') ||
+        lower.contains('dễ thương') ||
+        lower.contains('thông minh') ||
+        lower.contains('tôi đẹp không') ||
+        lower.contains('tôi thế nào')) {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ $salutation, theo đánh giá 10/10 chuẩn phong độ của Trợ lý AI FHub thì $salutation luôn là thành viên phong độ, chu đáo và rạng rỡ nhất gia đình mình ạ! 😎✨ Hôm nay $salutation cần em hỗ trợ việc nhà hay kiểm tra tình hình gì cứ nhắn em nhé! ❤️',
+          'Hello $salutation, by FHub AI’s 10/10 rating, you are always the most handsome, caring, and radiant family member! 😎✨ How can I assist you today? ❤️',
+        ),
+        timestamp: DateTime.now(),
       );
     }
 
@@ -1042,6 +1077,23 @@ class FamilyAiAssistantService {
   List<String> _tryExtractTaskTitles(String rawQuery, String lower) {
     // Tránh bắt nhầm các câu tiệc, dự định nấu ăn hay hỏi thăm thông thường
     if (lower.contains('thịnh soạn') || lower.contains('tiệc')) {
+      return const [];
+    }
+
+    // Tránh tuyệt đối bắt nhầm câu hỏi, thắc mắc quyền hạn, hỏi vai trò, hoặc tự vấn
+    if (lower.contains('?') ||
+        lower.contains('vai trò') ||
+        lower.contains('vai tro') ||
+        lower.contains('chức vụ') ||
+        lower.contains('tôi là ai') ||
+        lower.contains('quyền của tôi') ||
+        lower.contains('có thể giao việc') ||
+        lower.contains('giao việc cho ai không') ||
+        lower.contains('ai không') ||
+        lower.contains('không?') ||
+        lower.contains('đóng vai trò gì') ||
+        lower.startsWith('tôi là') ||
+        lower.startsWith('tôi có thể')) {
       return const [];
     }
 

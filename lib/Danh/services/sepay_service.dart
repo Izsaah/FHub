@@ -38,6 +38,9 @@ class SepayService {
   ];
 
   final Set<String> _consumedTxIds = {};
+  bool _relayChecked = false;
+  bool _relayAvailable = false;
+  bool _webCorsWarningLogged = false;
 
   /// Kiểm tra trạng thái giao dịch theo mã đơn hàng [orderCode]
   /// BẮT BUỘC KHỚP CHÍNH XÁC MÃ ĐƠN HÀNG (FHUBxxxxxx)
@@ -104,8 +107,12 @@ class SepayService {
       }
 
       return const SepayCheckResult(status: SepayPaymentStatus.waiting);
+    } on http.ClientException catch (_) {
+      return const SepayCheckResult(status: SepayPaymentStatus.waiting);
     } catch (e) {
-      debugPrint('SepayService error: $e');
+      if (!kIsWeb) {
+        debugPrint('SepayService error: $e');
+      }
       return const SepayCheckResult(status: SepayPaymentStatus.waiting);
     }
   }
@@ -117,33 +124,63 @@ class SepayService {
   /// - Trên Android / iOS / Windows Desktop: Gọi trực tiếp SePay Sandbox API.
   Future<String?> _fetchTransactionsJson(String token) async {
     if (kIsWeb) {
-      for (final relayUrl in _localWebRelayUrls) {
-        try {
-          final relayRes = await http
-              .get(Uri.parse(relayUrl))
-              .timeout(const Duration(seconds: 4));
-          if (relayRes.statusCode == 200) {
-            return relayRes.body;
-          }
-        } catch (_) {
-          // Thử tiếp URL relay kế tiếp hoặc fallback
+      if (!_relayChecked) {
+        _relayChecked = true;
+        for (final relayUrl in _localWebRelayUrls) {
+          try {
+            final relayRes = await http
+                .get(Uri.parse(relayUrl))
+                .timeout(const Duration(milliseconds: 1500));
+            if (relayRes.statusCode == 200) {
+              _relayAvailable = true;
+              return relayRes.body;
+            }
+          } catch (_) {}
+        }
+      } else if (_relayAvailable) {
+        for (final relayUrl in _localWebRelayUrls) {
+          try {
+            final relayRes = await http
+                .get(Uri.parse(relayUrl))
+                .timeout(const Duration(milliseconds: 1500));
+            if (relayRes.statusCode == 200) {
+              return relayRes.body;
+            }
+          } catch (_) {}
         }
       }
     }
 
-    final uri = Uri.parse('${PaymentConfig.sepaySandboxEndpoint}?limit=20');
-    final response = await http.get(
-      uri,
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
-    ).timeout(const Duration(seconds: 8));
+    try {
+      final uri = Uri.parse('${PaymentConfig.sepaySandboxEndpoint}?limit=20');
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 8));
 
-    if (response.statusCode == 200) {
-      return response.body;
+      if (response.statusCode == 200) {
+        return response.body;
+      }
+      if (!kIsWeb) {
+        debugPrint('SepayService: HTTP ${response.statusCode}: ${response.body}');
+      }
+      return null;
+    } on http.ClientException catch (_) {
+      if (kIsWeb && !_webCorsWarningLogged) {
+        _webCorsWarningLogged = true;
+        debugPrint(
+          'SepayService (Web Notice): Trình duyệt chặn CORS gọi trực tiếp sandbox SePay. Bấm nút "Mô Phỏng Nạp Thành Công" trên màn hình để kiểm tra nạp quỹ!',
+        );
+      }
+      return null;
+    } catch (e) {
+      if (!kIsWeb) {
+        debugPrint('SepayService fetch error: $e');
+      }
+      return null;
     }
-    debugPrint('SepayService: HTTP ${response.statusCode}: ${response.body}');
-    return null;
   }
 
   int _parseAmount(dynamic val) {

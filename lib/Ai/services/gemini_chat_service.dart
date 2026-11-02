@@ -165,7 +165,11 @@ class GeminiChatService {
         lower.contains('hũ niềm vui') ||
         lower.contains('quỹ hũ') ||
         lower.contains('nổ hũ') ||
-        lower.contains('lắc hũ');
+        lower.contains('lắc hũ') ||
+        lower.contains('đẹp trai') ||
+        lower.contains('xinh gái') ||
+        lower.contains('đẹp gái') ||
+        lower.contains('dễ thương');
   }
 
   /// Gửi tin nhắn và xử lý phản hồi thông minh
@@ -548,13 +552,18 @@ $jackpotInfo
 === BỘ NHỚ THÓI QUEN & SỞ THÍCH GIA ĐÌNH (FAMILY MEMORY) ===
 $memoriesInfo
 
+=== NGUYÊN TẮC GỌI TOOL TẠO VIỆC (createFamilyTask) ===
+- CHỈ ĐƯỢC PHÉP gọi tool "createFamilyTask" khi người dùng THỰC SỰ RA LỆNH tạo việc nhà cụ thể (VD: "Tạo việc rửa chén lúc 19h", "Giao Bin quét nhà").
+- CẤM TUYỆT ĐỐI gọi "createFamilyTask" khi người dùng đang ĐẶT CÂU HỎI, THẮC MẮC, TÂM SỰ hoặc HỎI VỀ QUYỀN HẠN/VAI TRÒ (VD: "tôi đóng vai trò gì trong căn nhà này?", "tôi có thể giao việc cho ai không?", "vai trò của tôi là gì?", "hôm nay ai làm việc nhà?").
+- Khi người dùng hỏi thắc mắc quyền hạn/vai trò: Trả lời giải thích trực tiếp bằng ngôn từ tự nhiên, hướng dẫn rõ ràng quyền của họ, TUYỆT ĐỐI KHÔNG TỰ Ý TẠO VIỆC NHÀ.
+
 === CÁC CHỈ DẪN TRẢ LỜI NGHIỆP VỤ ===
 1. Khi người dùng hỏi "ai đã điểm danh", "hôm nay ai chưa check-in", "tình hình điểm danh":
    Đọc chính xác danh sách thành viên ở trên để trả lời rõ ràng ai đã điểm danh lúc mấy giờ, ai chưa điểm danh.
 2. Khi người dùng hỏi "tóm tắt tiến độ công việc", "tình hình việc nhà hôm nay", "hôm nay có việc gì":
    Báo cáo tổng kết súc tích: việc nào đã xong, việc nào chưa xong, ai phụ trách.
 3. Khi người dùng hỏi về vai trò hoặc quyền hạn của mình trong gia đình:
-   Trả lời chính xác theo vai trò $_currentUserRole của họ (quyền giao việc, quyền nổ hũ, nhận sao thưởng).
+   Trả lời chính xác theo vai trò thực tế của họ (quyền giao việc, quyền nổ hũ, nhận sao thưởng).
 4. Khi người dùng hỏi về Hũ Niềm Vui:
    Cung cấp số dư hũ, ai nạp nhiều nhất và quy tắc lắc 30s.
 5. Khi người dùng muốn giao việc mở cho các con: Gọi tool createFamilyTask với assignedTo: "ALL".
@@ -737,10 +746,29 @@ $memoriesInfo
         lower.contains('vai tro') ||
         lower.contains('tôi là ai') ||
         lower.contains('quyền của tôi') ||
+        lower.contains('đóng vai trò gì') ||
         lower.contains('chức vụ')) {
       final roleLower = _currentUserRole.toLowerCase();
       final isParent = roleLower.contains('parent') || roleLower.contains('bố') || roleLower.contains('mẹ');
       final isChild = roleLower.contains('child') || roleLower.contains('con');
+
+      String displayRole;
+      if (isParent) {
+        final nameLower = _currentUserName.toLowerCase();
+        if (nameLower.contains('mẹ') || nameLower.contains('má') || nameLower.contains('mom')) {
+          displayRole = 'Mẹ (Phụ huynh)';
+        } else if (nameLower.contains('bố') || nameLower.contains('ba') || nameLower.contains('cha') || nameLower.contains('dad')) {
+          displayRole = 'Bố (Phụ huynh)';
+        } else {
+          displayRole = 'Phụ huynh (Quản trị gia đình)';
+        }
+      } else if (isChild) {
+        displayRole = 'Con cái (Thành viên tích cực)';
+      } else if (roleLower.contains('ông') || roleLower.contains('bà') || roleLower.contains('grand')) {
+        displayRole = 'Ông Bà (Trưởng bối gia đình)';
+      } else {
+        displayRole = _currentUserRole.isNotEmpty ? _currentUserRole : 'Thành viên gia đình';
+      }
 
       final desc = isParent
           ? 'Bạn giữ quyền **Phụ huynh (Quản trị gia đình)**: Có toàn quyền giao việc cho các con, tạo việc chung, nạp quỹ hũ và phát lệnh Nổ Hũ 30 giây cho cả nhà! 👑'
@@ -750,7 +778,7 @@ $memoriesInfo
 
       return ChatMessageModel(
         id: 'msg_${now.millisecondsSinceEpoch}',
-        text: 'Dạ $salutation! Trong gia đình mình, vai trò của bạn là **$_currentUserRole**.\n\n$desc',
+        text: 'Dạ $salutation! Trong gia đình mình, vai trò của bạn là **$displayRole**.\n\n$desc',
         sender: ChatSender.ai,
         timestamp: now,
       );
@@ -790,6 +818,22 @@ $memoriesInfo
             '• Tổng quỹ hiện tại: **$poolStr đ**.\n'
             '• Người nạp nhiều nhất: **$topName** (giữ quyền phát lệnh Nổ Hũ 30s).\n'
             '• Khi nổ hũ, cả nhà cùng lắc điện thoại trong 30 giây! Ai lắc nhiều nhất nhận Giải Nhất, tiền thưởng cộng thẳng vào Ví cá nhân và có thể rút về ngân hàng bất cứ lúc nào! 💰',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
+    // 4.5. KHEN NGỢI, TÂM SỰ & HỎI ĐỘ ĐẸP TRAI / TỰ TIN
+    if (lower.contains('đẹp trai') ||
+        lower.contains('xinh gái') ||
+        lower.contains('đẹp gái') ||
+        lower.contains('dễ thương') ||
+        lower.contains('thông minh') ||
+        lower.contains('tôi thế nào') ||
+        lower.contains('tôi đẹp không')) {
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: 'Dạ $salutation, theo đánh giá 10/10 chuẩn phong độ của Trợ lý AI FHub thì $salutation luôn là thành viên tuyệt vời, chu đáo và rạng rỡ nhất gia đình mình ạ! 😎✨ Hôm nay $salutation cần em hỗ trợ lên lịch việc nhà hay kiểm tra tiến độ gì cứ nhắn em nhé! ❤️',
         sender: ChatSender.ai,
         timestamp: now,
       );
@@ -882,6 +926,19 @@ $memoriesInfo
   /// Xử lý tạo ReminderModel thật và ghi vào Firestore collection `reminders`
   Future<ReminderModel> _handleCreateFamilyTask(Map<String, dynamic> args) async {
     final title = args['title']?.toString() ?? 'Việc nhà';
+    final lowerTitle = title.toLowerCase().trim();
+
+    // Chặn triệt để AI hallucinate tự tạo việc nhà từ các câu hỏi vai trò / quyền hạn
+    if (lowerTitle.contains('?') ||
+        lowerTitle.contains('vai trò') ||
+        lowerTitle.contains('quyền của tôi') ||
+        lowerTitle.contains('có thể giao việc') ||
+        lowerTitle.contains('ai không') ||
+        lowerTitle.contains('đóng vai trò gì') ||
+        lowerTitle.startsWith('tôi là') ||
+        lowerTitle.startsWith('tôi có thể')) {
+      throw Exception('Không thể tạo việc nhà từ câu hỏi thắc mắc của người dùng.');
+    }
     final assignedTo = args['assignedTo']?.toString() ?? 'ALL';
     final assignedToName = args['assignedToName']?.toString() ?? 'Việc chung';
 

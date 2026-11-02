@@ -102,7 +102,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           appBar: AppBar(
             backgroundColor: DanhColors.brand50,
             elevation: 1,
+            titleSpacing: 0,
             leading: IconButton(
+              padding: EdgeInsets.zero,
               icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: DanhColors.brand800),
               onPressed: () => Navigator.pop(context),
             ),
@@ -113,7 +115,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 AppLanguage.text('Hũ Niềm Vui Gia Đình', 'Family Happiness Pot'),
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 16.5,
+                  fontSize: 16,
                   color: DanhColors.brand800,
                 ),
               ),
@@ -351,7 +353,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
             ),
             child: LayoutBuilder(
               builder: (ctx, constraints) {
-                final isNarrow = constraints.maxWidth < 320;
+                final isNarrow = constraints.maxWidth < 355;
 
                 final walletInfo = Row(
                   mainAxisSize: MainAxisSize.min,
@@ -369,71 +371,27 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          AppLanguage.text('Ví Thưởng Của Tôi', 'My Reward Wallet'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
-                        ),
-                        Text(
-                          '${_jackpotService.myWalletBalance} đ',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFE65100),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppLanguage.text('Ví Thưởng Của Tôi', 'My Reward Wallet'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-
-                final actionButtons = Row(
-                  mainAxisSize: isNarrow ? MainAxisSize.max : MainAxisSize.min,
-                  mainAxisAlignment: isNarrow ? MainAxisAlignment.end : MainAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      height: 32,
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFF3E0),
-                          foregroundColor: const Color(0xFFE65100),
-                          side: const BorderSide(color: Color(0xFFFFB74D), width: 1.2),
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        onPressed: _openWalletHistoryModal,
-                        child: Text(
-                          AppLanguage.text('Lịch Sử', 'History'),
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    SizedBox(
-                      height: 32,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFE65100),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          elevation: 0,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        onPressed: _openBankAndWithdrawModal,
-                        child: Text(
-                          AppLanguage.text('Rút Tiền', 'Withdraw'),
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                        ),
+                          Text(
+                            '${_jackpotService.myWalletBalance} đ',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFE65100),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -444,8 +402,54 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       walletInfo,
-                      const SizedBox(height: 8),
-                      actionButtons,
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 32,
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFFF3E0),
+                                  foregroundColor: const Color(0xFFE65100),
+                                  side: const BorderSide(color: Color(0xFFFFB74D), width: 1.2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: _openWalletHistoryModal,
+                                child: Text(
+                                  AppLanguage.text('Lịch Sử', 'History'),
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SizedBox(
+                              height: 32,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFE65100),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  elevation: 0,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: _openBankAndWithdrawModal,
+                                child: Text(
+                                  AppLanguage.text('Rút Tiền', 'Withdraw'),
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   );
                 }
@@ -454,7 +458,56 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(child: walletInfo),
-                    actionButtons,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              height: 32,
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFFF3E0),
+                                  foregroundColor: const Color(0xFFE65100),
+                                  side: const BorderSide(color: Color(0xFFFFB74D), width: 1.2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: _openWalletHistoryModal,
+                                child: Text(
+                                  AppLanguage.text('Lịch Sử', 'History'),
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              height: 32,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFE65100),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  elevation: 0,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: _openBankAndWithdrawModal,
+                                child: Text(
+                                  AppLanguage.text('Rút Tiền', 'Withdraw'),
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 );
               },
@@ -1223,6 +1276,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
 
             return Dialog(
               backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -1233,9 +1287,12 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Quét VietQR Nạp Quỹ Hũ',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: DanhColors.brand900),
+                          Expanded(
+                            child: Text(
+                              AppLanguage.text('Quét VietQR Nạp Quỹ Hũ', 'Scan VietQR to Deposit'),
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: DanhColors.brand900),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           IconButton(
                             icon: const Icon(Icons.close_rounded),
@@ -1287,20 +1344,34 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
-                          const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: DanhColors.brand800),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 240),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: DanhColors.brand800),
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    AppLanguage.text('Đang tự động kiểm tra SePay...', 'Checking SePay automatically...'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11.5, color: DanhColors.textMuted),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Đang tự động kiểm tra SePay...',
-                            style: TextStyle(fontSize: 11.5, color: DanhColors.textMuted),
-                          ),
-                          const SizedBox(width: 6),
                           TextButton(
                             style: TextButton.styleFrom(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1332,7 +1403,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                                     }
                                   },
                             child: Text(
-                              isCheckingManual ? 'Đang kiểm...' : 'Kiểm tra ngay',
+                              isCheckingManual ? AppLanguage.text('Đang kiểm...', 'Checking...') : AppLanguage.text('Kiểm tra ngay', 'Check now'),
                               style: const TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.bold,
@@ -1353,7 +1424,13 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
-                          label: const Text('Mô Phỏng Nạp Thành Công (Thử Nghiệm)'),
+                          label: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              AppLanguage.text('Mô Phỏng Nạp Thành Công (Thử Nghiệm)', 'Simulate Successful Deposit (Test)'),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
                           onPressed: () => completeDeposit(ctx, simulated: true),
                         ),
                       ),
@@ -1375,29 +1452,37 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(title, style: const TextStyle(fontSize: 12, color: DanhColors.textSecondary)),
-          Row(
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: isHighlight ? const Color(0xFFE65100) : DanhColors.textPrimary,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isHighlight ? const Color(0xFFE65100) : DanhColors.textPrimary,
+                    ),
+                  ),
                 ),
-              ),
-              if (canCopy) ...[
-                const SizedBox(width: 4),
-                InkWell(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: value));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Đã sao chép "$value"'), duration: const Duration(seconds: 1)),
-                    );
-                  },
-                  child: const Icon(Icons.copy_rounded, size: 14, color: DanhColors.brand800),
-                ),
+                if (canCopy) ...[
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: value));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Đã sao chép "$value"'), duration: const Duration(seconds: 1)),
+                      );
+                    },
+                    child: const Icon(Icons.copy_rounded, size: 14, color: DanhColors.brand800),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ],
       ),
@@ -1489,7 +1574,12 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     }
 
                     return ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: EdgeInsets.only(
+                        left: 16,
+                        right: 16,
+                        top: 12,
+                        bottom: max(24.0, MediaQuery.of(ctx).viewPadding.bottom + 24.0),
+                      ),
                       itemCount: list.length,
                       separatorBuilder: (_, _) => const Divider(height: 1, color: DanhColors.borderLight),
                       itemBuilder: (context, index) {
@@ -2355,7 +2445,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         left: 16,
                         right: 16,
                         top: 12,
-                        bottom: MediaQuery.of(ctx).padding.bottom + 16,
+                        bottom: max(24.0, MediaQuery.of(ctx).viewPadding.bottom + 24.0),
                       ),
                       itemCount: notifs.length,
                       separatorBuilder: (_, index) => const Divider(height: 1),
@@ -2469,7 +2559,12 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(ctx).size.height * 0.82,
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 20,
+            bottom: max(24.0, MediaQuery.of(ctx).viewPadding.bottom + 20.0),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
