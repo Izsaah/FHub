@@ -128,20 +128,30 @@ void main() {
       service = MockDataService();
     });
 
-    test('Check-in prevents duplicate check-in on the same day', () async {
+    test('Check-in once updates status across all joined families and prevents duplicate check-in on the same day', () async {
       await service.switchFamily('f1');
       final userId = service.currentUserId;
 
       // 1st Check-in succeeds
       await service.checkIn(userId, familyId: 'f1');
 
-      final members = await service.getFamilyMembers(familyId: 'f1');
-      final myMember = members.firstWhere((m) => m.user.id == userId);
-      expect(myMember.isCheckedInToday, isTrue);
+      // Checked in on f1
+      final membersF1 = await service.getFamilyMembers(familyId: 'f1');
+      final myMemberF1 = membersF1.firstWhere((m) => m.user.id == userId);
+      expect(myMemberF1.isCheckedInToday, isTrue);
+
+      // Checked in automatically on f2 as well (1 check-in updates all families)
+      final membersF2 = await service.getFamilyMembers(familyId: 'f2');
+      final myMemberF2 = membersF2.firstWhere((m) => m.user.id == userId);
+      expect(myMemberF2.isCheckedInToday, isTrue);
 
       // 2nd Check-in on same day fails with duplicate message
       expect(
         () => service.checkIn(userId, familyId: 'f1'),
+        throwsA(predicate((e) => e.toString().contains("already checked in"))),
+      );
+      expect(
+        () => service.checkIn(userId, familyId: 'f2'),
         throwsA(predicate((e) => e.toString().contains("already checked in"))),
       );
     });

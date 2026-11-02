@@ -57,28 +57,35 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      PremiumBadgeWidget(
-                        isPremium: isPremium,
-                        compact: true,
-                        customText: isPremium
-                            ? AppLanguage.text('TỔ ẤM PREMIUM', 'FAMILY PREMIUM')
-                            : AppLanguage.text('GÓI CƠ BẢN', 'BASIC PLAN'),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        isPremium
-                            ? AppLanguage.text('Tổ Ấm Premium', 'Family Premium')
-                            : AppLanguage.text('Gói Cơ Bản (Miễn phí)', 'Basic Plan (Free)'),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: DanhColors.textPrimary,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        PremiumBadgeWidget(
+                          isPremium: isPremium,
+                          compact: true,
+                          customText: isPremium
+                              ? AppLanguage.text('TỔ ẤM PREMIUM', 'FAMILY PREMIUM')
+                              : AppLanguage.text('GÓI CƠ BẢN', 'BASIC PLAN'),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            isPremium
+                                ? AppLanguage.text('Tổ Ấm Premium', 'Family Premium')
+                                : AppLanguage.text('Gói Cơ Bản (Miễn phí)', 'Basic Plan (Free)'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: DanhColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 6),
                   TextButton(
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -243,12 +250,16 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                           children: [
                             Row(
                               children: [
-                                Text(
-                                  AppLanguage.text('Hũ Niềm Vui Gia Đình', 'Family Jackpot'),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: isPremium ? const Color(0xFFE65100) : Colors.grey.shade700,
+                                Flexible(
+                                  child: Text(
+                                    AppLanguage.text('Hũ Niềm Vui Gia Đình', 'Family Jackpot'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: isPremium ? const Color(0xFFE65100) : Colors.grey.shade700,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 6),

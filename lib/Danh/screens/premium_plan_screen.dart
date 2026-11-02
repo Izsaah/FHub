@@ -118,13 +118,17 @@ class _PremiumPlanScreenState extends State<PremiumPlanScreen> {
                             size: 30,
                           ),
                           const SizedBox(width: 10),
-                          Text(
-                            isPremium ? 'Tổ Ấm Premium 👑' : 'Family Hub Premium',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 21,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.3,
+                          Expanded(
+                            child: Text(
+                              isPremium ? 'Tổ Ấm Premium 👑' : 'Family Hub Premium',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 21,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.3,
+                              ),
                             ),
                           ),
                         ],

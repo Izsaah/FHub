@@ -63,13 +63,19 @@ class CheckInButton extends StatelessWidget {
               color: isCheckedIn ? const Color(0xFF005F50) : Colors.white,
             ),
             const SizedBox(width: 10),
-            Text(
-              isCheckedIn ? "You're already checked in" : "✓ I'M OK",
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.bold,
-                letterSpacing: isCheckedIn ? 0 : 0.8,
-                color: isCheckedIn ? const Color(0xFF234D43) : Colors.white,
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  isCheckedIn ? "You're already checked in" : "✓ I'M OK",
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: isCheckedIn ? 0 : 0.8,
+                    color: isCheckedIn ? const Color(0xFF234D43) : Colors.white,
+                  ),
+                ),
               ),
             ),
           ],

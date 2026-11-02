@@ -15,36 +15,37 @@ class ReminderEmptyState extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: AppLanguage.isEnglish,
       builder: (context, _, child) {
-        return Center(
+        return Align(
+          alignment: Alignment.topCenter,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(28, 20, 28, 110),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 96),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  width: 80,
-                  height: 80,
+                  width: 68,
+                  height: 68,
                   decoration: BoxDecoration(
                     color: const Color(0xFFE7F0EC),
-                    borderRadius: BorderRadius.circular(40),
+                    borderRadius: BorderRadius.circular(34),
                   ),
                   child: const Icon(
                     Icons.notifications_none_outlined,
-                    size: 40,
+                    size: 34,
                     color: Color(0xFF0D7A68),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 14),
                 Text(
                   AppLanguage.text('Chưa có lời nhắc nào.', 'No reminders yet.'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 17,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF151D1B),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   AppLanguage.text(
                     'Hãy tạo lời nhắc để giúp gia đình bạn phân chia việc nhà ngăn nắp và gắn kết hơn.',
@@ -52,11 +53,11 @@ class ReminderEmptyState extends StatelessWidget {
                   ),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 13.5,
                     color: Color(0xFF6E7A75),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF0D7A68),
@@ -64,7 +65,7 @@ class ReminderEmptyState extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 14),
+                        horizontal: 20, vertical: 12),
                   ),
                   icon: const Icon(Icons.add),
                   label: Text(
@@ -72,7 +73,7 @@ class ReminderEmptyState extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                        fontSize: 15, fontWeight: FontWeight.bold),
                   ),
                   onPressed: onCreatePressed,
                 ),
