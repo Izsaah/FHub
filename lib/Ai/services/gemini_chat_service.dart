@@ -55,19 +55,10 @@ class GeminiChatService {
     if (_customApiKey != null && _customApiKey!.trim().isNotEmpty) {
       return _customApiKey!.trim();
     }
-    var key = (dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null)?.trim();
-    if (key == null || key.isEmpty) {
-      try {
-        dotenv.load(fileName: ".env");
-        key = dotenv.env['GEMINI_API_KEY']?.trim();
-      } catch (_) {
-        try {
-          dotenv.load(fileName: "assets/.env");
-          key = dotenv.env['GEMINI_API_KEY']?.trim();
-        } catch (_) {}
-      }
+    if (dotenv.isInitialized) {
+      return dotenv.env['GEMINI_API_KEY']?.trim() ?? '';
     }
-    return key ?? '';
+    return '';
   }
 
   bool get isConfigured => effectiveApiKey.isNotEmpty;

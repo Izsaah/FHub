@@ -309,7 +309,8 @@ void main() {
 
       // Clear custom key -> restores default key from environment
       await GeminiChatService.instance.setCustomApiKey('');
-      expect(GeminiChatService.instance.effectiveApiKey, dotenv.env['GEMINI_API_KEY']?.trim() ?? '');
+      final expectedDefaultKey = dotenv.isInitialized ? (dotenv.env['GEMINI_API_KEY']?.trim() ?? '') : '';
+      expect(GeminiChatService.instance.effectiveApiKey, expectedDefaultKey);
       expect(GeminiChatService.instance.isConfigured, initialConfigured);
     });
 
