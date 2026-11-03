@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+
 import '../models/check_in_feed_model.dart';
 import '../services/family_state_manager.dart';
 
@@ -6,6 +9,38 @@ class CheckInFeedView extends StatelessWidget {
   final String? familyId;
 
   const CheckInFeedView({super.key, this.familyId});
+
+  Widget _buildFeedImage(String imageUrl) {
+    final errorWidget = Container(
+      height: 100,
+      color: const Color(0xFFEDF5F2),
+      child: const Icon(Icons.image, color: Color(0xFF005F50)),
+    );
+
+    if (imageUrl.startsWith('data:image/')) {
+      try {
+        final commaIndex = imageUrl.indexOf(',');
+        if (commaIndex == -1) return errorWidget;
+        return Image.memory(
+          base64Decode(imageUrl.substring(commaIndex + 1)),
+          height: 100,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => errorWidget,
+        );
+      } catch (_) {
+        return errorWidget;
+      }
+    }
+
+    return Image.network(
+      imageUrl,
+      height: 100,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => errorWidget,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,8 +59,11 @@ class CheckInFeedView extends StatelessWidget {
               padding: EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 children: [
-                  Icon(Icons.photo_library_outlined,
-                      size: 18, color: Color(0xFF005F50)),
+                  Icon(
+                    Icons.photo_library_outlined,
+                    size: 18,
+                    color: Color(0xFF005F50),
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -73,25 +111,16 @@ class CheckInFeedView extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (feed.imageUrl != null)
-                          Image.network(
-                            feed.imageUrl!,
-                            height: 100,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              height: 100,
-                              color: const Color(0xFFEDF5F2),
-                              child: const Icon(Icons.image,
-                                  color: Color(0xFF005F50)),
-                            ),
-                          )
+                          _buildFeedImage(feed.imageUrl!)
                         else
                           Container(
                             height: 60,
                             color: const Color(0xFFEDF5F2),
                             alignment: Alignment.center,
-                            child: const Icon(Icons.favorite,
-                                color: Color(0xFF005F50)),
+                            child: const Icon(
+                              Icons.favorite,
+                              color: Color(0xFF005F50),
+                            ),
                           ),
                         Padding(
                           padding: const EdgeInsets.all(10),

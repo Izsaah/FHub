@@ -943,9 +943,8 @@ class FamilyDataService implements IFamilyService {
       }
       membershipRevisionNotifier.value++;
     } catch (e) {
-      debugPrint('Firestore checkIn fallback: $e');
-      await _mock.checkIn(userId,
-          imageUrl: imageUrl, caption: caption, familyId: familyId);
+      debugPrint('Firestore checkIn failed: $e');
+      rethrow;
     }
   }
 
