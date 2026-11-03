@@ -21,12 +21,16 @@ class PaymentConfig {
 
   static String get apiKey => _getEnv('SEPAY_API_KEY', _fallbackApiKey);
 
+  static const String sepayProductionV2Endpoint =
+      'https://userapi.sepay.vn/v2/transactions';
+  static const String sepayProductionV1Endpoint =
+      'https://my.sepay.vn/userapi/transactions/list';
   static const String sepaySandboxEndpoint =
       'https://userapi-sandbox.sepay.vn/v2/transactions';
 
-  /// Endpoint SePay API: Tự động chuyển đổi giữa Production và Sandbox
+  /// Endpoint SePay API: Tự động chuyển đổi giữa Production (v2) và Sandbox
   /// - Nếu có SEPAY_ENDPOINT tuỳ chỉnh -> dùng SEPAY_ENDPOINT
-  /// - Nếu SEPAY_ENV=production / prod -> dùng https://my.sepay.vn/userapi/transactions/list
+  /// - Nếu SEPAY_ENV=production / prod -> dùng https://userapi.sepay.vn/v2/transactions
   /// - Nếu số tài khoản khác mặc định sandbox và API key khác fallback -> tự động nhận diện Production
   /// - Mặc định Sandbox: https://userapi-sandbox.sepay.vn/v2/transactions
   static String get sepayEndpoint {
@@ -34,13 +38,13 @@ class PaymentConfig {
     if (custom.isNotEmpty) return custom;
     final env = _getEnv('SEPAY_ENV', '').toLowerCase();
     if (env == 'production' || env == 'prod') {
-      return 'https://my.sepay.vn/userapi/transactions/list';
+      return sepayProductionV2Endpoint;
     }
     if (env == 'sandbox') {
       return sepaySandboxEndpoint;
     }
     if (accountNo != '0000000001' && apiKey != _fallbackApiKey) {
-      return 'https://my.sepay.vn/userapi/transactions/list';
+      return sepayProductionV2Endpoint;
     }
     return sepaySandboxEndpoint;
   }
