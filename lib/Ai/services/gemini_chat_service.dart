@@ -404,15 +404,18 @@ class GeminiChatService {
           err.contains('api key not valid') ||
           err.contains('unauthenticated') ||
           err.contains('access_token_type_unsupported') ||
+          err.contains('api_key_service_blocked') ||
           err.contains('401')) {
-        final prefix = effectiveApiKey.length > 8 ? effectiveApiKey.substring(0, 6) : effectiveApiKey;
+        final prefix = effectiveApiKey.length > 8 ? effectiveApiKey.substring(0, 10) : effectiveApiKey;
         return ChatMessageModel(
           id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-          text: '⚠️ **Khóa Gemini API không hợp lệ (Google báo lỗi 401)**\n\n'
-              'Khóa trong `.env` đang bắt đầu bằng: `$prefix...`\n'
-              '• **Nguyên nhân**: Khóa này là mã ủy quyền / OAuth token, Google từ chối khi gọi qua API Key.\n'
-              '• **Khóa chuẩn**: Khóa API chính thức của Google AI Studio **luôn bắt đầu bằng `AIzaSy...`** (gồm 39 ký tự).\n\n'
-              '👉 Bạn chỉ cần vào **[Google AI Studio](https://aistudio.google.com/app/apikey)** ➔ bấm **Create API key** ➔ lấy mã bắt đầu bằng **`AIzaSy...`** và dán vào file `.env` là Gemini 2.0 Flash kích hoạt ngay nhé!',
+          text: '⚠️ **Dịch vụ Gemini API bị chặn hoặc chưa kích hoạt (Google báo lỗi 401 / API_KEY_SERVICE_BLOCKED)**\n\n'
+              'Khóa API hiện tại: `$prefix...`\n'
+              '• **Nguyên nhân**: Khóa này được liên kết với một Google Cloud Project nhưng dịch vụ **Generative Language API** chưa được bật (Enable) trong project đó.\n\n'
+              '👉 **Cách xử lý nhanh nhất (10 giây)**:\n'
+              '1. Vào lại [Google AI Studio](https://aistudio.google.com/app/apikey).\n'
+              '2. Bấm **Create API key** ➔ Chọn **"Create API key in new project"** (Tạo trong project mới của AI Studio để Google tự động bật sẵn dịch vụ).\n'
+              '3. Dán khóa mới vào file `.env` là Gemini 2.0 Flash hoạt động ngay lập tức nhé!',
           sender: ChatSender.ai,
           timestamp: DateTime.now(),
           isError: true,
