@@ -1279,10 +1279,10 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
 
             return Dialog(
               backgroundColor: Colors.white,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
               child: Padding(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -1346,30 +1346,29 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           ],
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const SizedBox(
                             width: 14,
                             height: 14,
                             child: CircularProgressIndicator(strokeWidth: 2, color: DanhColors.brand800),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               AppLanguage.text('Đang tự động kiểm tra SePay...', 'Checking SePay automatically...'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11.5, color: DanhColors.textMuted),
+                              style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
                             ),
                           ),
-                          const SizedBox(width: 6),
                           TextButton(
                             style: TextButton.styleFrom(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
                             ),
                             onPressed: isCheckingManual
                                 ? null
@@ -1398,7 +1397,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                             child: Text(
                               isCheckingManual ? AppLanguage.text('Đang kiểm...', 'Checking...') : AppLanguage.text('Kiểm tra ngay', 'Check now'),
                               style: const TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: Color(0xFFE65100),
                               ),
@@ -1406,14 +1405,14 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: Color(0xFFE65100)),
                             foregroundColor: const Color(0xFFE65100),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 11),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
@@ -1442,19 +1441,19 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(title, style: const TextStyle(fontSize: 12, color: DanhColors.textSecondary)),
           const SizedBox(width: 8),
-          Flexible(
+          Expanded(
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Flexible(
                   child: Text(
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,

@@ -265,6 +265,7 @@ class FamilyAiAssistantService {
           userName: currentUserName,
           userRole: myRole,
           familyMembers: familyMembers,
+          fallbackToLocal: false,
         );
 
         if (!geminiRes.isError && geminiRes.text.trim().isNotEmpty) {
@@ -276,15 +277,27 @@ class FamilyAiAssistantService {
                 familyMembers: familyMembers,
               );
             } catch (_) {}
+            return AiChatMessage(
+              id: geminiRes.id,
+              isUser: false,
+              text: geminiRes.text.trim(),
+              timestamp: geminiRes.timestamp,
+              attachedReminder: geminiRes.createdTask,
+              attachedReminders: [geminiRes.createdTask!],
+            );
           }
-          return AiChatMessage(
-            id: geminiRes.id,
-            isUser: false,
-            text: geminiRes.text.trim(),
-            timestamp: geminiRes.timestamp,
-            attachedReminder: geminiRes.createdTask,
-            attachedReminders: geminiRes.createdTask != null ? [geminiRes.createdTask!] : const [],
-          );
+
+          // Nếu query chứa ý định tạo việc nhà cụ thể mà phản hồi Gemini chưa có task,
+          // nhường quyền xử lý cho local engine để tạo task vào repository chính xác!
+          final localTasks = _tryExtractTaskTitles(query, lower);
+          if (localTasks.isEmpty) {
+            return AiChatMessage(
+              id: geminiRes.id,
+              isUser: false,
+              text: geminiRes.text.trim(),
+              timestamp: geminiRes.timestamp,
+            );
+          }
         }
       } catch (e) {
         // Fallback về engine nội bộ khi Gemini gặp sự cố mạng
@@ -308,6 +321,44 @@ class FamilyAiAssistantService {
         id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
         isUser: false,
         text: buffer.toString().trim(),
+        timestamp: DateTime.now(),
+      );
+    }
+
+    // 1.8. CASE: HỎI VỀ VAI TRÒ & QUYỀN HẠN CỦA BẢN THÂN TRONG GIA ĐÌNH
+    // Phải xử lý trước khi tạo việc để các câu hỏi "tôi đóng vai trò gì, có thể giao việc cho ai không" không bị parse thành task!
+    if (_isRoleOrIdentityIntent(lower)) {
+      final myMember = familyMembers.where((m) => m.id == currentUserId).firstOrNull;
+      String roleDisplay;
+      if (myMember?.isParent == true) {
+        final nameLower = currentUserName.toLowerCase();
+        if (nameLower.contains('mẹ') || nameLower.contains('má') || nameLower.contains('mom')) {
+          roleDisplay = 'Mẹ (Phụ huynh)';
+        } else if (nameLower.contains('bố') || nameLower.contains('ba') || nameLower.contains('cha') || nameLower.contains('dad')) {
+          roleDisplay = 'Bố (Phụ huynh)';
+        } else {
+          roleDisplay = 'Phụ huynh (Quản trị gia đình)';
+        }
+      } else if (myMember?.isChild == true) {
+        roleDisplay = 'Con cái (Thành viên tích cực)';
+      } else if (myMember?.isGrandparent == true) {
+        roleDisplay = 'Ông Bà (Trưởng bối)';
+      } else {
+        roleDisplay = 'Thành viên gia đình';
+      }
+      final desc = myMember?.isParent == true
+          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, nạp quỹ hũ và phát lệnh Nổ Hũ 30 giây cho cả nhà nhé! 👑'
+          : (myMember?.isGrandparent == true
+              ? 'Bạn là **Ông Bà (Trưởng bối)**: Có quyền giao việc, gắn kết các thế hệ và cùng theo dõi tiến độ gia đình ấm cúng! 🏡'
+              : 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận các công việc chung trên bảng việc, hoàn thành nhiệm vụ để tích lũy sao thưởng và tham gia nổ hũ nhận thưởng về ví cá nhân nhé! 🌟');
+
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ $salutation! Trong gia đình mình, vai trò của bạn là **$roleDisplay**.\n\n$desc',
+          'Hello $salutation! In your family, your role is **$roleDisplay**.\n\n$desc',
+        ),
         timestamp: DateTime.now(),
       );
     }
@@ -721,42 +772,7 @@ class FamilyAiAssistantService {
       }
     }
 
-    // 8. CASE 7: HỎI VỀ VAI TRÒ & QUYỀN HẠN CỦA BẢN THÂN TRONG GIA ĐÌNH
-    if (_isRoleOrIdentityIntent(lower)) {
-      final myMember = familyMembers.where((m) => m.id == currentUserId).firstOrNull;
-      String roleDisplay;
-      if (myMember?.isParent == true) {
-        final nameLower = currentUserName.toLowerCase();
-        if (nameLower.contains('mẹ') || nameLower.contains('má') || nameLower.contains('mom')) {
-          roleDisplay = 'Mẹ (Phụ huynh)';
-        } else if (nameLower.contains('bố') || nameLower.contains('ba') || nameLower.contains('cha') || nameLower.contains('dad')) {
-          roleDisplay = 'Bố (Phụ huynh)';
-        } else {
-          roleDisplay = 'Phụ huynh (Quản trị gia đình)';
-        }
-      } else if (myMember?.isChild == true) {
-        roleDisplay = 'Con cái (Thành viên tích cực)';
-      } else if (myMember?.isGrandparent == true) {
-        roleDisplay = 'Ông Bà (Trưởng bối)';
-      } else {
-        roleDisplay = 'Thành viên gia đình';
-      }
-      final desc = myMember?.isParent == true
-          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, nạp quỹ hũ và phát lệnh Nổ Hũ 30 giây cho cả nhà nhé! 👑'
-          : (myMember?.isGrandparent == true
-              ? 'Bạn là **Ông Bà (Trưởng bối)**: Có quyền giao việc, gắn kết các thế hệ và cùng theo dõi tiến độ gia đình ấm cúng! 🏡'
-              : 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận các công việc chung trên bảng việc, hoàn thành nhiệm vụ để tích lũy sao thưởng và tham gia nổ hũ nhận thưởng về ví cá nhân nhé! 🌟');
 
-      return AiChatMessage(
-        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-        isUser: false,
-        text: AppLanguage.text(
-          'Dạ $salutation! Trong gia đình mình, vai trò của bạn là **$roleDisplay**.\n\n$desc',
-          'Hello $salutation! In your family, your role is **$roleDisplay**.\n\n$desc',
-        ),
-        timestamp: DateTime.now(),
-      );
-    }
 
     // 9. CASE 8: HỎI VỀ DANH SÁCH THÀNH VIÊN GIA ĐÌNH
     if (_isFamilyMembersIntent(lower)) {
@@ -1165,12 +1181,33 @@ class FamilyAiAssistantService {
         lower.contains('tôi là ai') ||
         lower.contains('mình là ai') ||
         lower.contains('quyền của tôi') ||
+        lower.contains('quyền hạn') ||
+        lower.contains('đóng vai trò') ||
+        lower.contains('giao việc cho ai không') ||
+        lower.contains('giao việc cho ai được') ||
+        lower.contains('giao việc cho ai') ||
         lower.contains('tôi làm gì trong gia đình') ||
         lower.contains('vị trí của tôi') ||
         (lower.contains('vai') && lower.contains('trò'));
   }
 
   bool _isFamilyMembersIntent(String lower) {
+    // Nếu câu chứa ý định tạo việc / làm việc nhà thì tuyệt đối không chặn vào xem danh sách thành viên
+    if (lower.contains('tạo') ||
+        lower.contains('giao') ||
+        lower.contains('nhắc') ||
+        lower.contains('lên lịch') ||
+        lower.contains('đặt lịch') ||
+        lower.contains('nhiệm vụ') ||
+        lower.contains('quét') ||
+        lower.contains('dọn') ||
+        lower.contains('nấu') ||
+        lower.contains('rửa') ||
+        lower.contains('giặt') ||
+        lower.contains('đi chợ') ||
+        lower.contains('task')) {
+      return false;
+    }
     return lower.contains('thành viên gia đình') ||
         lower.contains('thành viên trong nhà') ||
         lower.contains('trong nhà có những ai') ||
@@ -1225,49 +1262,48 @@ class FamilyAiAssistantService {
       return const [];
     }
 
-    // Tránh tuyệt đối bắt nhầm câu hỏi, thắc mắc quyền hạn, hỏi vai trò, điểm danh hoặc tự vấn
-    if (lower.contains('?') ||
-        lower.contains('vai trò') ||
-        lower.contains('vai tro') ||
-        lower.contains('chức vụ') ||
-        lower.contains('tôi là ai') ||
-        lower.contains('quyền của tôi') ||
-        lower.contains('có thể giao việc') ||
-        lower.contains('giao việc cho ai không') ||
-        lower.contains('ai không') ||
-        lower.contains('không?') ||
-        lower.contains('đóng vai trò gì') ||
-        lower.contains('điểm danh') ||
-        lower.contains('diem danh') ||
-        lower.contains('check in') ||
-        lower.contains('check-in') ||
-        lower.contains('checkin') ||
-        lower.startsWith('tôi là') ||
-        lower.startsWith('tôi có thể')) {
+    // Chuẩn hóa lỗi chính tả phổ biến trước (VD: "lcus" -> "lúc")
+    final normalizedLower = _normalizeVietnameseTypos(lower);
+    var working = _normalizeVietnameseTypos(rawQuery).trim();
+
+    // Tránh tuyệt đối bắt nhầm câu hỏi vai trò, quyền hạn, điểm danh mà không chứa việc nhà cụ thể
+    final isRoleOrCheckInQuery = normalizedLower.contains('vai trò') ||
+        normalizedLower.contains('chức vụ') ||
+        normalizedLower.contains('tôi là ai') ||
+        normalizedLower.contains('quyền của tôi') ||
+        normalizedLower.contains('đóng vai trò gì') ||
+        normalizedLower.contains('giao việc cho ai không') ||
+        normalizedLower.contains('giao việc cho ai được') ||
+        normalizedLower.contains('điểm danh') ||
+        normalizedLower.contains('diem danh') ||
+        normalizedLower.contains('check in') ||
+        normalizedLower.contains('check-in') ||
+        normalizedLower.contains('checkin') ||
+        normalizedLower.startsWith('tôi là');
+
+    if (isRoleOrCheckInQuery) {
       return const [];
     }
 
-    // Kiểm tra xem câu có chứa ý định tạo việc hoặc chứa tên các việc nhà phổ biến không
-    final hasTaskKeyword = RegExp(
-      r'\b(soạn\s+(các|task|công\s+việc|lời\s+nhắc|việc)|tạo|thêm|nhắc|giao|lên\s+lịch|đặt\s+lịch|task|tasks|công\s+việc|lời\s+nhắc|việc\s+cần\s+làm|remind|create|add|todo)\b',
+    // Kiểm tra xem câu có chứa ý định tạo việc hoặc tên việc nhà cụ thể không
+    final hasTaskAction = RegExp(
+      r'\b(soạn|tạo|thêm|nhắc|giao|lên\s+lịch|đặt\s+lịch|create|add|remind|todo)\b',
       caseSensitive: false,
-    ).hasMatch(lower);
+    ).hasMatch(normalizedLower);
 
     final hasCommonChore = RegExp(
-      r'(dọn\s+nhà|dọn\s+dẹp|dọn\s+phòng|lau\s+nhà|quét\s+nhà|nấu\s+cơm|nấu\s+ăn|rửa\s+chén|rữa\s+chén|rửa\s+bát|rữa\s+bát|giặt\s+đồ|giặt\s+quần\s+áo|phơi\s+đồ|gấp\s+quần\s+áo|đổ\s+rác|tưới\s+cây|đi\s+chợ|đi\s+siêu\s+thị|mua\s+đồ|học\s+bài|uống\s+thuốc|tập\s+thể\s+dục|đón\s+con|cho\s+cá\s+ăn|cho\s+chó\s+ăn|cho\s+mèo\s+ăn|cọ\s+toilet|lau\s+bàn|lau\s+bếp)',
+      r'(quét\s+nhà|lau\s+nhà|dọn\s+nhà|dọn\s+dẹp|dọn\s+phòng|nấu\s+cơm|nấu\s+ăn|rửa\s+chén|rửa\s+bát|giặt\s+đồ|giặt\s+quần\s+áo|phơi\s+đồ|gấp\s+quần\s+áo|đổ\s+rác|tưới\s+cây|đi\s+chợ|đi\s+siêu\s+thị|mua\s+đồ|học\s+bài|uống\s+thuốc|tập\s+thể\s+dục|đón\s+con|cho\s+cá\s+ăn|cho\s+chó\s+ăn|cho\s+mèo\s+ăn|cọ\s+toilet|lau\s+bàn|lau\s+bếp)',
       caseSensitive: false,
-    ).hasMatch(lower);
+    ).hasMatch(normalizedLower);
 
-    if (!hasTaskKeyword && !hasCommonChore) {
+    if (!hasTaskAction && !hasCommonChore) {
       return const [];
     }
-
-    var working = rawQuery.trim();
 
     // 1. Loại bỏ phần thời gian ở cuối hoặc giữa câu (VD: "lúc 18:00", "vào 7h sáng", "hôm nay", "ngày mai")
     working = working.replaceAll(
       RegExp(
-        r'\s+(vào\s+lúc|vào|lúc|at)\s+\d{1,2}(:\d{2}|h\d{0,2}|\s*giờ(\s*\d{1,2}\s*phút)?)(\s*(sáng|trưa|chiều|tối|am|pm))?',
+        r'\s+(vào\s+lúc|vào|lúc|lcus|lcú|luac|at)\s+\d{1,2}(:\d{2}|h\d{0,2}|\s*giờ(\s*\d{1,2}\s*phút)?)(\s*(sáng|trưa|chiều|tối|am|pm))?',
         caseSensitive: false,
       ),
       '',
@@ -1280,27 +1316,26 @@ class FamilyAiAssistantService {
       '',
     );
 
-    // 2. Loại bỏ tiền tố câu lệnh (VD: "soạn các task", "tạo lời nhắc", "nhắc tôi", "giao việc", v.v.)
+    // 2. Loại bỏ tiền tố câu lệnh (VD: "có thể tạo", "tôi muốn tạo nhiệm vụ", "soạn các task", "nhắc tôi", v.v.)
     final prefixRegex = RegExp(
       r'^(em\s+ơi\s*,?\s*|ai\s+ơi\s*,?\s*|bạn\s+ơi\s*,?\s*)?'
-      r'(hãy\s+|giúp\s+tôi\s+|giúp\s+mình\s+|giúp\s+em\s+|vui\s+lòng\s+)?'
+      r'(có\s+thể|tôi\s+muốn|mình\s+muốn|muốn|hãy|giúp\s+tôi|giúp\s+mình|giúp\s+em|vui\s+lòng|nhờ\s+bạn)?\s*'
       r'(soạn|tạo|thêm|lên\s+lịch|đặt\s+lịch|nhắc\s+nhở|nhắc|giao|create|add|remind(\s+me)?(\s+to)?)\s*'
       r'(giúp\s+tôi\s+|giúp\s+mình\s+|cho\s+tôi\s+|cho\s+mình\s+|tôi\s+|mình\s+|em\s+|bố\s+|mẹ\s+|ba\s+|má\s+|con\s+)?'
-      r'(các\s+|những\s+|một\s+số\s+|mấy\s+|1\s+|một\s+)?'
-      r'(task|tasks|công\s+việc|lời\s+nhắc|việc\s+nhà|việc)?\s*'
+      r'(một\s+|1\s+|các\s+|những\s+|một\s+số\s+|mấy\s+)?'
+      r'(task|tasks|công\s+việc|nhiệm\s+vụ|lời\s+nhắc|việc\s+nhà|việc)?\s*'
       r'(như\s+sau|sau\s+đây|là|gồm)?\s*:?\s*',
       caseSensitive: false,
     );
     working = working.replaceFirst(prefixRegex, '').trim();
 
-    // Loại bỏ hậu tố lịch sự cuối câu (VD: "nhé", "nha", "ạ", "giúp mình")
-    working = working.replaceAll(
-      RegExp(
-        r'\s+(nhé|nha|nhá|ạ|giúp\s+tôi|giúp\s+mình|giúp\s+em|cho\s+tôi|cho\s+mình|cho\s+cả\s+nhà)[.!?]*$',
-        caseSensitive: false,
-      ),
-      '',
+    // Loại bỏ hậu tố người nhận và câu hỏi lịch sự cuối câu (VD: "cho thành viên gia đình tôi được không ?", "nhé", "ạ")
+    final suffixRegex = RegExp(
+      r'\s+(cho\s+thành\s+viên\s+gia\s+đình(\s+tôi)?|cho\s+thành\s+viên\s+trong\s+nhà|cho\s+cả\s+nhà|cho\s+gia\s+đình|cho\s+tôi|cho\s+mình|cho\s+con)?'
+      r'\s*(được\s+không|được\s+ko|nhé|nha|nhá|ạ|giúp\s+mình|giúp\s+tôi|giúp\s+em)?[\s.!?]*$',
+      caseSensitive: false,
     );
+    working = working.replaceAll(suffixRegex, '').trim();
 
     if (working.isEmpty) return const [];
 
@@ -1316,7 +1351,7 @@ class FamilyAiAssistantService {
       // Bỏ từ "task ", "việc " nếu lặp lại ở từng vế
       part = part
           .replaceFirst(
-            RegExp(r'^(các\s+)?(task|tasks|công\s+việc|việc|lời\s+nhắc)\s*:?\s*',
+            RegExp(r'^(các\s+)?(task|tasks|công\s+việc|nhiệm\s+vụ|việc|lời\s+nhắc)\s*:?\s*',
                 caseSensitive: false),
             '',
           )
@@ -1336,9 +1371,14 @@ class FamilyAiAssistantService {
   String _normalizeVietnameseTypos(String input) {
     var out = input;
     final replacements = <RegExp, String>{
+      RegExp(r'\blcus\b', caseSensitive: false): 'lúc',
+      RegExp(r'\blcú\b', caseSensitive: false): 'lúc',
+      RegExp(r'\bluac\b', caseSensitive: false): 'lúc',
       RegExp(r'rữa\s+chén', caseSensitive: false): 'rửa chén',
       RegExp(r'rữa\s+bát', caseSensitive: false): 'rửa bát',
-      RegExp(r'nấu\s+com', caseSensitive: false): 'nấu cơm',
+      RegExp(r'nấu\s+com\b', caseSensitive: false): 'nấu cơm',
+      RegExp(r'nhiệm\s+vu\b', caseSensitive: false): 'nhiệm vụ',
+      RegExp(r'công\s+viec\b', caseSensitive: false): 'công việc',
       RegExp(r'dọn\s+nha\b', caseSensitive: false): 'dọn nhà',
       RegExp(r'lau\s+nha\b', caseSensitive: false): 'lau nhà',
       RegExp(r'quét\s+nha\b', caseSensitive: false): 'quét nhà',
@@ -1357,11 +1397,12 @@ class FamilyAiAssistantService {
   }
 
   String? _extractCustomTime(String lower) {
+    final normalized = _normalizeVietnameseTypos(lower);
     // Khớp định dạng HH:mm hoặc HHh(mm) (VD: 18:00, 18h30, 7h sáng, 8h tối)
     final match = RegExp(
       r'(\d{1,2})(?::(\d{2})|h(\d{0,2})|\s*giờ(?:\s*(\d{1,2}))?)(?:\s*(sáng|trưa|chiều|tối|am|pm))?',
       caseSensitive: false,
-    ).firstMatch(lower);
+    ).firstMatch(normalized);
 
     if (match != null) {
       int hour = int.tryParse(match.group(1) ?? '') ?? 9;
@@ -1378,19 +1419,20 @@ class FamilyAiAssistantService {
       return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
     }
 
-    if (lower.contains('sáng mai') || lower.contains('buổi sáng')) return '08:00';
-    if (lower.contains('buổi trưa') || lower.contains('trưa nay')) return '12:00';
-    if (lower.contains('buổi chiều') || lower.contains('chiều nay')) return '17:00';
-    if (lower.contains('buổi tối') || lower.contains('tối nay')) return '19:30';
+    if (normalized.contains('sáng mai') || normalized.contains('buổi sáng')) return '08:00';
+    if (normalized.contains('buổi trưa') || normalized.contains('trưa nay')) return '12:00';
+    if (normalized.contains('buổi chiều') || normalized.contains('chiều nay')) return '17:00';
+    if (normalized.contains('buổi tối') || normalized.contains('tối nay')) return '19:30';
     return null;
   }
 
   String? _extractCustomDate(String lower, DateTime now) {
-    if (lower.contains('ngày mai') ||
-        lower.contains('sáng mai') ||
-        lower.contains('chiều mai') ||
-        lower.contains('tối mai') ||
-        lower.contains('tomorrow')) {
+    final normalized = _normalizeVietnameseTypos(lower);
+    if (normalized.contains('ngày mai') ||
+        normalized.contains('sáng mai') ||
+        normalized.contains('chiều mai') ||
+        normalized.contains('tối mai') ||
+        normalized.contains('tomorrow')) {
       return _formatDate(now.add(const Duration(days: 1)));
     }
     return null;
@@ -1404,7 +1446,11 @@ class FamilyAiAssistantService {
   }) {
     if (lower.contains('việc chung') ||
         lower.contains('cả nhà') ||
-        lower.contains('ai làm cũng được')) {
+        lower.contains('ai làm cũng được') ||
+        lower.contains('thành viên gia đình') ||
+        lower.contains('thành viên trong nhà') ||
+        lower.contains('cho thành viên') ||
+        lower.contains('cho gia đình')) {
       return const FamilyMember(
         id: 'OPEN',
         name: 'Cả nhà (Việc chung)',
