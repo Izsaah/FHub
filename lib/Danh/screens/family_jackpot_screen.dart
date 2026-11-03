@@ -10,6 +10,7 @@ import '../models/wallet_transaction_model.dart';
 import '../services/notification_service.dart';
 import '../services/family_jackpot_service.dart';
 import '../services/payment_config.dart';
+import '../services/bank_directory.dart';
 import '../services/payment_service.dart';
 import '../services/sepay_service.dart';
 import '../theme/danh_colors.dart';
@@ -1667,6 +1668,31 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
     String? sheetError;
     String? sheetSuccess;
+    bool isLookingUpName = false;
+    Timer? lookupDebounce;
+
+    Future<void> performAutoLookup(String acc, StateSetter setSheetState) async {
+      final clean = acc.trim().replaceAll(RegExp(r'[^0-9]'), '');
+      if (clean.length < 6) return;
+      setSheetState(() => isLookingUpName = true);
+      try {
+        final foundName = await BankLookupService.lookupAccountName(
+          bankCode: selectedBankCode,
+          accountNumber: clean,
+          fallbackName: _jackpotService.currentUserName,
+        );
+        if (foundName != null && foundName.isNotEmpty) {
+          holderController.text = foundName;
+          sheetSuccess = '✅ Đã tìm thấy chủ tài khoản: $foundName';
+          sheetError = null;
+        }
+      } catch (_) {
+      } finally {
+        if (context.mounted) {
+          setSheetState(() => isLookingUpName = false);
+        }
+      }
+    }
 
     showModalBottomSheet(
       context: context,
@@ -1781,34 +1807,33 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      initialValue: selectedBankCode,
+                      initialValue: BankDirectory.supportedBanks.any((b) => b.code == selectedBankCode)
+                          ? selectedBankCode
+                          : 'MB',
                       isExpanded: true,
                       decoration: InputDecoration(
                         labelText: 'Ngân hàng nhận tiền',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       ),
-                      items: const [
-                        DropdownMenuItem(value: 'MB', child: Text('MBBank - Ngân hàng Quân Đội')),
-                        DropdownMenuItem(value: 'VCB', child: Text('Vietcombank - Ngoại Thương')),
-                        DropdownMenuItem(value: 'TCB', child: Text('Techcombank - Kỹ Thương')),
-                        DropdownMenuItem(value: 'ACB', child: Text('ACB - Á Châu')),
-                        DropdownMenuItem(value: 'ICB', child: Text('VietinBank - Công Thương')),
-                        DropdownMenuItem(value: 'BIDV', child: Text('BIDV - Đầu tư & Phát triển')),
-                        DropdownMenuItem(value: 'VPB', child: Text('VPBank - VN Thịnh Vượng')),
-                      ],
+                      items: BankDirectory.supportedBanks.map((b) {
+                        return DropdownMenuItem(
+                          value: b.code,
+                          child: Text(b.name, overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
                       onChanged: (val) {
                         if (val != null) {
                           setSheetState(() {
                             selectedBankCode = val;
-                            if (val == 'MB') selectedBankShortName = 'MBBank';
-                            if (val == 'VCB') selectedBankShortName = 'Vietcombank';
-                            if (val == 'TCB') selectedBankShortName = 'Techcombank';
-                            if (val == 'ACB') selectedBankShortName = 'ACB';
-                            if (val == 'ICB') selectedBankShortName = 'VietinBank';
-                            if (val == 'BIDV') selectedBankShortName = 'BIDV';
-                            if (val == 'VPB') selectedBankShortName = 'VPBank';
+                            final bItem = BankDirectory.findByCode(val);
+                            if (bItem != null) {
+                              selectedBankShortName = bItem.shortName;
+                            }
                           });
+                          if (accNumController.text.trim().isNotEmpty) {
+                            performAutoLookup(accNumController.text, setSheetState);
+                          }
                         }
                       },
                     ),
@@ -1816,11 +1841,33 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     TextField(
                       controller: accNumController,
                       keyboardType: TextInputType.number,
+                      onChanged: (val) {
+                        lookupDebounce?.cancel();
+                        if (val.trim().length >= 6) {
+                          lookupDebounce = Timer(const Duration(milliseconds: 700), () {
+                            performAutoLookup(val, setSheetState);
+                          });
+                        }
+                      },
                       decoration: InputDecoration(
                         labelText: 'Số tài khoản ngân hàng',
                         hintText: 'Nhập số tài khoản của bạn',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        suffixIcon: isLookingUpName
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: DanhColors.brand800),
+                                ),
+                              )
+                            : IconButton(
+                                icon: const Icon(Icons.person_search_rounded, color: DanhColors.brand800),
+                                tooltip: 'Tra cứu tên chủ tài khoản',
+                                onPressed: () => performAutoLookup(accNumController.text, setSheetState),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 10),
