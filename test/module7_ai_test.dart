@@ -59,11 +59,12 @@ void main() {
 
       final funcs = tools.first.functionDeclarations;
       expect(funcs, isNotNull);
-      expect(funcs!.length, 3);
+      expect(funcs!.length, 4);
       final names = funcs.map((f) => f.name).toList();
       expect(names, contains('createFamilyTask'));
       expect(names, contains('saveFamilyPreference'));
       expect(names, contains('performFamilyCheckIn'));
+      expect(names, contains('deleteFamilyTask'));
 
       final taskTool = funcs.firstWhere((f) => f.name == 'createFamilyTask');
       expect(taskTool.parameters?.requiredProperties, contains('title'));

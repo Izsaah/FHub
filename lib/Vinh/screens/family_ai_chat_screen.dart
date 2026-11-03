@@ -87,6 +87,11 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     if (widget.familyId.trim().isEmpty) {
       _hasFamilyAccess = false;
     } else {
+      unawaited(GeminiChatService.instance.initChat(
+        familyId: widget.familyId,
+        userId: widget.currentUserId,
+        userName: widget.currentUserName,
+      ));
       _watchFamilyAccess();
       _loadSessionsAndHistory();
     }
@@ -1630,13 +1635,10 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          _buildMarkdownBody(
                             msg.text,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              height: 1.4,
-                              color: Color(0xFF151D1B),
-                            ),
+                            color: const Color(0xFF151D1B),
+                            fontSize: 14.0,
                           ),
                           const SizedBox(height: 8),
                           // Nút Nghe đọc (Text-to-Speech) ngay dưới mỗi phản hồi của AI
@@ -1972,5 +1974,268 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
         ],
       ),
     );
+  }
+
+  /// Trình kết xuất Markdown siêu tốc và tinh gọn cho bong bóng tin nhắn AI & Người dùng
+  Widget _buildMarkdownBody(
+    String rawText, {
+    required Color color,
+    double fontSize = 14.0,
+    bool isUser = false,
+  }) {
+    if (rawText.isEmpty) return const SizedBox.shrink();
+
+    const brandPrimary = Color(0xFF0D7A68);
+    final lines = rawText.split('\n');
+    final widgets = <Widget>[];
+    final bulletColor = isUser ? Colors.white : brandPrimary;
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmed = line.trim();
+
+      if (trimmed.isEmpty) {
+        if (i > 0 && i < lines.length - 1) {
+          widgets.add(const SizedBox(height: 6));
+        }
+        continue;
+      }
+
+      // 1. Tiêu đề H1, H2, H3
+      if (trimmed.startsWith('# ')) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 2),
+            child: Text(
+              trimmed.substring(2).trim(),
+              style: TextStyle(
+                fontSize: fontSize + 2.5,
+                fontWeight: FontWeight.bold,
+                color: color,
+                height: 1.35,
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
+      if (trimmed.startsWith('## ')) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 3, bottom: 2),
+            child: Text(
+              trimmed.substring(3).trim(),
+              style: TextStyle(
+                fontSize: fontSize + 1.5,
+                fontWeight: FontWeight.bold,
+                color: color,
+                height: 1.35,
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
+      if (trimmed.startsWith('### ')) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 1),
+            child: Text(
+              trimmed.substring(4).trim(),
+              style: TextStyle(
+                fontSize: fontSize + 0.5,
+                fontWeight: FontWeight.w700,
+                color: color,
+                height: 1.35,
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
+
+      // 2. Gạch đầu dòng danh sách: •, -, *
+      final isBullet = trimmed.startsWith('• ') ||
+          trimmed.startsWith('- ') ||
+          trimmed.startsWith('* ');
+      if (isBullet) {
+        final content = trimmed.substring(2).trim();
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 6, top: 2),
+                  child: Text(
+                    '•',
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: FontWeight.bold,
+                      color: bulletColor,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: _parseInlineMarkdown(content, color, fontSize, isUser: isUser),
+                    ),
+                    style: TextStyle(fontSize: fontSize, height: 1.42),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        continue;
+      }
+
+      // 3. Danh sách có số thứ tự: 1. , 2. ,...
+      final numberMatch = RegExp(r'^(\d+)\.\s+(.*)$').firstMatch(trimmed);
+      if (numberMatch != null) {
+        final numStr = numberMatch.group(1)!;
+        final content = numberMatch.group(2)!;
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 6, top: 1),
+                  child: Text(
+                    '$numStr.',
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: FontWeight.bold,
+                      color: bulletColor,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: _parseInlineMarkdown(content, color, fontSize, isUser: isUser),
+                    ),
+                    style: TextStyle(fontSize: fontSize, height: 1.42),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        continue;
+      }
+
+      // 4. Đoạn văn chuẩn
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text.rich(
+            TextSpan(
+              children: _parseInlineMarkdown(trimmed, color, fontSize, isUser: isUser),
+            ),
+            style: TextStyle(fontSize: fontSize, height: 1.42),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
+  }
+
+  List<InlineSpan> _parseInlineMarkdown(
+    String text,
+    Color defaultColor,
+    double fontSize, {
+    bool isUser = false,
+  }) {
+    final spans = <InlineSpan>[];
+    final regex = RegExp(r'(\*\*.*?\*\*|\*.*?\*|`.*?`)');
+    int lastIndex = 0;
+
+    for (final match in regex.allMatches(text)) {
+      if (match.start > lastIndex) {
+        spans.add(
+          TextSpan(
+            text: text.substring(lastIndex, match.start),
+            style: TextStyle(color: defaultColor, fontSize: fontSize),
+          ),
+        );
+      }
+
+      final matchedText = match.group(0)!;
+      if (matchedText.startsWith('**') && matchedText.endsWith('**') && matchedText.length >= 4) {
+        spans.add(
+          TextSpan(
+            text: matchedText.substring(2, matchedText.length - 2),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: defaultColor,
+              fontSize: fontSize,
+            ),
+          ),
+        );
+      } else if (matchedText.startsWith('`') && matchedText.endsWith('`') && matchedText.length >= 2) {
+        spans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                color: isUser ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFE8F1EE),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                matchedText.substring(1, matchedText.length - 1),
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: fontSize * 0.9,
+                  fontWeight: FontWeight.w600,
+                  color: isUser ? Colors.white : const Color(0xFF0F5132),
+                ),
+              ),
+            ),
+          ),
+        );
+      } else if (matchedText.startsWith('*') && matchedText.endsWith('*') && matchedText.length >= 2) {
+        spans.add(
+          TextSpan(
+            text: matchedText.substring(1, matchedText.length - 1),
+            style: TextStyle(
+              fontStyle: FontStyle.italic,
+              color: defaultColor,
+              fontSize: fontSize,
+            ),
+          ),
+        );
+      } else {
+        spans.add(
+          TextSpan(
+            text: matchedText,
+            style: TextStyle(color: defaultColor, fontSize: fontSize),
+          ),
+        );
+      }
+
+      lastIndex = match.end;
+    }
+
+    if (lastIndex < text.length) {
+      spans.add(
+        TextSpan(
+          text: text.substring(lastIndex),
+          style: TextStyle(color: defaultColor, fontSize: fontSize),
+        ),
+      );
+    }
+
+    return spans;
   }
 }

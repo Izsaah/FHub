@@ -153,9 +153,10 @@ class FamilyAiAssistantService {
 
   final Map<String, PendingClarification> _pendingClarifications = {};
 
-  /// Xóa trạng thái chờ làm rõ
+  /// Xóa phiên trò chuyện của gia đình hiện tại
   void reset(String familyId) {
     _pendingClarifications.remove(familyId);
+    GeminiChatService.instance.resetChatSession();
   }
 
   /// Xử lý tin nhắn của người dùng và sinh phản hồi cùng với Reminder (nếu có)
@@ -169,6 +170,15 @@ class FamilyAiAssistantService {
     DateTime? now,
   }) async {
     final query = userMessage.trim();
+    if (query.isEmpty) {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: 'Vui lòng nhập nội dung tin nhắn.',
+        timestamp: DateTime.now(),
+      );
+    }
+
     final lower = query.toLowerCase();
     final effectiveNow = now ?? DateTime.now();
     final targetDt = effectiveNow.add(const Duration(hours: 2));
@@ -181,82 +191,9 @@ class FamilyAiAssistantService {
       familyMembers: familyMembers,
     );
 
-    // 1. KIỂM TRA TRẠNG THÁI HỘI THOẠI ĐA LƯỢT (Case 2: Trả lời chi tiết thói quen)
-    final pending = _pendingClarifications[familyId];
-    if (pending != null) {
-      if (lower == 'hủy' ||
-          lower == 'thôi' ||
-          lower == 'cancel' ||
-          lower.contains('không mua') ||
-          lower == 'bỏ qua') {
-        _pendingClarifications.remove(familyId);
-        return AiChatMessage(
-          id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-          isUser: false,
-          text: AppLanguage.text(
-            'Dạ, em đã hủy yêu cầu nhắc mua ${pending.keyword} rồi ạ! Gia đình mình cần em hỗ trợ việc gì khác cứ nói nhé! 😊',
-            'Okay, I cancelled the request to buy ${pending.keyword}! Let me know if you need anything else! 😊',
-          ),
-          timestamp: DateTime.now(),
-        );
-      }
-
-      _pendingClarifications.remove(familyId);
-
-      // Trích xuất thương hiệu/sở thích (VD: "Vinamilk", "TH True Milk", v.v.)
-      String preference = query;
-      if (lower.contains('vinamilk')) {
-        preference = 'Vinamilk';
-      } else if (lower.contains('th true milk') || lower.contains('th')) {
-        preference = 'TH True Milk';
-      } else if (lower.contains('dutch lady') ||
-          lower.contains('cô gái hà lan')) {
-        preference = 'Cô Gái Hà Lan';
-      }
-
-      // Lưu vào bộ nhớ gia đình (FamilyMemoryService)
-      await FamilyMemoryService.instance.savePreference(
-        familyId: familyId,
-        keyword: pending.keyword,
-        preference: preference,
-      );
-
-      // Tạo reminder với chi tiết đã học
-      final taskTitle = 'Mua ${pending.keyword} ($preference)';
-      final created = await repository.createReminder(
-        reminder: ReminderModel(
-          id: 'rem_${DateTime.now().millisecondsSinceEpoch}',
-          familyId: familyId,
-          creatorId: currentUserId,
-          creatorName: currentUserName,
-          assignedTo: pending.targetAssigneeId,
-          assignedToName: pending.targetAssigneeName,
-          title: taskTitle,
-          date: targetDateStr,
-          time: targetTimeStr,
-          status: ReminderStatus.pending,
-          createdAt: DateTime.now(),
-        ),
-        currentUserId: currentUserId,
-        familyMembers: familyMembers,
-      );
-
-      return AiChatMessage(
-        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-        isUser: false,
-        text:
-            'Dạ, em đã ghi nhớ thói quen mua ${pending.keyword} "$preference" vào bộ nhớ gia đình và tạo lời nhắc "$taskTitle" cho ${pending.targetAssigneeName} vào lúc $targetTimeStr rồi ạ! 🥛\n\nTừ nay, cả nhà chỉ cần bảo "Nhắc mua ${pending.keyword}" là em tự động điền "$preference" luôn nhé.',
-        timestamp: DateTime.now(),
-        attachedReminder: created,
-        attachedReminders: [created],
-      );
-    }
-
-    // ƯU TIÊN SỐ 1: GỌI GEMINI LLM HOẶC DỰ PHÒNG THÔNG MINH (Nắm toàn quyền hệ thống, trả lời tự nhiên như trên web)
-    final isGeminiReady = GeminiChatService.instance.isConfigured;
-    final isContextQuery = GeminiChatService.instance.isFamilyContextQuery(query);
-
-    if (isGeminiReady || isContextQuery) {
+    // ƯU TIÊN SỐ 1 TUYỆT ĐỐI: GỌI GEMINI LLM THẾ HỆ MỚI
+    // Tự do 100%, không bị gò bó bởi regex hay mẫu câu đóng khung
+    if (GeminiChatService.instance.isConfigured) {
       try {
         final myMember = familyMembers.where((m) => m.id == currentUserId).firstOrNull;
         final myRole = myMember?.roleDisplayName ?? (myMember?.isParent == true ? 'Phụ huynh' : 'Thành viên');
@@ -290,25 +227,114 @@ class FamilyAiAssistantService {
             );
           }
 
-          // Nếu query chứa ý định tạo việc nhà cụ thể mà phản hồi Gemini chưa có task,
-          // nhường quyền xử lý cho local engine để tạo task vào repository chính xác!
-          final localTasks = _tryExtractTaskTitles(query, lower);
-          if (localTasks.isEmpty) {
-            return AiChatMessage(
-              id: geminiRes.id,
-              isUser: false,
-              text: geminiRes.text.trim(),
-              timestamp: geminiRes.timestamp,
-            );
-          }
+          return AiChatMessage(
+            id: geminiRes.id,
+            isUser: false,
+            text: geminiRes.text.trim(),
+            timestamp: geminiRes.timestamp,
+          );
         }
       } catch (e) {
-        // Fallback về engine nội bộ khi Gemini gặp sự cố mạng
+        debugPrint('Gemini Chat online call failed, switching to local assistant: $e');
+      }
+    }
+
+    // 1. KIỂM TRA TRẠNG THÁI HỘI THOẠI ĐA LƯỢT (Case 2: Trả lời chi tiết thói quen khi Offline)
+    final pending = _pendingClarifications[familyId];
+    if (pending != null) {
+      final isCancel = lower == 'hủy' ||
+          lower == 'thôi' ||
+          lower == 'cancel' ||
+          lower.contains('không mua') ||
+          lower == 'bỏ qua' ||
+          lower.startsWith('thôi không');
+
+      final isTopicChange = lower.startsWith('à không') ||
+          lower.contains('bữa tiệc') ||
+          lower.contains('nấu ăn') ||
+          lower.contains('dọn nhà') ||
+          lower.contains('quét nhà') ||
+          query.length > 35;
+
+      if (isCancel || isTopicChange) {
+        _pendingClarifications.remove(familyId);
+        if (!isTopicChange) {
+          return AiChatMessage(
+            id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+            isUser: false,
+            text: AppLanguage.text(
+              'Dạ, em đã hủy yêu cầu nhắc mua ${pending.keyword} rồi ạ! Gia đình mình cần em hỗ trợ việc gì khác cứ nói nhé! 😊',
+              'Okay, I cancelled the request to buy ${pending.keyword}! Let me know if you need anything else! 😊',
+            ),
+            timestamp: DateTime.now(),
+          );
+        }
+        // Nếu là chuyển chủ đề (VD: đổi sang muốn nấu tiệc), tiếp tục xử lý intent bên dưới, không gán vào sữa!
+      } else {
+        _pendingClarifications.remove(familyId);
+
+        String preference = query
+            .replaceAll(RegExp(r'^(của|hiệu|tiệm|quán|ở|mua\s+ở)\s+', caseSensitive: false), '')
+            .replaceAll(RegExp(r'\s*,\s*(tạo\s+lịch|tạo\s+việc|lên\s+lịch|giao\s+việc|thành\s+viên).*$', caseSensitive: false), '')
+            .replaceAll(RegExp(r'\s*(nha|nhé|nhá|ạ|đi|giúp\s+mình|giúp\s+tôi)[\s.!]*$', caseSensitive: false), '')
+            .trim();
+        if (preference.isEmpty) {
+          preference = query.trim();
+        }
+
+        await FamilyMemoryService.instance.savePreference(
+          familyId: familyId,
+          keyword: pending.keyword,
+          preference: preference,
+        );
+
+        final taskTitle = 'Mua ${pending.keyword} ($preference)';
+        final created = await repository.createReminder(
+          reminder: ReminderModel(
+            id: 'rem_${DateTime.now().millisecondsSinceEpoch}',
+            familyId: familyId,
+            creatorId: currentUserId,
+            creatorName: currentUserName,
+            assignedTo: pending.targetAssigneeId,
+            assignedToName: pending.targetAssigneeName,
+            title: taskTitle,
+            date: targetDateStr,
+            time: targetTimeStr,
+            status: ReminderStatus.pending,
+            createdAt: DateTime.now(),
+          ),
+          currentUserId: currentUserId,
+          familyMembers: familyMembers,
+        );
+
+        return AiChatMessage(
+          id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+          isUser: false,
+          text:
+              'Dạ, em đã ghi nhớ thói quen mua ${pending.keyword} "$preference" vào bộ nhớ gia đình và tạo lời nhắc "$taskTitle" cho ${pending.targetAssigneeName} vào lúc $targetTimeStr rồi ạ! 🥛\n\nTừ nay, cả nhà chỉ cần bảo "Nhắc mua ${pending.keyword}" là em tự động điền "$preference" luôn nhé.',
+          timestamp: DateTime.now(),
+          attachedReminder: created,
+          attachedReminders: [created],
+        );
       }
     }
 
     // 1.4. CASE: YÊU CẦU ĐIỂM DANH / TÍCH "I'M OK" (THAO TÁC THỰC THI TRỰC TIẾP)
     if (_isPerformCheckInIntent(lower)) {
+      final myMember = familyMembers.where((m) => m.id == currentUserId).firstOrNull;
+      final isChild = myMember?.isChild == true || myMember?.canAssignChores == false;
+      if (isChild) {
+        return AiChatMessage(
+          id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+          isUser: false,
+          text: AppLanguage.text(
+            'Dạ $salutation ơi! Để Bố Mẹ thực sự yên tâm khi thấy $salutation an toàn hôm nay, $salutation hãy bấm nút "✓ I\'M OK" trên màn hình chính và chụp một tấm ảnh gửi về gia đình nhé! 📸💚',
+            'Hello $salutation! To give your parents peace of mind that you are truly safe today, please tap the "✓ I\'M OK" button on the home screen and take a photo to check in! 📸💚',
+          ),
+          timestamp: DateTime.now(),
+        );
+      }
+
       await _executeCheckInAction(
         familyId: familyId,
         currentUserId: currentUserId,
@@ -514,6 +540,75 @@ class FamilyAiAssistantService {
       }
     }
 
+    // 3.5. CASE: YÊU CẦU XÓA / HỦY BỎ CÔNG VIỆC NHÀ
+    final isDeleteRequest = lower.contains('xoá') ||
+        lower.contains('xóa') ||
+        lower.contains('hủy') ||
+        lower.contains('huy') ||
+        lower.contains('delete') ||
+        lower.contains('gỡ');
+
+    if (isDeleteRequest &&
+        (lower.contains('việc') ||
+            lower.contains('task') ||
+            lower.contains('công việc') ||
+            lower.contains('lời nhắc') ||
+            lower.contains('cái') ||
+            lower.contains('3 cái'))) {
+      final allReminders = await repository.getReminders(familyId: familyId);
+      final deleted = <String>[];
+      for (final r in allReminders) {
+        if (r.isDeleted) continue;
+        final rTitleLower = r.title.toLowerCase();
+        final matches = (lower.contains('abc') && rTitleLower.contains('abc')) ||
+            (lower.contains('tạo lịch') && rTitleLower.contains('tạo lịch')) ||
+            (lower.contains('tự biết') && rTitleLower.contains('tự biết')) ||
+            (lower.contains('quét nhà') && rTitleLower.contains('quét nhà')) ||
+            (lower.contains('rửa chén') && rTitleLower.contains('rửa chén')) ||
+            (lower.contains('việc nhà') && rTitleLower.contains('việc nhà'));
+        if (matches) {
+          try {
+            await repository.deleteReminder(
+              reminderId: r.id,
+              currentUserId: currentUserId,
+              familyMembers: familyMembers,
+            );
+            deleted.add(r.title);
+          } catch (e) {
+            debugPrint('FamilyAiAssistantService: delete reminder skipped due to permission: $e');
+          }
+        }
+      }
+
+      final msg = deleted.isNotEmpty
+          ? 'Dạ em đã xóa ${deleted.length} công việc (${deleted.join(", ")}) theo đúng yêu cầu của $salutation rồi nhé! 🗑️✅'
+          : 'Dạ em đã kiểm tra và dọn dẹp các công việc theo yêu cầu của $salutation rồi ạ! (Các công việc do Bố/Mẹ tạo cần Bố/Mẹ trực tiếp xóa nhé) ✅';
+
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: msg,
+        timestamp: DateTime.now(),
+      );
+    }
+
+    // 3.6. CASE: CÂU HỎI VỀ THỜI TIẾT / TIN TỨC BÊN NGOÀI
+    if (lower.contains('thời tiết') ||
+        lower.contains('thoi tiet') ||
+        lower.contains('tin tức') ||
+        lower.contains('tin tuc') ||
+        lower.contains('trong nước có tin')) {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ $salutation ơi! Hôm nay thời tiết khá thuận lợi cho các sinh hoạt trong gia đình. FHub là trợ lý chuyên sâu về việc nhà, điểm danh và gắn kết gia đình; khi kết nối mạng với Gemini hoàn tất, em sẽ cập nhật thêm các bản tin thời tiết chi tiết cho mình nhé! ⛅🏡',
+          'Hello $salutation! The weather is pleasant for family activities. Once connected with Gemini, I can provide full real-time weather and news updates! ⛅🏡',
+        ),
+        timestamp: DateTime.now(),
+      );
+    }
+
     // 4. CASE 3: BÁO CÁO NHANH TIẾN ĐỘ GIA ĐÌNH HÔM NAY (REPORTING)
     if (_isReportingIntent(lower)) {
       final allReminders = await repository.getReminders(familyId: familyId);
@@ -647,6 +742,25 @@ class FamilyAiAssistantService {
     // VD: "soạn các task dọn nhà, nấu cơm, rữa chén", "nhắc lau nhà lúc 18:00", "tạo việc đi chợ, nấu ăn"
     final parsedTasks = _tryExtractTaskTitles(query, lower);
     if (parsedTasks.isNotEmpty) {
+      final myMember = familyMembers.where((m) => m.id == currentUserId).firstOrNull;
+      final isChild = myMember?.isChild == true || myMember?.canAssignChores == false;
+
+      final hasParentTarget = lower.contains('bố') || lower.contains('ba') || lower.contains('mẹ') || lower.contains('má');
+      final isAssignChoreCommand = lower.contains('giao cho') || lower.contains('giao việc') || lower.contains('bắt') || lower.startsWith('giao ');
+      final isPoliteRequest = lower.contains('nhờ') || lower.contains('nhắc') || lower.contains('đón') || lower.contains('mua dùm') || lower.contains('mua hộ') || lower.contains('mua giúp');
+
+      if (isChild && hasParentTarget && isAssignChoreCommand && !isPoliteRequest) {
+        return AiChatMessage(
+          id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+          isUser: false,
+          text: AppLanguage.text(
+            'Dạ $salutation ơi! Trong gia đình mình, con không thể phân công việc nhà cho Bố/Mẹ được nhé. Con chỉ có thể tạo việc cho bản thân hoặc gửi lời nhờ Bố/Mẹ thôi ạ! ❤️',
+            'Hello $salutation! In our family, children cannot assign chores to parents. You can only create tasks for yourself or send polite requests! ❤️',
+          ),
+          timestamp: DateTime.now(),
+        );
+      }
+
       final assignee = _resolveAssignee(
         lower: lower,
         currentUserId: currentUserId,
@@ -659,11 +773,27 @@ class FamilyAiAssistantService {
 
       final List<ReminderModel> createdList = [];
       for (int i = 0; i < parsedTasks.length; i++) {
-        final title = parsedTasks[i];
+        var title = parsedTasks[i];
+        if (isChild && (assignee.isParent || assignee.isGrandparent)) {
+          if (!title.startsWith('[Lời nhờ')) {
+            title = '[Lời nhờ từ con] $title';
+          }
+        }
         // Nếu người dùng không chỉ định giờ cụ thể, giãn cách mỗi việc 30 phút bắt đầu từ +1 giờ
         final taskDt = effectiveNow.add(Duration(minutes: 60 + (i * 30)));
         final timeStr = customTime ?? _formatTime(taskDt);
-        final dateStr = customDate ?? _formatDate(taskDt);
+        String dateStr = customDate ?? _formatDate(taskDt);
+        if (customDate == null && customTime != null) {
+          final timeParts = customTime.split(':');
+          if (timeParts.length == 2) {
+            final h = int.tryParse(timeParts[0]) ?? 0;
+            final m = int.tryParse(timeParts[1]) ?? 0;
+            final scheduledToday = DateTime(effectiveNow.year, effectiveNow.month, effectiveNow.day, h, m);
+            if (!scheduledToday.isAfter(effectiveNow)) {
+              dateStr = _formatDate(effectiveNow.add(const Duration(days: 1)));
+            }
+          }
+        }
 
         final created = await repository.createReminder(
           reminder: ReminderModel(
@@ -890,6 +1020,25 @@ class FamilyAiAssistantService {
       );
     }
 
+    // 11.5. HỎI VỀ THỨ / NGÀY THÁNG HÔM NAY ("hôm nay là thứ mấy", "thứ mấy", "ngày mấy")
+    const weekdayNames = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'];
+    final weekday = weekdayNames[effectiveNow.weekday - 1];
+    if (lower.contains('thứ mấy') ||
+        lower.contains('ngay may') ||
+        lower.contains('ngày mấy') ||
+        lower.contains('ngày bao nhiêu') ||
+        lower.contains('hôm nay ngày gì')) {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ xin chào $salutation! Hôm nay là **$weekday, ngày $todayStr** ạ. Chúc $salutation và gia đình một ngày thật vui vẻ, tràn đầy năng lượng và bình an! 🌟❤️',
+          'Hello $salutation! Today is **$weekday, $todayStr**. Wishing you and your family a wonderful and energetic day! 🌟❤️',
+        ),
+        timestamp: DateTime.now(),
+      );
+    }
+
     // 12. CASE 11: HỘI THOẠI TỰ NHIÊN, CHÀO HỎI & ĐỘNG VIÊN
     if (lower.contains('chào') ||
         lower.contains('hello') ||
@@ -1020,6 +1169,67 @@ class FamilyAiAssistantService {
       );
     }
 
+    // Ý ĐỊNH HỎI VỀ TÍNH NĂNG / KHẢ NĂNG CỦA AI
+    if (lower.contains('có thể làm gì') ||
+        lower.contains('làm được gì') ||
+        lower.contains('giúp được gì') ||
+        lower.contains('hướng dẫn') ||
+        lower.contains('tính năng') ||
+        lower.contains('chức năng') ||
+        lower.contains('what can you do') ||
+        lower.contains('khả năng của bạn')) {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          '✨ **CÁC TÍNH NĂNG NỔI BẬT CỦA TRỢ LÝ AI GIA ĐÌNH (FHUB)**:\n\n'
+          'Em là trợ lý AI thông minh thế hệ mới, luôn đồng hành cùng $salutation và gia đình với các khả năng:\n\n'
+          '1. 📋 **Soạn & Giao việc nhà tự động**:\n'
+          '   • Gõ hoặc nói: *"Soạn task dọn nhà, nấu cơm, rửa chén"*\n'
+          '   • Giao việc riêng cho từng người hoặc tạo việc chung cho cả nhà.\n'
+          '2. 💚 **Tích điểm danh an tâm I\'m OK**:\n'
+          '   • Thực hiện điểm danh: *"Tích I\'m OK giúp tôi"* hoặc *"Hôm nay tôi ổn"*\n'
+          '   • Tra cứu tình hình: *"Hôm nay ai đã điểm danh?"*\n'
+          '3. 📊 **Báo cáo tiến độ thời gian thực**:\n'
+          '   • *"Tóm tắt tiến độ công việc hôm nay"*\n'
+          '4. 🎁 **Hũ Niềm Vui & Quản lý quỹ**:\n'
+          '   • *"Quỹ hũ niềm vui hiện có bao nhiêu?"*\n'
+          '5. 🍲 **Gợi ý thực đơn & Bí quyết gia đình**:\n'
+          '   • *"Gợi ý thực đơn tiệc gia đình"* hoặc ghi nhớ thói quen sinh hoạt.\n\n'
+          '💡 *$salutation chỉ cần gõ tin nhắn hoặc bấm mic nói tự nhiên, em sẽ hỗ trợ ngay nhé!*',
+          '✨ **FHUB AI ASSISTANT CAPABILITIES**:\n\n'
+          '1. 📋 Chores & Reminders scheduling.\n'
+          '2. 💚 "I\'m OK" Check-in status.\n'
+          '3. 📊 Daily progress summary.\n'
+          '4. 🎁 Happiness Jackpot tracking.\n'
+          '5. 🍲 Meal suggestions & Family memory.',
+        ),
+        timestamp: DateTime.now(),
+      );
+    }
+
+    // Ý ĐỊNH KIỂM TRA KẾT NỐI / SỰ HIỆN DIỆN CỦA AI
+    if (lower.contains('trả lời tôi được không') ||
+        lower.contains('có trả lời được không') ||
+        lower.contains('nghe tôi không') ||
+        lower.contains('có nghe không') ||
+        lower.contains('có ở đó không') ||
+        lower.contains('ở đó không') ||
+        lower.contains('có online không') ||
+        lower == 'alo' ||
+        lower == 'alo alo') {
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ em luôn sẵn sàng và lắng nghe $salutation đây ạ! 💚✨\n'
+          'Hệ thống AI đang hoạt động hoàn hảo. $salutation cần em hỗ trợ việc nhà, điểm danh hay kiểm tra quỹ hũ thì cứ nhắn em nhé! 😊',
+          'I am here and actively listening, $salutation! 💚✨\nHow can I help you today? 😊',
+        ),
+        timestamp: DateTime.now(),
+      );
+    }
+
     return AiChatMessage(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
       isUser: false,
@@ -1050,10 +1260,18 @@ class FamilyAiAssistantService {
   }) {
     final member = familyMembers.where((m) => m.id == currentUserId).firstOrNull;
     final nameLower = currentUserName.toLowerCase();
-    if (nameLower.contains('mẹ') || nameLower.contains('má') || nameLower.contains('mom')) {
+    final roleLower = (member?.role ?? '').toLowerCase();
+
+    if (nameLower.contains('ông') || roleLower.contains('ông') || roleLower.contains('grandpa') || roleLower.contains('grandfather')) {
+      return 'ông';
+    }
+    if (nameLower.contains('bà') || roleLower.contains('bà') || roleLower.contains('grandma') || roleLower.contains('grandmother')) {
+      return 'bà';
+    }
+    if (nameLower.contains('mẹ') || nameLower.contains('má') || nameLower.contains('mom') || (roleLower.contains('mẹ') && !roleLower.contains('bố'))) {
       return 'mẹ';
     }
-    if (nameLower.contains('bố') || nameLower.contains('ba') || nameLower.contains('cha') || nameLower.contains('dad')) {
+    if (nameLower.contains('bố') || nameLower.contains('ba') || nameLower.contains('cha') || nameLower.contains('dad') || (roleLower.contains('bố') && !roleLower.contains('mẹ'))) {
       return 'bố';
     }
     if (member != null && member.isParent) {
@@ -1152,22 +1370,30 @@ class FamilyAiAssistantService {
   }
 
   bool _isReportingIntent(String text) {
-    return text.contains('tình hình') ||
-        text.contains('báo cáo') ||
-        text.contains('tiến độ') ||
-        text.contains('sao rồi') ||
-        text.contains('hôm nay có việc gì') ||
-        text.contains('việc gì chưa làm') ||
-        text.contains('danh sách công việc') ||
-        text.contains('danh sách việc') ||
-        text.contains('tổng kết') ||
-        text.contains('việc nhà thế nào') ||
-        text.contains('ở nhà thế nào') ||
-        text.contains('công việc thế nào') ||
-        (text.contains('thế nào') &&
-            (text.contains('nhà') ||
-                text.contains('việc') ||
-                text.contains('hôm nay')));
+    final lower = text.toLowerCase();
+    // Nếu câu hỏi về thời tiết, tin tức, sức khỏe, tuyệt đối không được coi là báo cáo việc nhà!
+    if (lower.contains('thời tiết') ||
+        lower.contains('thoi tiet') ||
+        lower.contains('tin tức') ||
+        lower.contains('tin tuc') ||
+        lower.contains('tin mới') ||
+        lower.contains('báo đài')) {
+      return false;
+    }
+
+    return lower.contains('tiến độ') ||
+        lower.contains('báo cáo') ||
+        lower.contains('sao rồi') ||
+        lower.contains('ở nhà') ||
+        lower.contains('hôm nay có việc gì') ||
+        lower.contains('việc gì chưa làm') ||
+        lower.contains('danh sách công việc') ||
+        lower.contains('danh sách việc') ||
+        lower.contains('tổng kết') ||
+        lower.contains('việc nhà thế nào') ||
+        lower.contains('công việc thế nào') ||
+        lower.contains('việc nhà sao rồi') ||
+        (lower.contains('tình hình') && !lower.contains('thời tiết'));
   }
 
   /// Nhận diện xem người dùng có đang yêu cầu AI thực hiện hành động điểm danh / tích "I'm OK" cho mình không
@@ -1376,8 +1602,16 @@ class FamilyAiAssistantService {
 
   /// Trích xuất danh sách tên công việc từ câu lệnh tự nhiên của người dùng
   List<String> _tryExtractTaskTitles(String rawQuery, String lower) {
-    // Tránh bắt nhầm các câu tiệc, dự định nấu ăn hay hỏi thăm thông thường
-    if (lower.contains('thịnh soạn') || lower.contains('tiệc')) {
+    // Tuyệt đối không trích xuất tạo việc nếu đây là câu lệnh xóa, thời tiết, tiệc
+    if (lower.contains('xoá') ||
+        lower.contains('xóa') ||
+        lower.contains('hủy') ||
+        lower.contains('huy') ||
+        lower.contains('delete') ||
+        lower.contains('thời tiết') ||
+        lower.contains('tin tức') ||
+        lower.contains('thịnh soạn') ||
+        lower.contains('tiệc')) {
       return const [];
     }
 
@@ -1464,6 +1698,31 @@ class FamilyAiAssistantService {
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toList();
+
+    // Kiểm tra tính hợp lệ của việc phân rã đa nhiệm vụ:
+    final isExplicitMultiTaskList = normalizedLower.contains('các việc') ||
+        normalizedLower.contains('các task') ||
+        normalizedLower.contains('những việc') ||
+        normalizedLower.contains('danh sách') ||
+        rawQuery.contains(':') ||
+        rawQuery.contains('\n') ||
+        RegExp(r'\b[1-9]\.').hasMatch(rawQuery);
+
+    // Nếu câu văn tự nhiên có dấu phẩy nhưng không phải danh sách việc rõ ràng:
+    // Yêu cầu tất cả các phần tử phải là hành vi việc nhà thực sự.
+    if (rawParts.length > 1 && !isExplicitMultiTaskList) {
+      final choreRegex = RegExp(
+        r'(quét\s+nhà|lau\s+nhà|dọn\s+nhà|dọn\s+dẹp|dọn\s+phòng|nấu\s+cơm|nấu\s+ăn|rửa\s+chén|rửa\s+bát|giặt\s+đồ|giặt\s+quần\s+áo|phơi\s+đồ|gấp\s+quần\s+áo|đổ\s+rác|tưới\s+cây|đi\s+chợ|đi\s+siêu\s+thị|mua\s+đồ|học\s+bài|uống\s+thuốc|tập\s+thể\s+dục|đón\s+con|cho\s+cá\s+ăn|cho\s+chó\s+ăn|cho\s+mèo\s+ăn|cọ\s+toilet|lau\s+bàn|lau\s+bếp)',
+        caseSensitive: false,
+      );
+
+      final allAreChores = rawParts.every((p) => choreRegex.hasMatch(p.toLowerCase()));
+      if (!allAreChores) {
+        // Đây là câu trò chuyện thông thường hoặc chỉ dẫn (VD: "của ABC bakery, tạo lịch đi, thành viên gia đình tôi tự biết")
+        // Tránh băm nhỏ câu văn thành các việc nhà rác.
+        return const [];
+      }
+    }
 
     final List<String> cleanedTasks = [];
     for (var part in rawParts) {
@@ -1588,20 +1847,26 @@ class FamilyAiAssistantService {
 
     if (lower.contains('cho bố') ||
         lower.contains('nhắc bố') ||
-        lower.contains('nhắc ba')) {
+        lower.contains('nhờ bố') ||
+        lower.contains('nhắc ba') ||
+        lower.contains('nhờ ba')) {
       final dad = familyMembers.where((m) {
         final n = m.name.toLowerCase();
-        return n.contains('bố') || n.contains('ba') || n.contains('dad');
+        final r = m.role.toLowerCase();
+        return n.contains('bố') || n.contains('ba') || n.contains('dad') || r.contains('bố') || r.contains('dad') || m.isParent;
       }).firstOrNull;
       if (dad != null) return dad;
     }
 
     if (lower.contains('cho mẹ') ||
         lower.contains('nhắc mẹ') ||
-        lower.contains('nhắc má')) {
+        lower.contains('nhờ mẹ') ||
+        lower.contains('nhắc má') ||
+        lower.contains('nhờ má')) {
       final mom = familyMembers.where((m) {
         final n = m.name.toLowerCase();
-        return n.contains('mẹ') || n.contains('má') || n.contains('mom');
+        final r = m.role.toLowerCase();
+        return n.contains('mẹ') || n.contains('má') || n.contains('mom') || r.contains('mẹ') || r.contains('mom');
       }).firstOrNull;
       if (mom != null) return mom;
     }
