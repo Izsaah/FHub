@@ -26,7 +26,7 @@ class SepayCheckResult {
   bool get isUnderpaid => status == SepayPaymentStatus.underpaid;
 }
 
-/// Dịch vụ kết nối và kiểm tra giao dịch với SePay Sandbox
+/// Dịch vụ kết nối và kiểm tra giao dịch với SePay (Sandbox & Production)
 /// Tương thích 100% cả Flutter Web (Chrome/Edge qua Local CORS Relay + Direct), Mobile (Android/iOS) và Desktop
 class SepayService {
   SepayService._();
@@ -61,18 +61,29 @@ class SepayService {
       }
 
       final json = jsonDecode(responseBody) as Map<String, dynamic>?;
-      if (json == null || json['status'] != 'success') {
+      if (json == null) {
         return const SepayCheckResult(status: SepayPaymentStatus.waiting);
       }
 
-      final transactions = json['data'] as List<dynamic>? ?? [];
+      // Hỗ trợ cả API v2 (status: 'success') và API v1 (status: 200 hoặc messages: 'success')
+      final isSuccessStatus = json['status'] == 'success' ||
+          json['status'] == 200 ||
+          json['status'] == '200' ||
+          json['messages'] == 'success';
+      if (!isSuccessStatus) {
+        return const SepayCheckResult(status: SepayPaymentStatus.waiting);
+      }
+
+      final rawList = json['data'] ?? json['transactions'];
+      final transactions = rawList is List<dynamic> ? rawList : [];
       final cleanOrderCode = orderCode.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
 
       for (final tx in transactions) {
         if (tx is! Map<String, dynamic>) continue;
 
         final txId = tx['id']?.toString() ?? '';
-        final content = (tx['transaction_content'] as String? ?? '')
+        final rawContent = (tx['transaction_content'] ?? tx['content'] ?? tx['body'] ?? '').toString();
+        final content = rawContent
             .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
             .toUpperCase();
         final amountIn = _parseAmount(tx['amount_in']);
@@ -121,7 +132,7 @@ class SepayService {
   /// - Trên Flutter Web (Chrome/Edge): Ưu tiên gọi qua Local CORS Relay (127.0.0.1:3099 / localhost:3099)
   ///   không gửi custom header để tránh hoàn toàn lỗi CORS Preflight 401 của trình duyệt,
   ///   nếu không có thì fallback gọi trực tiếp.
-  /// - Trên Android / iOS / Windows Desktop: Gọi trực tiếp SePay Sandbox API.
+  /// - Trên Android / iOS / Windows Desktop: Gọi trực tiếp SePay API (tự động Sandbox / Production).
   Future<String?> _fetchTransactionsJson(String token) async {
     if (kIsWeb) {
       if (!_relayChecked) {
@@ -152,7 +163,8 @@ class SepayService {
     }
 
     try {
-      final uri = Uri.parse('${PaymentConfig.sepaySandboxEndpoint}?limit=20');
+      final endpoint = PaymentConfig.sepayEndpoint;
+      final uri = Uri.parse(endpoint.contains('?') ? '$endpoint&limit=20' : '$endpoint?limit=20');
       final response = await http.get(
         uri,
         headers: {
@@ -171,7 +183,7 @@ class SepayService {
       if (kIsWeb && !_webCorsWarningLogged) {
         _webCorsWarningLogged = true;
         debugPrint(
-          'SepayService (Web Notice): Trình duyệt chặn CORS gọi trực tiếp sandbox SePay. Bấm nút "Mô Phỏng Nạp Thành Công" trên màn hình để kiểm tra nạp quỹ!',
+          'SepayService (Web Notice): Trình duyệt chặn CORS gọi trực tiếp sandbox/production SePay. Bấm nút "Mô Phỏng Nạp Thành Công" trên màn hình để kiểm tra nạp quỹ!',
         );
       }
       return null;

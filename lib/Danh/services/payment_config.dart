@@ -1,10 +1,10 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-/// Cấu hình ngân hàng nhận tiền và Cổng thanh toán SePay Sandbox
+/// Cấu hình ngân hàng nhận tiền và Cổng thanh toán SePay (Sandbox & Production)
 class PaymentConfig {
   PaymentConfig._();
 
-  // Thông tin ngân hàng thử nghiệm SePay (Ưu tiên đọc linh hoạt từ .env, có fallback an toàn)
+  // Thông tin ngân hàng nhận tiền (Ưu tiên đọc linh hoạt từ .env, có fallback an toàn)
   static const String bankCode = 'MB';
   static String get bankShortName => _getEnv('SEPAY_BANK_NAME', 'MBBank');
   static const String bankFullName = 'Ngân hàng TMCP Quân Đội';
@@ -12,7 +12,7 @@ class PaymentConfig {
   static String get accountNo => _getEnv('SEPAY_ACCOUNT_NO', '0000000001');
   static String get accountName => _getEnv('SEPAY_ACCOUNT_NAME', 'Family Hub');
 
-  // Số tiền gói Premium mặc định (Tháng)
+  // Số tiền gói mặc định (VNĐ)
   static const int defaultAmount = 49000;
 
   // Cấu hình SePay Sandbox API Key (Ưu tiên đọc từ .env, fallback khi test)
@@ -23,6 +23,27 @@ class PaymentConfig {
 
   static const String sepaySandboxEndpoint =
       'https://userapi-sandbox.sepay.vn/v2/transactions';
+
+  /// Endpoint SePay API: Tự động chuyển đổi giữa Production và Sandbox
+  /// - Nếu có SEPAY_ENDPOINT tuỳ chỉnh -> dùng SEPAY_ENDPOINT
+  /// - Nếu SEPAY_ENV=production / prod -> dùng https://my.sepay.vn/userapi/transactions/list
+  /// - Nếu số tài khoản khác mặc định sandbox và API key khác fallback -> tự động nhận diện Production
+  /// - Mặc định Sandbox: https://userapi-sandbox.sepay.vn/v2/transactions
+  static String get sepayEndpoint {
+    final custom = _getEnv('SEPAY_ENDPOINT', '');
+    if (custom.isNotEmpty) return custom;
+    final env = _getEnv('SEPAY_ENV', '').toLowerCase();
+    if (env == 'production' || env == 'prod') {
+      return 'https://my.sepay.vn/userapi/transactions/list';
+    }
+    if (env == 'sandbox') {
+      return sepaySandboxEndpoint;
+    }
+    if (accountNo != '0000000001' && apiKey != _fallbackApiKey) {
+      return 'https://my.sepay.vn/userapi/transactions/list';
+    }
+    return sepaySandboxEndpoint;
+  }
 
   static String _getEnv(String key, String fallback) {
     try {
