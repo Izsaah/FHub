@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import '../../Ai/services/gemini_chat_service.dart';
+import '../../Long/services/family_state_manager.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
@@ -302,6 +305,26 @@ class FamilyAiAssistantService {
       } catch (e) {
         // Fallback về engine nội bộ khi Gemini gặp sự cố mạng
       }
+    }
+
+    // 1.4. CASE: YÊU CẦU ĐIỂM DANH / TÍCH "I'M OK" (THAO TÁC THỰC THI TRỰC TIẾP)
+    if (_isPerformCheckInIntent(lower)) {
+      await _executeCheckInAction(
+        familyId: familyId,
+        currentUserId: currentUserId,
+        currentUserName: currentUserName,
+      );
+
+      return AiChatMessage(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        isUser: false,
+        text: AppLanguage.text(
+          'Dạ em đã tích "I\'m OK" và hoàn tất điểm danh hôm nay cho $salutation rồi nhé! 💚✨\n'
+          'Trạng thái an tâm của $salutation đã được cập nhật đồng loạt cho cả gia đình cùng thấy. Chúc $salutation một ngày thật vui vẻ và tràn đầy năng lượng! 🌟',
+          'I have checked in "I\'m OK" for you today, $salutation! 💚✨\nYour safe status has been updated across the family. Wishing you a wonderful and energetic day! 🌟',
+        ),
+        timestamp: DateTime.now(),
+      );
     }
 
     // 1.5. CASE: HỎI VỀ ĐIỂM DANH / CHECK-IN HÔM NAY
@@ -843,14 +866,19 @@ class FamilyAiAssistantService {
       );
     }
 
-    // 11.5. CASE: KHEN NGỢI, TÂM SỰ & HỎI ĐỘ ĐẸP TRAI / TỰ TIN
+    // 11.5. CASE: KHEN NGỢI, TÂM SỰ & HỎI NGOẠI HÌNH / PHONG ĐỘ ("Tôi trông thế nào")
     if (lower.contains('đẹp trai') ||
         lower.contains('xinh gái') ||
         lower.contains('đẹp gái') ||
         lower.contains('dễ thương') ||
         lower.contains('thông minh') ||
+        lower.contains('phong độ') ||
         lower.contains('tôi đẹp không') ||
-        lower.contains('tôi thế nào')) {
+        lower.contains('tôi thế nào') ||
+        lower.contains('trông thế nào') ||
+        lower.contains('trông như thế nào') ||
+        lower.contains('thấy tôi thế nào') ||
+        lower.contains('tôi ra sao')) {
       return AiChatMessage(
         id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
         isUser: false,
@@ -867,7 +895,10 @@ class FamilyAiAssistantService {
         lower.contains('hello') ||
         lower.contains('hi ai') ||
         lower == 'hi' ||
-        lower == 'hey') {
+        lower == 'hey' ||
+        lower == 'alo' ||
+        lower.contains('xin vhaog') ||
+        lower.contains('xinchao')) {
       return AiChatMessage(
         id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
         isUser: false,
@@ -993,10 +1024,8 @@ class FamilyAiAssistantService {
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
       isUser: false,
       text: AppLanguage.text(
-        'Dạ em đã nhận được tin nhắn của $salutation rồi ạ! ❤️\n'
-        'Em luôn sẵn sàng hỗ trợ $salutation kiểm tra tình hình điểm danh ("ai đã điểm danh"), tóm tắt tiến độ việc nhà ("tiến độ hôm nay"), kiểm tra quỹ hũ niềm vui, hoặc giao việc cho các thành viên nhé!',
-        'I received your message, $salutation! ❤️\n'
-        'I am ready to help you check family attendance ("who checked in"), summarize chores progress, check the family jackpot, or assign tasks anytime!',
+        'Dạ em nghe đây $salutation ơi! ❤️ Em luôn ở đây lắng nghe và đồng hành cùng $salutation và gia đình. $salutation muốn chia sẻ thêm điều gì hay cần em phụ giúp việc nhà, kiểm tra điểm danh hoặc hũ niềm vui thì cứ nhắn em nhé! 😊',
+        'I am listening, $salutation! ❤️ I am always here for you and your family. Feel free to talk to me or let me know if you need help with tasks, check-in, or family jackpot! 😊',
       ),
       timestamp: DateTime.now(),
     );
@@ -1141,7 +1170,97 @@ class FamilyAiAssistantService {
                 text.contains('hôm nay')));
   }
 
+  /// Nhận diện xem người dùng có đang yêu cầu AI thực hiện hành động điểm danh / tích "I'm OK" cho mình không
+  bool _isPerformCheckInIntent(String lower) {
+    final isQueryOther = lower.contains('ai đã') ||
+        lower.contains('ai chưa') ||
+        lower.contains('tình hình') ||
+        lower.contains('bao nhiêu người') ||
+        lower.contains('danh sách') ||
+        lower.contains('ai có mặt') ||
+        lower.contains('ai check in') ||
+        lower.contains('ai điểm danh');
+    if (isQueryOther) return false;
+
+    final hasActionVerb = lower.contains('tích') ||
+        lower.contains('tick') ||
+        lower.contains('bấm') ||
+        lower.contains('ấn') ||
+        lower.contains('giúp') ||
+        lower.contains('hộ') ||
+        lower.contains('dùm') ||
+        lower.contains('giùm') ||
+        lower.contains('cho tôi') ||
+        lower.contains('cho mình') ||
+        lower.contains('báo');
+
+    final hasCheckInTarget = lower.contains("i'm ok") ||
+        lower.contains('im ok') ||
+        lower.contains("i m ok") ||
+        lower.contains('điểm danh') ||
+        lower.contains('diem danh') ||
+        lower.contains('check in') ||
+        lower.contains('check-in') ||
+        lower.contains('checkin') ||
+        lower.contains('an toàn');
+
+    if (hasActionVerb && hasCheckInTarget) return true;
+
+    if (lower == 'tôi ok' ||
+        lower == 'tôi ổn' ||
+        lower == 'mình ok' ||
+        lower == 'mình ổn' ||
+        lower == "i'm ok" ||
+        lower == 'im ok' ||
+        lower.contains('hôm nay tôi ok') ||
+        lower.contains('tôi đã an toàn') ||
+        lower.contains('báo tôi ổn')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /// Thực thi điểm danh thật trên hệ thống (FamilyStateManager & Firestore)
+  Future<void> _executeCheckInAction({
+    required String familyId,
+    required String currentUserId,
+    required String currentUserName,
+  }) async {
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+    try {
+      final service = FamilyStateManager().service;
+      final uid = service.currentUserId.isNotEmpty ? service.currentUserId : currentUserId;
+      if (uid.isNotEmpty) {
+        await service.checkIn(
+          uid,
+          caption: "Đã điểm danh I'm OK an toàn qua Trợ lý AI",
+          familyId: familyId,
+        );
+      }
+    } catch (e) {
+      debugPrint('FamilyAiAssistantService checkIn error: $e');
+    }
+
+    try {
+      if (Firebase.apps.isNotEmpty) {
+        final targetUid = currentUserId.isNotEmpty ? currentUserId : FamilyStateManager().service.currentUserId;
+        if (targetUid.isNotEmpty) {
+          final docRef = FirebaseFirestore.instance.collection('family_members').doc('${familyId}_$targetUid');
+          await docRef.set({
+            'lastCheckInAt': FieldValue.serverTimestamp(),
+            'lastCheckInDate': dateStr,
+            'lastActiveAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+      }
+    } catch (_) {}
+  }
+
   bool _isCheckInIntent(String lower) {
+    if (_isPerformCheckInIntent(lower)) return false;
     return lower.contains('điểm danh') ||
         lower.contains('diem danh') ||
         lower.contains('check in') ||

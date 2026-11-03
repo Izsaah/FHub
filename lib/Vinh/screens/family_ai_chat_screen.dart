@@ -8,6 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../Khoa/screens/family_setup_screen.dart';
+import '../../Long/services/family_state_manager.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
@@ -632,6 +633,12 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
       });
       _scrollToBottom();
       _persistMessage(aiMsg);
+
+      if (aiMsg.text.contains("I'm OK")) {
+        try {
+          FamilyStateManager().reload();
+        } catch (_) {}
+      }
 
       if (_autoSpeak) {
         _speakMessage(aiMsg);

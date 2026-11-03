@@ -1668,31 +1668,6 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
     String? sheetError;
     String? sheetSuccess;
-    bool isLookingUpName = false;
-    Timer? lookupDebounce;
-
-    Future<void> performAutoLookup(String acc, StateSetter setSheetState) async {
-      final clean = acc.trim().replaceAll(RegExp(r'[^0-9]'), '');
-      if (clean.length < 6) return;
-      setSheetState(() => isLookingUpName = true);
-      try {
-        final foundName = await BankLookupService.lookupAccountName(
-          bankCode: selectedBankCode,
-          accountNumber: clean,
-          fallbackName: _jackpotService.currentUserName,
-        );
-        if (foundName != null && foundName.isNotEmpty) {
-          holderController.text = foundName;
-          sheetSuccess = '✅ Đã tìm thấy chủ tài khoản: $foundName';
-          sheetError = null;
-        }
-      } catch (_) {
-      } finally {
-        if (context.mounted) {
-          setSheetState(() => isLookingUpName = false);
-        }
-      }
-    }
 
     showModalBottomSheet(
       context: context,
@@ -1831,9 +1806,6 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                               selectedBankShortName = bItem.shortName;
                             }
                           });
-                          if (accNumController.text.trim().isNotEmpty) {
-                            performAutoLookup(accNumController.text, setSheetState);
-                          }
                         }
                       },
                     ),
@@ -1841,33 +1813,11 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     TextField(
                       controller: accNumController,
                       keyboardType: TextInputType.number,
-                      onChanged: (val) {
-                        lookupDebounce?.cancel();
-                        if (val.trim().length >= 6) {
-                          lookupDebounce = Timer(const Duration(milliseconds: 700), () {
-                            performAutoLookup(val, setSheetState);
-                          });
-                        }
-                      },
                       decoration: InputDecoration(
                         labelText: 'Số tài khoản ngân hàng',
                         hintText: 'Nhập số tài khoản của bạn',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        suffixIcon: isLookingUpName
-                            ? const Padding(
-                                padding: EdgeInsets.all(12),
-                                child: SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: DanhColors.brand800),
-                                ),
-                              )
-                            : IconButton(
-                                icon: const Icon(Icons.person_search_rounded, color: DanhColors.brand800),
-                                tooltip: 'Tra cứu tên chủ tài khoản',
-                                onPressed: () => performAutoLookup(accNumController.text, setSheetState),
-                              ),
                       ),
                     ),
                     const SizedBox(height: 10),

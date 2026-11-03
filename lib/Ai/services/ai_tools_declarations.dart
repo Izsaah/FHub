@@ -65,12 +65,30 @@ class AiToolsDeclarations {
     ),
   );
 
+  /// Tool 3: Thực hiện điểm danh "I'm OK" (Check-in an toàn) cho người dùng trong gia đình
+  static final FunctionDeclaration performFamilyCheckInDeclaration =
+      FunctionDeclaration(
+    'performFamilyCheckIn',
+    'Thực hiện điểm danh "I\'m OK" (Check-in an toàn hôm nay) cho người dùng khi họ yêu cầu: '
+    '"tích i\'m ok dùm tôi", "điểm danh giúp tôi", "check in giúp tôi", "tôi ok", "hôm nay tôi ổn". '
+    'Cập nhật trạng thái an tâm của người dùng lên hệ thống gia đình.',
+    Schema.object(
+      properties: {
+        'caption': Schema.string(
+          description:
+              'Lời nhắn hoặc ghi chú trạng thái check-in (ví dụ: "Đã check-in I\'m OK qua Trợ lý AI").',
+        ),
+      },
+    ),
+  );
+
   /// Danh sách Tools nạp vào GenerativeModel
   static List<Tool> get allTools => [
         Tool(
           functionDeclarations: [
             createFamilyTaskDeclaration,
             saveFamilyPreferenceDeclaration,
+            performFamilyCheckInDeclaration,
           ],
         ),
       ];

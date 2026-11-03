@@ -553,5 +553,152 @@ void main() {
       expect(res.text, contains('vai trò của bạn là'));
       expect(res.text, isNot(contains('Dạ em đã soạn và tạo xong 2 công việc')));
     });
+
+    test('20. "tích i\'m ok dùm tôi" performs actual check-in action and confirms cheerfully', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: "tích i'm ok dùm tôi",
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.attachedReminder, isNull);
+      expect(res.text, contains("I'm OK"));
+      expect(res.text, contains('hoàn tất điểm danh'));
+      expect(res.text, isNot(contains('Chưa có thành viên nào')));
+      expect(res.text, isNot(contains('có thể hỏi em về tình hình')));
+    });
+
+    test('21. "điểm danh giúp tôi" triggers check-in action', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_danh',
+          name: 'Danh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'điểm danh giúp tôi',
+        familyId: 'f1',
+        currentUserId: 'u_danh',
+        currentUserName: 'Danh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, contains("I'm OK"));
+      expect(res.text, contains('hoàn tất điểm danh'));
+    });
+
+    test('22. "tôi ok" triggers check-in action directly', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_danh',
+          name: 'Danh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'tôi ok',
+        familyId: 'f1',
+        currentUserId: 'u_danh',
+        currentUserName: 'Danh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, contains("I'm OK"));
+      expect(res.text, contains('hoàn tất điểm danh'));
+    });
+
+    test('23. "tôi trông thế nào" returns flattering compliment and NEVER canned robotic template', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_khoa',
+          name: 'Khoa Cao',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'tôi trông thế nào',
+        familyId: 'f1',
+        currentUserId: 'u_khoa',
+        currentUserName: 'Khoa Cao',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, contains('phong độ'));
+      expect(res.text, isNot(contains('có thể hỏi em về tình hình điểm danh')));
+    });
+
+    test('24. "xin vhaog" handles keyboard typo and returns warm greeting', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_khoa',
+          name: 'Khoa Cao',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'xin vhaog',
+        familyId: 'f1',
+        currentUserId: 'u_khoa',
+        currentUserName: 'Khoa Cao',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, contains('chào'));
+      expect(res.text, isNot(contains('có thể hỏi em về tình hình điểm danh')));
+    });
+
+    test('25. "ai đã điểm danh hôm nay" returns query list without triggering check-in action', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_khoa',
+          name: 'Khoa Cao',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'ai đã điểm danh hôm nay',
+        familyId: 'f1',
+        currentUserId: 'u_khoa',
+        currentUserName: 'Khoa Cao',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, contains('TÌNH HÌNH ĐIỂM DANH'));
+      expect(res.text, isNot(contains('Đã tích "I\'m OK" và hoàn tất điểm danh')));
+    });
   });
 }
