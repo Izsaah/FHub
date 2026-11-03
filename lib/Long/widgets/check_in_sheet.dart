@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 
 import '../../Thinh/theme/app_language.dart';
 import '../services/family_state_manager.dart';
+import '../utils/check_in_image_compressor.dart';
 import 'check_in_camera_screen.dart';
 
 class CheckInSheet extends StatefulWidget {
@@ -107,11 +109,14 @@ class _CheckInSheetState extends State<CheckInSheet> {
     setState(() => _isLoading = true);
     try {
       final service = FamilyStateManager().service;
+      final imageUrl = _capturedImageBytes == null
+          ? _selectedImageUrl
+          : 'data:image/jpeg;base64,${base64Encode(
+              await compute(compressCheckInImage, _capturedImageBytes!),
+            )}';
       await service.checkIn(
         service.currentUserId,
-        imageUrl: _capturedImageBytes == null
-            ? _selectedImageUrl
-            : 'data:image/jpeg;base64,${base64Encode(_capturedImageBytes!)}',
+        imageUrl: imageUrl,
         caption: _captionController.text.trim().isNotEmpty
             ? _captionController.text.trim()
             : 'Đã check-in an toàn hôm nay!',
