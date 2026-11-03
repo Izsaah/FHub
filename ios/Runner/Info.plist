@@ -16,6 +16,8 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>fhub</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo to share with your family check-in.</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
