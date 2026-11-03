@@ -67,6 +67,25 @@ abstract class ReminderRepository {
     required String currentUserId,
     List<FamilyMember>? familyMembers,
   });
+
+  /// Kiểm tra xung đột lịch trình: Tìm xem thành viên [userId] đã có công việc nào
+  /// cùng ngày [date] và cùng giờ [time] ở bất kỳ gia đình nào chưa.
+  Future<ReminderModel?> checkScheduleConflict({
+    required String userId,
+    required String date,
+    required String time,
+    String? excludeReminderId,
+  });
+
+  /// Kiểm tra trùng lặp công việc: Tìm xem trong gia đình [familyId] đã có công việc
+  /// cùng [title], [date] và [time] chưa.
+  Future<ReminderModel?> findDuplicateReminder({
+    required String familyId,
+    required String title,
+    required String date,
+    required String time,
+    String? excludeReminderId,
+  });
 }
 
 class InMemoryReminderRepository implements ReminderRepository {
@@ -620,6 +639,44 @@ class InMemoryReminderRepository implements ReminderRepository {
     MultiTierEscalationService.instance.cancelEscalation(reminderId);
     _notify(existing.familyId);
     return true;
+  }
+
+  @override
+  Future<ReminderModel?> checkScheduleConflict({
+    required String userId,
+    required String date,
+    required String time,
+    String? excludeReminderId,
+  }) async {
+    final cleanDate = date.trim();
+    final cleanTime = time.trim();
+    return _reminders.where((r) {
+      if (r.isDeleted || r.isCompleted) return false;
+      if (excludeReminderId != null && r.id == excludeReminderId) return false;
+      return r.assignedTo == userId &&
+          r.date.trim() == cleanDate &&
+          r.time.trim() == cleanTime;
+    }).firstOrNull;
+  }
+
+  @override
+  Future<ReminderModel?> findDuplicateReminder({
+    required String familyId,
+    required String title,
+    required String date,
+    required String time,
+    String? excludeReminderId,
+  }) async {
+    final cleanTitle = ReminderValidator.sanitizeTitle(title).toLowerCase();
+    final cleanDate = date.trim();
+    final cleanTime = time.trim();
+    return _reminders.where((r) {
+      if (r.isDeleted || r.isCompleted || r.familyId != familyId) return false;
+      if (excludeReminderId != null && r.id == excludeReminderId) return false;
+      return r.title.trim().toLowerCase() == cleanTitle &&
+          r.date.trim() == cleanDate &&
+          r.time.trim() == cleanTime;
+    }).firstOrNull;
   }
 
   @override
