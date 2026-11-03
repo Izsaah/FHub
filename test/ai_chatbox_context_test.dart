@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:fhub/Ai/models/ai_chat_session.dart';
 import 'package:fhub/Ai/models/chat_message_model.dart';
 import 'package:fhub/Ai/services/gemini_chat_service.dart';
@@ -306,9 +307,10 @@ void main() {
       expect(GeminiChatService.instance.isConfigured, isTrue);
       expect(GeminiChatService.instance.effectiveApiKey, 'AIzaSyTestKeyLive123456');
 
-      // Clear custom key
+      // Clear custom key -> restores default key from environment
       await GeminiChatService.instance.setCustomApiKey('');
-      expect(GeminiChatService.instance.effectiveApiKey, '');
+      final expectedDefaultKey = dotenv.isInitialized ? (dotenv.env['GEMINI_API_KEY']?.trim() ?? '') : '';
+      expect(GeminiChatService.instance.effectiveApiKey, expectedDefaultKey);
       expect(GeminiChatService.instance.isConfigured, initialConfigured);
     });
 
@@ -456,6 +458,100 @@ void main() {
       // Ensure API key button is completely absent
       expect(find.text('Cài đặt Gemini API Key'), findsNothing);
       expect(find.text('Gemini AI: Sẵn sàng'), findsNothing);
+    });
+
+    test('17. "có thể tạo một nhiệm vụ quét nhà lúc 15h cho thành viên gia đình tôi được không ?" creates Open task "Quét nhà" at 15:00 and NEVER lists members', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+        FamilyMember(
+          id: 'u_bin',
+          name: 'Bin',
+          role: FamilyMember.roleChild,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'có thể tạo một nhiệm vụ quét nhà lúc 15h cho thành viên gia đình tôi được không ?',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      // Verify task creation
+      expect(res.attachedReminder, isNotNull);
+      final created = res.attachedReminder!;
+      expect(created.title, 'Quét nhà');
+      expect(created.time, '15:00');
+      expect(created.assignedTo, 'OPEN');
+      expect(created.assignedToName, 'Cả nhà (Việc chung)');
+      expect(res.text, isNot(contains('DANH SÁCH THÀNH VIÊN GIA ĐÌNH')));
+      expect(res.text, contains('Quét nhà'));
+    });
+
+    test('18. "tôi muốn tạo nhiệm vụ quét nhà lcus 15h" handles typo "lcus" -> 15:00, strips prefix, title is "Quét nhà"', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'tôi muốn tạo nhiệm vụ quét nhà lcus 15h',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.attachedReminder, isNotNull);
+      final created = res.attachedReminder!;
+      expect(created.title, 'Quét nhà');
+      expect(created.time, '15:00');
+      expect(created.assignedTo, 'u_vinh');
+      expect(created.assignedToName, 'Lương Diệu Vinh');
+      expect(created.title, isNot(contains('tôi muốn')));
+      expect(created.title, isNot(contains('nhiệm vụ')));
+      expect(created.title, isNot(contains('lcus')));
+    });
+
+    test('19. "tôi đóng vai trò gì trong căn nhà này, tôi có thể giao việc cho ai không" returns role explanation and NEVER creates chores', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'tôi đóng vai trò gì trong căn nhà này, tôi có thể giao việc cho ai không',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.attachedReminder, isNull);
+      expect(res.attachedReminders, isEmpty);
+      expect(res.text, contains('vai trò của bạn là'));
+      expect(res.text, isNot(contains('Dạ em đã soạn và tạo xong 2 công việc')));
     });
   });
 }

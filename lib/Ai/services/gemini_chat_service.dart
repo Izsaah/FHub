@@ -41,10 +41,10 @@ class GeminiChatService {
   String get currentUserRole => _currentUserRole;
 
   static const List<String> _candidateModels = [
-    'gemini-1.5-flash',
     'gemini-2.0-flash',
-    'gemini-1.5-flash-latest',
     'gemini-1.5-pro',
+    'gemini-1.5-flash',
+    'gemini-2.0-flash-exp',
   ];
 
   String? _customApiKey;
@@ -55,19 +55,10 @@ class GeminiChatService {
     if (_customApiKey != null && _customApiKey!.trim().isNotEmpty) {
       return _customApiKey!.trim();
     }
-    var key = (dotenv.isInitialized ? dotenv.env['GEMINI_API_KEY'] : null)?.trim();
-    if (key == null || key.isEmpty) {
-      try {
-        dotenv.load(fileName: ".env");
-        key = dotenv.env['GEMINI_API_KEY']?.trim();
-      } catch (_) {
-        try {
-          dotenv.load(fileName: "assets/.env");
-          key = dotenv.env['GEMINI_API_KEY']?.trim();
-        } catch (_) {}
-      }
+    if (dotenv.isInitialized) {
+      return dotenv.env['GEMINI_API_KEY']?.trim() ?? '';
     }
-    return key ?? '';
+    return '';
   }
 
   bool get isConfigured => effectiveApiKey.isNotEmpty;
@@ -244,6 +235,7 @@ class GeminiChatService {
     String? userName,
     String? userRole,
     List<FamilyMember>? familyMembers,
+    bool fallbackToLocal = true,
   }) async {
     final cleanText = text.trim();
     if (cleanText.isEmpty) {
@@ -270,7 +262,7 @@ class GeminiChatService {
 
     // Nếu chưa cấu hình API Key:
     if (!isConfigured) {
-      if (_isFamilyContextQuery(cleanText)) {
+      if (fallbackToLocal && _isFamilyContextQuery(cleanText)) {
         return _generateContextualResponse(cleanText);
       }
       return ChatMessageModel(
@@ -297,7 +289,16 @@ class GeminiChatService {
 
     if (_chat == null) {
       // Nếu khởi tạo Gemini thất bại (ví dụ lỗi mạng), tự động fallback về engine nội bộ
-      return _generateContextualResponse(cleanText);
+      if (fallbackToLocal) {
+        return _generateContextualResponse(cleanText);
+      }
+      return ChatMessageModel(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        text: 'Không thể khởi tạo phiên trò chuyện Gemini.',
+        sender: ChatSender.ai,
+        timestamp: DateTime.now(),
+        isError: true,
+      );
     }
 
     try {
@@ -388,8 +389,39 @@ class GeminiChatService {
         savedMemorySummary: savedMemorySummary,
       );
     } catch (e) {
-      debugPrint('GeminiChatService sendMessage error: $e, falling back to local contextual engine');
-      return _generateContextualResponse(cleanText);
+      debugPrint('GeminiChatService sendMessage error: $e');
+      final err = e.toString().toLowerCase();
+      if (err.contains('api_key_invalid') ||
+          err.contains('api key not valid') ||
+          err.contains('unauthenticated') ||
+          err.contains('access_token_type_unsupported') ||
+          err.contains('api_key_service_blocked') ||
+          err.contains('401')) {
+        final prefix = effectiveApiKey.length > 8 ? effectiveApiKey.substring(0, 10) : effectiveApiKey;
+        return ChatMessageModel(
+          id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+          text: '⚠️ **Dịch vụ Gemini API bị chặn hoặc chưa kích hoạt (Google báo lỗi 401 / API_KEY_SERVICE_BLOCKED)**\n\n'
+              'Khóa API hiện tại: `$prefix...`\n'
+              '• **Nguyên nhân**: Khóa này được liên kết với một Google Cloud Project nhưng dịch vụ **Generative Language API** chưa được bật (Enable) trong project đó.\n\n'
+              '👉 **Cách xử lý nhanh nhất (10 giây)**:\n'
+              '1. Vào lại [Google AI Studio](https://aistudio.google.com/app/apikey).\n'
+              '2. Bấm **Create API key** ➔ Chọn **"Create API key in new project"** (Tạo trong project mới của AI Studio để Google tự động bật sẵn dịch vụ).\n'
+              '3. Dán khóa mới vào file `.env` là Gemini 2.0 Flash hoạt động ngay lập tức nhé!',
+          sender: ChatSender.ai,
+          timestamp: DateTime.now(),
+          isError: true,
+        );
+      }
+      if (fallbackToLocal) {
+        return _generateContextualResponse(cleanText);
+      }
+      return ChatMessageModel(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        text: 'Lỗi gọi Gemini: $e',
+        sender: ChatSender.ai,
+        timestamp: DateTime.now(),
+        isError: true,
+      );
     }
   }
 
