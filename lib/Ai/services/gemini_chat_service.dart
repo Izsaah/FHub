@@ -11,6 +11,7 @@ import '../../Vinh/models/reminder_model.dart';
 import '../models/chat_message_model.dart';
 import 'ai_tools_declarations.dart';
 import 'family_memory_service.dart';
+import '../../Long/services/family_state_manager.dart';
 
 /// Dịch vụ Trí tuệ AI Gia đình (Module 7 EPIC)
 /// - Kết nối trực tiếp Gemini LLM API chính chủ với Function Calling & Dynamic Realtime System Instruction
@@ -223,8 +224,72 @@ class GeminiChatService {
         lower.contains('xinh gái') ||
         lower.contains('đẹp gái') ||
         lower.contains('dễ thương') ||
+        lower.contains('thông minh') ||
+        lower.contains('phong độ') ||
         lower.contains('tôi đẹp không') ||
-        lower.contains('tôi thế nào');
+        lower.contains('tôi thế nào') ||
+        lower.contains('trông thế nào') ||
+        lower.contains('trông như thế nào') ||
+        lower.contains('thấy tôi') ||
+        lower.contains('tôi ra sao') ||
+        lower.contains('chào') ||
+        lower.contains('xin vhaog') ||
+        lower.contains('xinchao') ||
+        lower.contains('tích') ||
+        lower.contains('tick') ||
+        lower.contains("i'm ok") ||
+        lower.contains('im ok');
+  }
+
+  /// Nhận diện xem người dùng có đang yêu cầu AI thực hiện hành động điểm danh / tích "I'm OK" cho mình không
+  bool _isPerformCheckInIntent(String lower) {
+    final isQueryOther = lower.contains('ai đã') ||
+        lower.contains('ai chưa') ||
+        lower.contains('tình hình') ||
+        lower.contains('bao nhiêu người') ||
+        lower.contains('danh sách') ||
+        lower.contains('ai có mặt') ||
+        lower.contains('ai check in') ||
+        lower.contains('ai điểm danh');
+    if (isQueryOther) return false;
+
+    final hasActionVerb = lower.contains('tích') ||
+        lower.contains('tick') ||
+        lower.contains('bấm') ||
+        lower.contains('ấn') ||
+        lower.contains('giúp') ||
+        lower.contains('hộ') ||
+        lower.contains('dùm') ||
+        lower.contains('giùm') ||
+        lower.contains('cho tôi') ||
+        lower.contains('cho mình') ||
+        lower.contains('báo');
+
+    final hasCheckInTarget = lower.contains("i'm ok") ||
+        lower.contains('im ok') ||
+        lower.contains("i m ok") ||
+        lower.contains('điểm danh') ||
+        lower.contains('diem danh') ||
+        lower.contains('check in') ||
+        lower.contains('check-in') ||
+        lower.contains('checkin') ||
+        lower.contains('an toàn');
+
+    if (hasActionVerb && hasCheckInTarget) return true;
+
+    if (lower == 'tôi ok' ||
+        lower == 'tôi ổn' ||
+        lower == 'mình ok' ||
+        lower == 'mình ổn' ||
+        lower == "i'm ok" ||
+        lower == 'im ok' ||
+        lower.contains('hôm nay tôi ok') ||
+        lower.contains('tôi đã an toàn') ||
+        lower.contains('báo tôi ổn')) {
+      return true;
+    }
+
+    return false;
   }
 
   /// Gửi tin nhắn và xử lý phản hồi thông minh
@@ -270,7 +335,7 @@ class GeminiChatService {
         text: '⚠️ **Chưa tìm thấy Gemini API Key**\n\n'
             'Để kích hoạt Trợ lý AI Gia đình, bạn chỉ cần làm 1 bước duy nhất:\n'
             '1. Lấy API key miễn phí tại: [Google AI Studio](https://aistudio.google.com/app/apikey)\n'
-            '2. Mở file `.env` ở thư mục gốc và dán vào: `GEMINI_API_KEY=AIzaSy...`\n'
+            '2. Mở file `.env` ở thư mục gốc và dán vào: `GEMINI_API_KEY=AQ...` (hoặc `AIzaSy...`)\n'
             '*(Không cần điền model hay cấu hình phức tạp nào khác, AI sẽ tự động kích hoạt!)*',
         sender: ChatSender.ai,
         timestamp: DateTime.now(),
@@ -353,6 +418,18 @@ class GeminiChatService {
                   'keyword': keyword,
                   'value': val,
                   'message': 'Đã ghi nhớ thói quen vào bộ nhớ dài hạn của gia đình.',
+                },
+              ),
+            );
+          } else if (call.name == 'performFamilyCheckIn') {
+            final caption = call.args['caption']?.toString();
+            await _handlePerformCheckIn(caption);
+            toolResponses.add(
+              FunctionResponse(
+                call.name,
+                {
+                  'success': true,
+                  'message': 'Đã thực hiện tích "I\'m OK" và hoàn tất điểm danh thành công cho $_currentUserName hôm nay.',
                 },
               ),
             );
@@ -685,6 +762,18 @@ $memoriesInfo
     final now = DateTime.now();
     final todayStr = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
 
+    // 0. HÀNH ĐỘNG: YÊU CẦU ĐIỂM DANH / TÍCH I'M OK CHO BẢN THÂN
+    if (_isPerformCheckInIntent(lower)) {
+      await _handlePerformCheckIn('Đã điểm danh I\'m OK qua Trợ lý AI');
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: 'Dạ em đã tích "I\'m OK" và hoàn tất điểm danh hôm nay cho $salutation rồi nhé! 💚✨\n'
+            'Trạng thái an tâm của $salutation đã được cập nhật cho cả gia đình cùng thấy. Chúc $salutation một ngày thật vui vẻ và tràn đầy năng lượng! 🌟',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
     // 1. HỎI VỀ ĐIỂM DANH / CHECK-IN HÔM NAY
     if (lower.contains('điểm danh') ||
         lower.contains('diem danh') ||
@@ -963,13 +1052,18 @@ $memoriesInfo
       );
     }
 
-    // 4.5. KHEN NGỢI, TÂM SỰ & HỎI ĐỘ ĐẸP TRAI / TỰ TIN
+    // 4.5. KHEN NGỢI, TÂM SỰ & HỎI NGOẠI HÌNH / PHONG ĐỘ ("Tôi trông thế nào")
     if (lower.contains('đẹp trai') ||
         lower.contains('xinh gái') ||
         lower.contains('đẹp gái') ||
         lower.contains('dễ thương') ||
         lower.contains('thông minh') ||
+        lower.contains('phong độ') ||
         lower.contains('tôi thế nào') ||
+        lower.contains('trông thế nào') ||
+        lower.contains('trông như thế nào') ||
+        lower.contains('thấy tôi thế nào') ||
+        lower.contains('tôi ra sao') ||
         lower.contains('tôi đẹp không')) {
       return ChatMessageModel(
         id: 'msg_${now.millisecondsSinceEpoch}',
@@ -980,7 +1074,12 @@ $memoriesInfo
     }
 
     // 5. CHÀO HỎI & HỘI THOẠI TỰ NHIÊN
-    if (lower.contains('chào') || lower.contains('hello') || lower.contains('hi') || lower == 'ơi') {
+    if (lower.contains('chào') ||
+        lower.contains('hello') ||
+        lower.contains('hi') ||
+        lower == 'ơi' ||
+        lower.contains('xin vhaog') ||
+        lower.contains('xinchao')) {
       return ChatMessageModel(
         id: 'msg_${now.millisecondsSinceEpoch}',
         text: 'Dạ em chào $salutation! Chúc $salutation và gia đình một ngày ngập tràn niềm vui và bình an. $salutation cần em hỗ trợ việc nhà hay kiểm tra tình hình gì cứ nhắn em nhé! ❤️',
@@ -989,10 +1088,10 @@ $memoriesInfo
       );
     }
 
-    // Default conversational response
+    // Default conversational response: Thân thiện, ấm áp, đồng hành tự nhiên
     return ChatMessageModel(
       id: 'msg_${now.millisecondsSinceEpoch}',
-      text: 'Dạ em đã nhận được tin nhắn của $salutation rồi ạ! $salutation có thể hỏi em về tình hình điểm danh ("ai đã điểm danh"), tóm tắt tiến độ việc nhà ("tiến độ hôm nay"), hoặc quỹ hũ niềm vui bất cứ lúc nào nhé. Em luôn sẵn sàng đồng hành cùng gia đình mình! 😊',
+      text: 'Dạ em nghe đây $salutation ơi! ❤️ Em luôn ở đây lắng nghe và đồng hành cùng $salutation và gia đình. $salutation muốn chia sẻ thêm điều gì hay cần em phụ giúp việc nhà, kiểm tra điểm danh hoặc hũ niềm vui thì cứ nhắn em nhé! 😊',
       sender: ChatSender.ai,
       timestamp: now,
     );
@@ -1061,6 +1160,41 @@ $memoriesInfo
     }
 
     return fallback;
+  }
+
+  /// Thực hiện điểm danh "I'm OK" (Check-in an toàn) cho người dùng hiện tại
+  Future<void> _handlePerformCheckIn(String? caption) async {
+    final note = (caption != null && caption.isNotEmpty) ? caption : 'Đã check-in I\'m OK qua Trợ lý AI';
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+    try {
+      final service = FamilyStateManager().service;
+      final uid = service.currentUserId.isNotEmpty ? service.currentUserId : _currentUserId;
+      if (uid.isNotEmpty) {
+        await service.checkIn(
+          uid,
+          caption: note,
+          familyId: _currentFamilyId,
+        );
+      }
+    } catch (e) {
+      debugPrint('GeminiChatService checkIn error: $e');
+    }
+
+    if (_firestore != null) {
+      try {
+        final targetUid = _currentUserId.isNotEmpty ? _currentUserId : FamilyStateManager().service.currentUserId;
+        if (targetUid.isNotEmpty) {
+          final docRef = _firestore!.collection('family_members').doc('${_currentFamilyId}_$targetUid');
+          await docRef.set({
+            'lastCheckInAt': FieldValue.serverTimestamp(),
+            'lastCheckInDate': dateStr,
+            'lastActiveAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+      } catch (_) {}
+    }
   }
 
   /// Xử lý tạo ReminderModel thật và ghi vào Firestore collection `reminders`

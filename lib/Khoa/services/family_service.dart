@@ -178,7 +178,8 @@ class FamilyService {
             .where('familyId', isEqualTo: family.id)
             .where('status', isEqualTo: FamilyMember.statusActive)
             .get();
-        if (membersQuery.docs.length >= maxMem) {
+        final currentCount = (famData['memberCount'] as int?) ?? membersQuery.docs.length;
+        if (currentCount >= maxMem) {
           if (!isPrem) {
             throw Exception(
               'Gia đình đã đạt tối đa 4 thành viên (Gói Cơ Bản). Vui lòng nâng cấp lên Family Hub Premium để mời thêm tối đa 10 người!',
@@ -189,6 +190,11 @@ class FamilyService {
             );
           }
         }
+
+        // Khóa document gia đình để ngăn chặn đồng thời 2 người cùng vào slot cuối (Atomic Concurrency)
+        transaction.update(_families.doc(family.id), {
+          'memberCount': currentCount + 1,
+        });
 
         transaction.set(memberRef, {
           'familyId': family.id,

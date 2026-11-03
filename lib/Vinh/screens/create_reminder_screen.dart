@@ -460,6 +460,56 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           Navigator.of(context).pop(saved);
         }
       } else {
+        // Kiểm tra trùng việc hoặc trùng lịch trình trước khi tạo mới
+        if (!isNowOpenTask && _selectedMember != null) {
+          final dup = await widget.repository.findDuplicateReminder(
+            familyId: _activeFamilyId,
+            title: _titleController.text.trim(),
+            date: dateStr,
+            time: timeStr,
+          );
+          if (dup != null && mounted) {
+            final ok = await _showConflictDialog(
+              context: context,
+              icon: Icons.info_outline_rounded,
+              iconColor: const Color(0xFF005F50),
+              title: AppLanguage.text('Trùng Lặp Công Việc', 'Duplicate Task'),
+              message: AppLanguage.text(
+                'Gia đình đã có công việc "${dup.title}" vào lúc $timeStr ngày $dateStr.\n\nBạn có muốn tiếp tục tạo thêm không?',
+                'Family already has task "${dup.title}" at $timeStr on $dateStr.\n\nContinue creating anyway?',
+              ),
+              confirmLabel: AppLanguage.text('Tiếp tục tạo', 'Continue'),
+            );
+            if (ok != true) {
+              setState(() => _isLoading = false);
+              return;
+            }
+          }
+
+          final conflict = await widget.repository.checkScheduleConflict(
+            userId: _selectedMember!.id,
+            date: dateStr,
+            time: timeStr,
+          );
+          if (conflict != null && mounted) {
+            final ok = await _showConflictDialog(
+              context: context,
+              icon: Icons.warning_amber_rounded,
+              iconColor: const Color(0xFFE65100),
+              title: AppLanguage.text('Cảnh Báo Trùng Giờ', 'Schedule Conflict'),
+              message: AppLanguage.text(
+                '${_selectedMember!.name} đã có công việc "${conflict.title}"${conflict.familyName != null ? ' tại ${conflict.familyName}' : ''} vào lúc $timeStr ngày $dateStr.\n\nBạn vẫn muốn giao thêm công việc này?',
+                '${_selectedMember!.name} already has task "${conflict.title}" at $timeStr on $dateStr.\n\nStill assign this task?',
+              ),
+              confirmLabel: AppLanguage.text('Vẫn giao việc', 'Assign anyway'),
+            );
+            if (ok != true) {
+              setState(() => _isLoading = false);
+              return;
+            }
+          }
+        }
+
         final newReminder = ReminderModel(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           familyId: _activeFamilyId,
@@ -521,6 +571,50 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<bool?> _showConflictDialog({
+    required BuildContext context,
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Icon(icon, color: iconColor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(fontSize: 14, height: 1.4)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx, false),
+            child: Text(AppLanguage.text('Hủy', 'Cancel')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF005F50),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(dCtx, true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

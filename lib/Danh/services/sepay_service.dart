@@ -82,7 +82,7 @@ class SepayService {
         if (tx is! Map<String, dynamic>) continue;
 
         final txId = tx['id']?.toString() ?? '';
-        final rawContent = (tx['transaction_content'] ?? tx['content'] ?? tx['body'] ?? '').toString();
+        final rawContent = (tx['transaction_content'] ?? tx['content'] ?? tx['description'] ?? tx['body'] ?? '').toString();
         final content = rawContent
             .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
             .toUpperCase();
@@ -164,12 +164,12 @@ class SepayService {
     }
 
     final primaryEndpoint = PaymentConfig.sepayEndpoint;
-    final candidateEndpoints = <String>[primaryEndpoint];
-    if (primaryEndpoint == PaymentConfig.sepayProductionV2Endpoint) {
-      candidateEndpoints.add(PaymentConfig.sepayProductionV1Endpoint);
-    } else if (primaryEndpoint == PaymentConfig.sepayProductionV1Endpoint) {
-      candidateEndpoints.add(PaymentConfig.sepayProductionV2Endpoint);
-    }
+    final candidateEndpoints = <String>{
+      primaryEndpoint,
+      PaymentConfig.sepayProductionV2Endpoint,
+      PaymentConfig.sepayProductionV1Endpoint,
+      PaymentConfig.sepaySandboxEndpoint,
+    }.toList();
 
     for (final endpoint in candidateEndpoints) {
       try {

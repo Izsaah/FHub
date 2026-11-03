@@ -140,6 +140,58 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   Future<void> _handleClaim(BuildContext context) async {
     try {
       HapticFeedback.mediumImpact();
+
+      // Kiểm tra xung đột lịch của chính mình trước khi nhận việc
+      final conflict = await repository.checkScheduleConflict(
+        userId: currentUserId,
+        date: reminder.date,
+        time: reminder.time,
+        excludeReminderId: reminder.id,
+      );
+      if (conflict != null && context.mounted) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (cCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: Color(0xFFE65100)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppLanguage.text('Cảnh Báo Trùng Giờ', 'Schedule Conflict'),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              AppLanguage.text(
+                'Bạn đã có công việc "${conflict.title}"${conflict.familyName != null ? ' tại ${conflict.familyName}' : ''} vào lúc ${reminder.time} ngày ${reminder.date}.\n\nBạn có chắc chắn muốn nhận thêm công việc này?',
+                'You already have task "${conflict.title}" at ${reminder.time} on ${reminder.date}.\n\nDo you still want to claim this task?',
+              ),
+              style: const TextStyle(fontSize: 14, height: 1.4),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(cCtx, false),
+                child: Text(AppLanguage.text('Hủy', 'Cancel')),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0D7A68),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => Navigator.pop(cCtx, true),
+                child: Text(AppLanguage.text('Vẫn nhận việc', 'Proceed')),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true) return;
+      }
+
       await repository.claimOpenTask(
         reminderId: reminder.id,
         currentUserId: currentUserId,

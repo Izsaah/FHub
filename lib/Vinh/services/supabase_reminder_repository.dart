@@ -596,6 +596,38 @@ class SupabaseReminderRepository implements ReminderRepository {
   }
 
   @override
+  Future<ReminderModel?> checkScheduleConflict({
+    required String userId,
+    required String date,
+    required String time,
+    String? excludeReminderId,
+  }) async {
+    return _fallbackRepository.checkScheduleConflict(
+      userId: userId,
+      date: date,
+      time: time,
+      excludeReminderId: excludeReminderId,
+    );
+  }
+
+  @override
+  Future<ReminderModel?> findDuplicateReminder({
+    required String familyId,
+    required String title,
+    required String date,
+    required String time,
+    String? excludeReminderId,
+  }) async {
+    return _fallbackRepository.findDuplicateReminder(
+      familyId: familyId,
+      title: title,
+      date: date,
+      time: time,
+      excludeReminderId: excludeReminderId,
+    );
+  }
+
+  @override
   Future<bool> restoreReminder({
     required String reminderId,
     required String currentUserId,

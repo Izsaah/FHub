@@ -516,37 +516,78 @@ class FirebaseReminderRepository implements ReminderRepository {
     }
 
     final docRef = col.doc(reminderId);
-    final docSnap = await docRef.get();
-    if (!docSnap.exists || docSnap.data() == null) {
-      throw ReminderNotFoundException();
-    }
+    final firestore = _firestore;
+    ReminderModel updated;
 
-    final existingData = Map<String, dynamic>.from(docSnap.data()!);
-    existingData['id'] = docSnap.id;
-    final existing = ReminderModel.fromJson(existingData);
+    if (firestore != null) {
+      updated = await firestore.runTransaction<ReminderModel>((transaction) async {
+        final docSnap = await transaction.get(docRef);
+        if (!docSnap.exists || docSnap.data() == null) {
+          throw ReminderNotFoundException();
+        }
 
-    if (existing.isCompleted) {
-      throw const ReminderValidationException('Công việc này đã hoàn thành!');
-    }
-    if (!existing.isOpenTask && existing.assignedTo != currentUserId) {
-      throw ReminderValidationException(
-        'Công việc này đã được ${existing.assignedToName.isNotEmpty ? existing.assignedToName : 'thành viên khác'} nhận trước đó!',
+        final existingData = Map<String, dynamic>.from(docSnap.data()!);
+        existingData['id'] = docSnap.id;
+        final existing = ReminderModel.fromJson(existingData);
+
+        if (existing.isCompleted) {
+          throw const ReminderValidationException('Công việc này đã hoàn thành!');
+        }
+        if (!existing.isOpenTask && existing.assignedTo != currentUserId) {
+          throw ReminderValidationException(
+            'Công việc này đã được ${existing.assignedToName.isNotEmpty ? existing.assignedToName : 'thành viên khác'} nhận trước đó!',
+          );
+        }
+
+        final updatedModel = existing.copyWith(
+          assignedTo: currentUserId,
+          assignedToName: currentUserName,
+          status: ReminderStatus.pending,
+        );
+
+        transaction.update(docRef, {
+          'assignedTo': currentUserId,
+          'assigned_to': currentUserId,
+          'assignedToName': currentUserName,
+          'assigned_to_name': currentUserName,
+          'status': ReminderStatus.pending,
+        });
+
+        return updatedModel;
+      });
+    } else {
+      final docSnap = await docRef.get();
+      if (!docSnap.exists || docSnap.data() == null) {
+        throw ReminderNotFoundException();
+      }
+
+      final existingData = Map<String, dynamic>.from(docSnap.data()!);
+      existingData['id'] = docSnap.id;
+      final existing = ReminderModel.fromJson(existingData);
+
+      if (existing.isCompleted) {
+        throw const ReminderValidationException('Công việc này đã hoàn thành!');
+      }
+      if (!existing.isOpenTask && existing.assignedTo != currentUserId) {
+        throw ReminderValidationException(
+          'Công việc này đã được ${existing.assignedToName.isNotEmpty ? existing.assignedToName : 'thành viên khác'} nhận trước đó!',
+        );
+      }
+
+      updated = existing.copyWith(
+        assignedTo: currentUserId,
+        assignedToName: currentUserName,
+        status: ReminderStatus.pending,
       );
+
+      await docRef.update({
+        'assignedTo': currentUserId,
+        'assigned_to': currentUserId,
+        'assignedToName': currentUserName,
+        'assigned_to_name': currentUserName,
+        'status': ReminderStatus.pending,
+      });
     }
-
-    final updated = existing.copyWith(
-      assignedTo: currentUserId,
-      assignedToName: currentUserName,
-      status: ReminderStatus.pending,
-    );
-
-    await docRef.update({
-      'assignedTo': currentUserId,
-      'assigned_to': currentUserId,
-      'assignedToName': currentUserName,
-      'assigned_to_name': currentUserName,
-      'status': ReminderStatus.pending,
-    });
 
     MultiTierEscalationService.instance.scheduleMultiTierEscalation(updated);
     return updated;
@@ -752,6 +793,77 @@ class FirebaseReminderRepository implements ReminderRepository {
 
     MultiTierEscalationService.instance.cancelEscalation(reminderId);
     return true;
+  }
+
+  @override
+  Future<ReminderModel?> checkScheduleConflict({
+    required String userId,
+    required String date,
+    required String time,
+    String? excludeReminderId,
+  }) async {
+    final col = _remindersCollection;
+    if (col == null) {
+      return _fallbackRepository?.checkScheduleConflict(
+        userId: userId,
+        date: date,
+        time: time,
+        excludeReminderId: excludeReminderId,
+      );
+    }
+    try {
+      final snap = await col
+          .where('assignedTo', isEqualTo: userId)
+          .where('date', isEqualTo: date.trim())
+          .where('time', isEqualTo: time.trim())
+          .get();
+      for (final doc in snap.docs) {
+        if (doc.id == excludeReminderId) continue;
+        final data = Map<String, dynamic>.from(doc.data() as Map);
+        data['id'] = doc.id;
+        final m = ReminderModel.fromJson(data);
+        if (!m.isDeleted && !m.isCompleted) return m;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  @override
+  Future<ReminderModel?> findDuplicateReminder({
+    required String familyId,
+    required String title,
+    required String date,
+    required String time,
+    String? excludeReminderId,
+  }) async {
+    final col = _remindersCollection;
+    if (col == null) {
+      return _fallbackRepository?.findDuplicateReminder(
+        familyId: familyId,
+        title: title,
+        date: date,
+        time: time,
+        excludeReminderId: excludeReminderId,
+      );
+    }
+    try {
+      final snap = await col
+          .where('familyId', isEqualTo: familyId)
+          .where('date', isEqualTo: date.trim())
+          .where('time', isEqualTo: time.trim())
+          .get();
+      final targetTitle = ReminderValidator.sanitizeTitle(title).toLowerCase();
+      for (final doc in snap.docs) {
+        if (doc.id == excludeReminderId) continue;
+        final data = Map<String, dynamic>.from(doc.data() as Map);
+        data['id'] = doc.id;
+        final m = ReminderModel.fromJson(data);
+        if (!m.isDeleted && !m.isCompleted && m.title.trim().toLowerCase() == targetTitle) {
+          return m;
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   @override

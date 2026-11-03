@@ -10,6 +10,7 @@ import '../models/wallet_transaction_model.dart';
 import '../services/notification_service.dart';
 import '../services/family_jackpot_service.dart';
 import '../services/payment_config.dart';
+import '../services/bank_directory.dart';
 import '../services/payment_service.dart';
 import '../services/sepay_service.dart';
 import '../theme/danh_colors.dart';
@@ -1781,33 +1782,29 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      initialValue: selectedBankCode,
+                      initialValue: BankDirectory.supportedBanks.any((b) => b.code == selectedBankCode)
+                          ? selectedBankCode
+                          : 'MB',
                       isExpanded: true,
                       decoration: InputDecoration(
                         labelText: 'Ngân hàng nhận tiền',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                       ),
-                      items: const [
-                        DropdownMenuItem(value: 'MB', child: Text('MBBank - Ngân hàng Quân Đội')),
-                        DropdownMenuItem(value: 'VCB', child: Text('Vietcombank - Ngoại Thương')),
-                        DropdownMenuItem(value: 'TCB', child: Text('Techcombank - Kỹ Thương')),
-                        DropdownMenuItem(value: 'ACB', child: Text('ACB - Á Châu')),
-                        DropdownMenuItem(value: 'ICB', child: Text('VietinBank - Công Thương')),
-                        DropdownMenuItem(value: 'BIDV', child: Text('BIDV - Đầu tư & Phát triển')),
-                        DropdownMenuItem(value: 'VPB', child: Text('VPBank - VN Thịnh Vượng')),
-                      ],
+                      items: BankDirectory.supportedBanks.map((b) {
+                        return DropdownMenuItem(
+                          value: b.code,
+                          child: Text(b.name, overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
                       onChanged: (val) {
                         if (val != null) {
                           setSheetState(() {
                             selectedBankCode = val;
-                            if (val == 'MB') selectedBankShortName = 'MBBank';
-                            if (val == 'VCB') selectedBankShortName = 'Vietcombank';
-                            if (val == 'TCB') selectedBankShortName = 'Techcombank';
-                            if (val == 'ACB') selectedBankShortName = 'ACB';
-                            if (val == 'ICB') selectedBankShortName = 'VietinBank';
-                            if (val == 'BIDV') selectedBankShortName = 'BIDV';
-                            if (val == 'VPB') selectedBankShortName = 'VPBank';
+                            final bItem = BankDirectory.findByCode(val);
+                            if (bItem != null) {
+                              selectedBankShortName = bItem.shortName;
+                            }
                           });
                         }
                       },
