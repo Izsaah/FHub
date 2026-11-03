@@ -1,6 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+
 import '../../Thinh/theme/app_language.dart';
 import '../services/family_state_manager.dart';
+import 'check_in_camera_screen.dart';
 
 class CheckInSheet extends StatefulWidget {
   final VoidCallback onCheckInSuccess;
@@ -25,7 +30,9 @@ class CheckInSheet extends StatefulWidget {
 class _CheckInSheetState extends State<CheckInSheet> {
   final TextEditingController _captionController = TextEditingController();
   String? _selectedImageUrl;
+  Uint8List? _capturedImageBytes;
   bool _isLoading = false;
+  bool _isTakingPhoto = false;
 
   final List<Map<String, String>> _samplePhotos = [
     {
@@ -86,7 +93,9 @@ class _CheckInSheetState extends State<CheckInSheet> {
   }
 
   Future<void> _handlePhotoCheckIn() async {
-    if (_selectedImageUrl == null && _captionController.text.trim().isEmpty) {
+    if (_selectedImageUrl == null &&
+        _capturedImageBytes == null &&
+        _captionController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Vui lòng chọn 1 bức ảnh hoặc nhập lời nhắn.'),
@@ -100,7 +109,9 @@ class _CheckInSheetState extends State<CheckInSheet> {
       final service = FamilyStateManager().service;
       await service.checkIn(
         service.currentUserId,
-        imageUrl: _selectedImageUrl,
+        imageUrl: _capturedImageBytes == null
+            ? _selectedImageUrl
+            : 'data:image/jpeg;base64,${base64Encode(_capturedImageBytes!)}',
         caption: _captionController.text.trim().isNotEmpty
             ? _captionController.text.trim()
             : 'Đã check-in an toàn hôm nay!',
@@ -130,6 +141,39 @@ class _CheckInSheetState extends State<CheckInSheet> {
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _capturePhoto() async {
+    setState(() => _isTakingPhoto = true);
+    try {
+      final bytes = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute(
+          builder: (_) => const CheckInCameraScreen(),
+        ),
+      );
+      if (bytes != null && mounted) {
+        setState(() {
+          _capturedImageBytes = bytes;
+          _selectedImageUrl = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('CheckInSheet camera screen error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+          AppLanguage.text(
+            'Không thể mở máy ảnh: $e',
+            'Could not open camera: $e',
+          ),
+          ),
+          backgroundColor: Colors.red[700],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isTakingPhoto = false);
     }
   }
 
@@ -298,6 +342,7 @@ class _CheckInSheetState extends State<CheckInSheet> {
                     onTap: () {
                       setState(() {
                         _selectedImageUrl = isSelected ? null : photo['url'];
+                        _capturedImageBytes = null;
                       });
                     },
                     child: Container(
@@ -341,6 +386,41 @@ class _CheckInSheetState extends State<CheckInSheet> {
               ),
             ),
 
+            if (_capturedImageBytes != null) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.memory(
+                      _capturedImageBytes!,
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      AppLanguage.text('Ảnh đã chụp', 'Photo captured'),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF005F50),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: AppLanguage.text('Chụp lại', 'Retake photo'),
+                    onPressed: _isLoading || _isTakingPhoto
+                        ? null
+                        : () => setState(() => _capturedImageBytes = null),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ],
+
             const SizedBox(height: 12),
             TextField(
               controller: _captionController,
@@ -381,7 +461,46 @@ class _CheckInSheetState extends State<CheckInSheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                icon: const Icon(Icons.photo_camera),
+                icon: _isTakingPhoto
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.photo_camera),
+                label: Flexible(
+                  child: Text(
+                    AppLanguage.text(
+                      'Chụp ảnh bằng Camera',
+                      'Take a photo with camera',
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                onPressed: _isLoading || _isTakingPhoto ? null : _capturePhoto,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF005F50),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.send),
                 label: Flexible(
                   child: Text(
                     AppLanguage.text(
@@ -393,7 +512,9 @@ class _CheckInSheetState extends State<CheckInSheet> {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
-                onPressed: _isLoading ? null : _handlePhotoCheckIn,
+                onPressed: _isLoading || _isTakingPhoto
+                    ? null
+                    : _handlePhotoCheckIn,
               ),
             ),
           ],
