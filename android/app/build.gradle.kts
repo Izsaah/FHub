@@ -48,3 +48,19 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+tasks.register("syncDotEnv") {
+    doLast {
+        val rootEnv = File(rootDir, "../.env")
+        val assetsEnv = File(rootDir, "../assets/.env")
+        if (rootEnv.exists()) {
+            assetsEnv.parentFile.mkdirs()
+            rootEnv.copyTo(assetsEnv, overwrite = true)
+            println("Gradle: Synchronized root .env -> assets/.env successfully!")
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn("syncDotEnv")
+}

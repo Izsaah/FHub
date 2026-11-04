@@ -9,9 +9,10 @@ class AiToolsDeclarations {
       FunctionDeclaration(
     'createFamilyTask',
     'CHỈ GỌI KHI người dùng trực tiếp ra lệnh tạo việc nhà cụ thể (VD: "Giao việc rửa bát lúc 18h", "Nhắc Bin quét nhà"). '
-        'CẤM TUYỆT ĐỐI gọi tool này khi người dùng đang hỏi thắc mắc, hỏi quyền hạn, hỏi vai trò, hỏi tiến độ, hoặc tâm sự '
-        '(VD: "tôi đóng vai trò gì?", "tôi có thể giao việc cho ai không?", "hôm nay có việc gì?"). '
-        'Với câu hỏi thắc mắc, hãy trả lời bằng lời nói trực tiếp, cấm gọi tool này. '
+        'CẤM TUYỆT ĐỐI gọi tool này khi người dùng đang hỏi thắc mắc, hỏi quyền hạn, hỏi vai trò, hỏi tiến độ, hoặc tâm sự. '
+        'QUY TẮC PHÂN VAI: Chỉ Bố/Mẹ/Ông/Bà mới được phân công việc nhà cho người khác. '
+        'Nếu người dùng là Con cái (CHILD): CẤM giao việc nhà bắt buộc cho Bố/Mẹ hay người khác (chỉ được tạo việc cho bản thân hoặc việc chung tự nhận). '
+        'Nếu con nhờ vả Bố/Mẹ (VD: đón con, mua sách vở), tiêu đề phải ghi rõ "[Lời nhờ từ con] <Nội dung>". '
         'Nếu là việc mở cho các con nhận (Open Task), đặt assignedTo="ALL" và isOpenTask=true.',
     Schema.object(
       properties: {
@@ -69,9 +70,9 @@ class AiToolsDeclarations {
   static final FunctionDeclaration performFamilyCheckInDeclaration =
       FunctionDeclaration(
     'performFamilyCheckIn',
-    'Thực hiện điểm danh "I\'m OK" (Check-in an toàn hôm nay) cho người dùng khi họ yêu cầu: '
-    '"tích i\'m ok dùm tôi", "điểm danh giúp tôi", "check in giúp tôi", "tôi ok", "hôm nay tôi ổn". '
-    'Cập nhật trạng thái an tâm của người dùng lên hệ thống gia đình.',
+    'Thực hiện điểm danh "I\'m OK" (Check-in an toàn) NHANH bằng giọng nói CHO PHỤ HUYNH khi họ yêu cầu: '
+    '"tích i\'m ok dùm tôi", "điểm danh giúp tôi", "check in giúp tôi". '
+    'CẤM GỌI TOOL NÀY cho tài khoản Con cái (CHILD), vì con cái bắt buộc phải chụp ảnh xác thực an toàn qua nút "✓ I\'M OK" trên màn hình chính.',
     Schema.object(
       properties: {
         'caption': Schema.string(
@@ -82,6 +83,25 @@ class AiToolsDeclarations {
     ),
   );
 
+  /// Tool 4: Xóa hoặc hủy bỏ công việc nhà khi người dùng yêu cầu
+  static final FunctionDeclaration deleteFamilyTaskDeclaration =
+      FunctionDeclaration(
+    'deleteFamilyTask',
+    'Xóa hoặc hủy bỏ một hoặc nhiều công việc nhà trong gia đình khi người dùng yêu cầu '
+    '(VD: "xoá 3 công việc...", "xoá task lau nhà", "hủy việc đi chợ", "bỏ việc quét nhà"). '
+    'LƯU Ý PHÂN QUYỀN: Phụ huynh có quyền xóa mọi việc nhà. Con cái CHỈ ĐƯỢC XÓA việc do chính mình tạo ra, TUYỆT ĐỐI KHÔNG xóa việc do Bố/Mẹ giao.',
+    Schema.object(
+      properties: {
+        'keywords': Schema.array(
+          description:
+              'Danh sách các từ khóa hoặc tên công việc cần xóa khỏi danh sách việc nhà.',
+          items: Schema.string(),
+        ),
+      },
+      requiredProperties: ['keywords'],
+    ),
+  );
+
   /// Danh sách Tools nạp vào GenerativeModel
   static List<Tool> get allTools => [
         Tool(
@@ -89,6 +109,7 @@ class AiToolsDeclarations {
             createFamilyTaskDeclaration,
             saveFamilyPreferenceDeclaration,
             performFamilyCheckInDeclaration,
+            deleteFamilyTaskDeclaration,
           ],
         ),
       ];

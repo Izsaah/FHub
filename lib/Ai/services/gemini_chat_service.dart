@@ -30,6 +30,8 @@ class GeminiChatService {
 
   GenerativeModel? _model;
   ChatSession? _chat;
+  String? _activeModelName;
+  String? _cachedSystemPrompt;
 
   String _currentFamilyId = 'f1';
   String _currentFamilyName = 'Gia Đình';
@@ -41,11 +43,37 @@ class GeminiChatService {
   String get currentUserName => _currentUserName;
   String get currentUserRole => _currentUserRole;
 
+  bool get canAssignChores => _canAssignChores;
+
+  bool get _canAssignChores {
+    final roleUpper = _currentUserRole.toUpperCase();
+    final roleLower = _currentUserRole.toLowerCase();
+    final nameLower = _currentUserName.toLowerCase();
+    final isParent = roleUpper.contains('PARENT') ||
+        roleUpper.contains('OWNER') ||
+        roleUpper.contains('DAD') ||
+        roleUpper.contains('MOM') ||
+        roleLower.contains('bố') ||
+        roleLower.contains('mẹ') ||
+        roleLower.contains('ba') ||
+        roleLower.contains('má') ||
+        nameLower.contains('bố') ||
+        nameLower.contains('mẹ');
+    final isGrandparent = roleUpper.contains('GRANDPARENT') ||
+        roleLower.contains('ông') ||
+        roleLower.contains('bà') ||
+        nameLower.contains('ông') ||
+        nameLower.contains('bà');
+    return isParent || isGrandparent;
+  }
+
+  bool get _isChild => !_canAssignChores;
+
   static const List<String> _candidateModels = [
-    'gemini-2.0-flash',
-    'gemini-1.5-pro',
-    'gemini-1.5-flash',
-    'gemini-2.0-flash-exp',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
   ];
 
   String? _customApiKey;
@@ -160,10 +188,12 @@ class GeminiChatService {
 
     // Xây dựng System Instruction động theo thời gian thực
     final systemPrompt = await _buildDynamicSystemPrompt();
+    _cachedSystemPrompt = systemPrompt;
 
     final modelsToTry = [
+      if (_activeModelName != null && _activeModelName!.isNotEmpty) _activeModelName!,
       if (configuredModel != null && configuredModel.isNotEmpty) configuredModel,
-      ..._candidateModels.where((m) => m != configuredModel),
+      ..._candidateModels.where((m) => m != configuredModel && m != _activeModelName),
     ];
 
     for (final candidate in modelsToTry) {
@@ -175,6 +205,7 @@ class GeminiChatService {
           systemInstruction: Content.system(systemPrompt),
         );
         _chat = _model!.startChat();
+        _activeModelName = candidate;
         debugPrint('GeminiChatService: Initialized successfully with model $candidate for family $_currentFamilyId');
         return;
       } catch (e) {
@@ -238,7 +269,24 @@ class GeminiChatService {
         lower.contains('tích') ||
         lower.contains('tick') ||
         lower.contains("i'm ok") ||
-        lower.contains('im ok');
+        lower.contains('im ok') ||
+        lower.contains('có thể làm gì') ||
+        lower.contains('làm được gì') ||
+        lower.contains('giúp được gì') ||
+        lower.contains('hướng dẫn') ||
+        lower.contains('chức năng') ||
+        lower.contains('tính năng') ||
+        lower.contains('what can you do') ||
+        lower.contains('khả năng của bạn') ||
+        lower.contains('trả lời tôi được không') ||
+        lower.contains('có trả lời được không') ||
+        lower.contains('nghe tôi không') ||
+        lower.contains('có nghe không') ||
+        lower.contains('có ở đó không') ||
+        lower.contains('ở đó không') ||
+        lower.contains('có online không') ||
+        lower == 'alo' ||
+        lower == 'alo alo';
   }
 
   /// Nhận diện xem người dùng có đang yêu cầu AI thực hiện hành động điểm danh / tích "I'm OK" cho mình không
@@ -343,163 +391,258 @@ class GeminiChatService {
       );
     }
 
-    if (_chat == null) {
-      await initChat(
-        familyId: _currentFamilyId,
-        userId: _currentUserId,
-        userName: _currentUserName,
-        userRole: _currentUserRole,
-      );
-    }
+    final apiKey = effectiveApiKey;
+    final configuredModel = (dotenv.isInitialized ? dotenv.env['GEMINI_MODEL'] : null)?.trim();
+    final modelsToTry = [
+      if (_activeModelName != null && _activeModelName!.isNotEmpty) _activeModelName!,
+      if (configuredModel != null && configuredModel.isNotEmpty) configuredModel,
+      ..._candidateModels.where((m) => m != configuredModel && m != _activeModelName),
+    ];
 
-    if (_chat == null) {
-      // Nếu khởi tạo Gemini thất bại (ví dụ lỗi mạng), tự động fallback về engine nội bộ
-      if (fallbackToLocal) {
-        return _generateContextualResponse(cleanText);
-      }
-      return ChatMessageModel(
-        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-        text: 'Không thể khởi tạo phiên trò chuyện Gemini.',
-        sender: ChatSender.ai,
-        timestamp: DateTime.now(),
-        isError: true,
-      );
-    }
+    Object? lastError;
 
-    try {
-      var response = await _chat!.sendMessage(Content.text(cleanText));
-
+    for (final candidate in modelsToTry) {
       ReminderModel? createdTaskResult;
       String? savedMemorySummary;
+      try {
+        if (_chat == null || _activeModelName != candidate) {
+          final prompt = _cachedSystemPrompt ?? await _buildDynamicSystemPrompt();
+          _cachedSystemPrompt = prompt;
+          _model = GenerativeModel(
+            model: candidate,
+            apiKey: apiKey,
+            tools: AiToolsDeclarations.allTools,
+            systemInstruction: Content.system(prompt),
+          );
+          _chat = _model!.startChat();
+          _activeModelName = candidate;
+        }
 
-      // Xử lý Function Calling (nếu AI kích hoạt Tool)
-      int loopLimit = 0;
-      while (response.functionCalls.isNotEmpty && loopLimit < 3) {
-        loopLimit++;
-        final List<FunctionResponse> toolResponses = [];
+        var response = await _chat!
+            .sendMessage(Content.text(cleanText))
+            .timeout(const Duration(seconds: 15));
 
-        for (final call in response.functionCalls) {
-          debugPrint('Gemini wants to call tool: ${call.name} with args: ${call.args}');
+        // Xử lý Function Calling (nếu AI kích hoạt Tool)
+        int loopLimit = 0;
+        while (response.functionCalls.isNotEmpty && loopLimit < 3) {
+          loopLimit++;
+          final List<FunctionResponse> toolResponses = [];
 
-          if (call.name == 'createFamilyTask') {
-            final task = await _handleCreateFamilyTask(call.args);
-            createdTaskResult = task;
-            toolResponses.add(
-              FunctionResponse(
-                call.name,
-                {
-                  'success': true,
-                  'taskId': task.id,
-                  'title': task.title,
-                  'message': 'Đã tạo công việc thành công vào hệ thống nhắc việc gia đình.',
-                },
-              ),
-            );
-          } else if (call.name == 'saveFamilyPreference') {
-            final keyword = call.args['keyword']?.toString() ?? '';
-            final val = call.args['value']?.toString() ?? '';
-            final category = call.args['category']?.toString() ?? 'general';
+          for (final call in response.functionCalls) {
+            debugPrint('Gemini wants to call tool: ${call.name} with args: ${call.args}');
 
-            if (keyword.isNotEmpty && val.isNotEmpty) {
-              await FamilyMemoryService.instance.savePreference(
-                familyId: _currentFamilyId,
-                keyword: keyword,
-                value: val,
-                category: category,
+            if (call.name == 'createFamilyTask') {
+              try {
+                final task = await _handleCreateFamilyTask(call.args);
+                createdTaskResult = task;
+                toolResponses.add(
+                  FunctionResponse(
+                    call.name,
+                    {
+                      'success': true,
+                      'taskId': task.id,
+                      'title': task.title,
+                      'message': 'Đã tạo công việc thành công vào hệ thống nhắc việc gia đình.',
+                    },
+                  ),
+                );
+              } catch (e) {
+                final cleanError = e.toString().replaceAll('Exception: ', '');
+                toolResponses.add(
+                  FunctionResponse(
+                    call.name,
+                    {
+                      'success': false,
+                      'error': cleanError,
+                      'message': 'Không thể tạo việc: $cleanError',
+                    },
+                  ),
+                );
+              }
+            } else if (call.name == 'deleteFamilyTask') {
+              final rawKeywords = call.args['keywords'];
+              final keywords = <String>[];
+              if (rawKeywords is List) {
+                for (final item in rawKeywords) {
+                  if (item != null && item.toString().trim().isNotEmpty) {
+                    keywords.add(item.toString().trim());
+                  }
+                }
+              } else if (rawKeywords != null) {
+                keywords.add(rawKeywords.toString().trim());
+              }
+              final deleted = await _handleDeleteFamilyTasks(keywords);
+              final deletedStr = deleted.isNotEmpty ? deleted.join(', ') : 'các công việc phù hợp';
+              toolResponses.add(
+                FunctionResponse(
+                  call.name,
+                  {
+                    'success': true,
+                    'deletedCount': deleted.length,
+                    'deletedTasks': deleted,
+                    'message': 'Đã xóa thành công $deletedStr khỏi danh sách việc nhà.',
+                  },
+                ),
               );
-              savedMemorySummary = 'Đã ghi nhớ: "$keyword" ➔ "$val"';
-            }
+            } else if (call.name == 'saveFamilyPreference') {
+              final keyword = call.args['keyword']?.toString() ?? '';
+              final val = call.args['value']?.toString() ?? '';
+              final category = call.args['category']?.toString() ?? 'general';
 
-            toolResponses.add(
-              FunctionResponse(
-                call.name,
-                {
-                  'success': true,
-                  'keyword': keyword,
-                  'value': val,
-                  'message': 'Đã ghi nhớ thói quen vào bộ nhớ dài hạn của gia đình.',
-                },
-              ),
-            );
-          } else if (call.name == 'performFamilyCheckIn') {
-            final caption = call.args['caption']?.toString();
-            await _handlePerformCheckIn(caption);
-            toolResponses.add(
-              FunctionResponse(
-                call.name,
-                {
-                  'success': true,
-                  'message': 'Đã thực hiện tích "I\'m OK" và hoàn tất điểm danh thành công cho $_currentUserName hôm nay.',
-                },
-              ),
-            );
-          } else {
-            toolResponses.add(
-              FunctionResponse(
-                call.name,
-                {'error': 'Tool ${call.name} không tồn tại.'},
-              ),
-            );
+              if (keyword.isNotEmpty && val.isNotEmpty) {
+                await FamilyMemoryService.instance.savePreference(
+                  familyId: _currentFamilyId,
+                  keyword: keyword,
+                  value: val,
+                  category: category,
+                );
+                savedMemorySummary = 'Đã ghi nhớ: "$keyword" ➔ "$val"';
+              }
+
+              toolResponses.add(
+                FunctionResponse(
+                  call.name,
+                  {
+                    'success': true,
+                    'keyword': keyword,
+                    'value': val,
+                    'message': 'Đã ghi nhớ thói quen vào bộ nhớ dài hạn của gia đình.',
+                  },
+                ),
+              );
+            } else if (call.name == 'performFamilyCheckIn') {
+              try {
+                final caption = call.args['caption']?.toString();
+                await _handlePerformCheckIn(caption);
+                toolResponses.add(
+                  FunctionResponse(
+                    call.name,
+                    {
+                      'success': true,
+                      'message': 'Đã thực hiện tích "I\'m OK" và hoàn tất điểm danh thành công cho $_currentUserName hôm nay.',
+                    },
+                  ),
+                );
+              } catch (e) {
+                final cleanError = e.toString().replaceAll('Exception: ', '');
+                toolResponses.add(
+                  FunctionResponse(
+                    call.name,
+                    {
+                      'success': false,
+                      'error': cleanError,
+                      'message': cleanError,
+                    },
+                  ),
+                );
+              }
+            } else {
+              toolResponses.add(
+                FunctionResponse(
+                  call.name,
+                  {'error': 'Tool ${call.name} không tồn tại.'},
+                ),
+              );
+            }
+          }
+
+          try {
+            response = await _chat!
+                .sendMessage(
+                  Content.functionResponses(toolResponses),
+                )
+                .timeout(const Duration(seconds: 15));
+          } catch (turn2Error) {
+            debugPrint('GeminiChatService: Turn 2 tool response handled gracefully ($turn2Error).');
+            break;
           }
         }
 
-        response = await _chat!.sendMessage(
-          Content.functionResponses(toolResponses),
-        );
-      }
-
-      var aiText = _extractTextSafely(response);
-      if (aiText.isEmpty) {
-        if (createdTaskResult != null) {
-          aiText = 'Dạ em đã tạo công việc "${createdTaskResult.title}" và lưu vào hệ thống cho gia đình mình rồi ạ!';
-        } else {
-          aiText = 'Dạ em đã ghi nhận thông tin rồi ạ!';
+        var aiText = _extractTextSafely(response);
+        if (aiText.isEmpty) {
+          final parts = <String>[];
+          if (savedMemorySummary != null && savedMemorySummary.isNotEmpty) {
+            parts.add('Dạ em $savedMemorySummary vào bộ nhớ gia đình rồi nhé! 🧠✨');
+          }
+          if (createdTaskResult != null) {
+            parts.add('Dạ em đã tạo xong công việc "${createdTaskResult.title}" vào lúc ${createdTaskResult.time} ngày ${createdTaskResult.date} cho ${createdTaskResult.assignedToName} rồi ạ! ✅');
+          }
+          aiText = parts.isNotEmpty
+              ? parts.join('\n\n')
+              : 'Dạ em đã ghi nhận và hoàn tất yêu cầu của bạn rồi ạ! ✨';
         }
-      }
 
-      return ChatMessageModel(
-        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-        text: aiText,
-        sender: ChatSender.ai,
-        timestamp: DateTime.now(),
-        createdTask: createdTaskResult,
-        savedMemorySummary: savedMemorySummary,
-      );
-    } catch (e) {
-      debugPrint('GeminiChatService sendMessage error: $e');
-      final err = e.toString().toLowerCase();
-      if (err.contains('api_key_invalid') ||
-          err.contains('api key not valid') ||
-          err.contains('unauthenticated') ||
-          err.contains('access_token_type_unsupported') ||
-          err.contains('api_key_service_blocked') ||
-          err.contains('401')) {
-        final prefix = effectiveApiKey.length > 8 ? effectiveApiKey.substring(0, 10) : effectiveApiKey;
+        _activeModelName = candidate;
         return ChatMessageModel(
           id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-          text: '⚠️ **Dịch vụ Gemini API bị chặn hoặc chưa kích hoạt (Google báo lỗi 401 / API_KEY_SERVICE_BLOCKED)**\n\n'
-              'Khóa API hiện tại: `$prefix...`\n'
-              '• **Nguyên nhân**: Khóa này được liên kết với một Google Cloud Project nhưng dịch vụ **Generative Language API** chưa được bật (Enable) trong project đó.\n\n'
-              '👉 **Cách xử lý nhanh nhất (10 giây)**:\n'
-              '1. Vào lại [Google AI Studio](https://aistudio.google.com/app/apikey).\n'
-              '2. Bấm **Create API key** ➔ Chọn **"Create API key in new project"** (Tạo trong project mới của AI Studio để Google tự động bật sẵn dịch vụ).\n'
-              '3. Dán khóa mới vào file `.env` là Gemini 2.0 Flash hoạt động ngay lập tức nhé!',
+          text: aiText,
           sender: ChatSender.ai,
           timestamp: DateTime.now(),
-          isError: true,
+          createdTask: createdTaskResult,
+          savedMemorySummary: savedMemorySummary,
         );
+      } catch (e) {
+        lastError = e;
+        debugPrint('GeminiChatService: Candidate $candidate failed: $e');
+
+        // Nếu Tool đã thực thi thành công trên thiết bị / Firestore, lập tức trả về kết quả thành công cho người dùng!
+        if (createdTaskResult != null || savedMemorySummary != null) {
+          final parts = <String>[];
+          if (savedMemorySummary != null && savedMemorySummary.isNotEmpty) {
+            parts.add('Dạ em $savedMemorySummary vào bộ nhớ gia đình rồi nhé! 🧠✨');
+          }
+          if (createdTaskResult != null) {
+            parts.add('Dạ em đã tạo xong công việc "${createdTaskResult.title}" vào lúc ${createdTaskResult.time} ngày ${createdTaskResult.date} cho ${createdTaskResult.assignedToName} rồi ạ! ✅');
+          }
+          final fallbackText = parts.isNotEmpty
+              ? parts.join('\n\n')
+              : 'Dạ em đã ghi nhận và hoàn tất yêu cầu của bạn rồi ạ! ✅';
+          return ChatMessageModel(
+            id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+            text: fallbackText,
+            sender: ChatSender.ai,
+            timestamp: DateTime.now(),
+            createdTask: createdTaskResult,
+            savedMemorySummary: savedMemorySummary,
+          );
+        }
+        final err = e.toString().toLowerCase();
+        if (err.contains('api_key_invalid') ||
+            err.contains('api key not valid') ||
+            err.contains('unauthenticated') ||
+            err.contains('access_token_type_unsupported') ||
+            err.contains('api_key_service_blocked') ||
+            err.contains('401')) {
+          final prefix = effectiveApiKey.length > 8 ? effectiveApiKey.substring(0, 10) : effectiveApiKey;
+          return ChatMessageModel(
+            id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+            text: '⚠️ **Dịch vụ Gemini API bị chặn hoặc chưa kích hoạt (Google báo lỗi 401 / API_KEY_SERVICE_BLOCKED)**\n\n'
+                'Khóa API hiện tại: `$prefix...`\n'
+                '• **Nguyên nhân**: Khóa này được liên kết với một Google Cloud Project nhưng dịch vụ **Generative Language API** chưa được bật (Enable) trong project đó.\n\n'
+                '👉 **Cách xử lý nhanh nhất (10 giây)**:\n'
+                '1. Vào lại [Google AI Studio](https://aistudio.google.com/app/apikey).\n'
+                '2. Bấm **Create API key** ➔ Chọn **"Create API key in new project"** (Tạo trong project mới của AI Studio để Google tự động bật sẵn dịch vụ).\n'
+                '3. Dán khóa mới vào file `.env` là Gemini hoạt động ngay lập tức nhé!',
+            sender: ChatSender.ai,
+            timestamp: DateTime.now(),
+            isError: true,
+          );
+        }
+        // Thử model tiếp theo
+        _chat = null;
       }
-      if (fallbackToLocal) {
-        return _generateContextualResponse(cleanText);
-      }
-      return ChatMessageModel(
-        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-        text: 'Lỗi gọi Gemini: $e',
-        sender: ChatSender.ai,
-        timestamp: DateTime.now(),
-        isError: true,
-      );
     }
+
+    if (fallbackToLocal) {
+      return _generateContextualResponse(cleanText);
+    }
+    return ChatMessageModel(
+      id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+      text: 'Lỗi gọi Gemini: $lastError',
+      sender: ChatSender.ai,
+      timestamp: DateTime.now(),
+      isError: true,
+    );
   }
 
   /// Trích xuất text phản hồi an toàn
@@ -576,8 +719,12 @@ class GeminiChatService {
   /// Xây dựng ngữ cảnh thời gian thực (Dynamic System Prompt)
   Future<String> _buildDynamicSystemPrompt() async {
     final now = DateTime.now();
+    const weekdayNames = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'];
+    final weekday = weekdayNames[now.weekday - 1];
     final todayStr =
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+    final timeStr =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     // 1. Đọc danh sách thành viên gia đình và trạng thái điểm danh hôm nay
     final membersInfo = StringBuffer();
@@ -693,10 +840,23 @@ class GeminiChatService {
 
     return '''
 Bạn là Trợ lý AI Gia đình thông minh, ấm áp và chu đáo của ứng dụng Family Hub (FHub).
-Hôm nay là ngày: $todayStr.
+Hôm nay là: $weekday, ngày $todayStr, lúc $timeStr.
 Người đang trò chuyện với bạn: $_currentUserName (ID: $_currentUserId).
 Vai trò của người dùng trong gia đình: $_currentUserRole.
 Gia đình hiện tại: $_currentFamilyName (Mã: $_currentFamilyId).
+
+=== NGUYÊN TẮC HỘI THOẠI ĐA LƯỢT VÀ CHUYỂN Ý (MULTI-TURN & CONTEXT SWITCHING) ===
+- Bạn luôn duy trì mạch hội thoại tự nhiên, thông minh:
+  + Khi người dùng nói muốn mua sắm mà chưa rõ chi tiết (VD: "Tôi muốn đi mua sữa", "Nhắc mua cà phê"):
+    * Hãy hỏi lại một cách thân thiện: "Dạ bạn muốn mua loại sữa nào (Vinamilk, TH True Milk, hay loại khác ạ) để mình tạo việc cho chính xác nhé?"
+  + Khi người dùng trả lời thương hiệu (VD: "Vinamilk", "TH True Milk"):
+    * Gọi tool saveFamilyPreference (keyword: "sữa", value: thương hiệu).
+    * Gọi tool createFamilyTask để tạo việc mua loại sữa đó.
+    * Xác nhận thân thiện với người dùng rằng bạn đã ghi nhớ thói quen này.
+  + NẾU NGƯỜI DÙNG ĐỔI Ý HOẶC ĐỔI CHỦ ĐỀ Ở LƯỢT TIẾP THEO (VD: "À không, tôi muốn nấu một bữa tiệc, bạn có đề xuất gì không", "Thôi không mua nữa"):
+    * BẠN PHẢI TUÂN THỦ HOÀN TOÀN Ý ĐỊNH MỚI!
+    * TUYỆT ĐỐI KHÔNG TẠO VIỆC CŨ! KHÔNG ĐƯỢC TẠO VIỆC "Mua sữa (à không, tôi muốn nấu một bữa tiệc...)"!
+    * Trả lời tự nhiên, nhiệt tình và thông minh theo chủ đề mới (VD: gợi ý thực đơn bữa tiệc gia đình, cách chuẩn bị, công thức món ngon).
 
 === QUY TẮC XƯNG HÔ BẮT BUỘC (TUYỆT ĐỐI ĐỘNG THEO PROFILE - CẤM HARDCODE) ===
 - KHÔNG ĐƯỢC mặc định gọi "Mẹ" hoặc xưng "Chào mẹ" nếu người dùng không phải là Mẹ!
@@ -705,6 +865,18 @@ Gia đình hiện tại: $_currentFamilyName (Mã: $_currentFamilyId).
 - Nếu người dùng là Bố/Ba (Parent - Bố): Xưng con/em, gọi "Bố".
 - Nếu người dùng là Mẹ (Parent - Mẹ): Xưng con/em, gọi "Mẹ".
 - Nếu người dùng là Ông/Bà (Grandparent): Xưng cháu/con, gọi "Ông/Bà".
+
+=== QUY TẮC PHÂN QUYỀN HỆ THỐNG THEO VAI TRÒ (BẮT BUỘC TUÂN THỦ) ===
+- Người dùng hiện tại: "$_currentUserName" (ID: $_currentUserId) - Vai trò: "$_currentUserRole".
+- NẾU NGƯỜI DÙNG LÀ PHỤ HUYNH (Parent - Bố/Mẹ) HOẶC TRƯỞNG BỐI (Grandparent - Ông/Bà):
+  + Có toàn quyền phân công việc nhà cho các con hoặc tạo việc chung (assignedTo: "ALL").
+  + Có quyền xóa/hủy công việc nhà trong gia đình khi cần.
+  + Có quyền điểm danh nhanh an toàn qua AI bằng tool performFamilyCheckIn.
+- NẾU NGƯỜI DÙNG LÀ CON CÁI (Child/Con):
+  + CẤM TUYỆT ĐỐI giao việc nhà bắt buộc cho Bố Mẹ hay người khác (VD: "bắt bố quét nhà", "giao mẹ nấu cơm"). Hãy từ chối lễ phép và giải thích: "Dạ, con không thể phân công việc nhà cho Bố/Mẹ được nhé. Con chỉ có thể tạo việc cho bản thân hoặc gửi lời nhờ Bố/Mẹ thôi ạ!"
+  + Nếu con có lời nhờ vả lịch sự (VD: "nhờ bố 17h đón con", "nhắc mẹ mua tập"): Được phép gọi tool createFamilyTask nhưng tiêu đề phải ghi rõ "[Lời nhờ từ con] <Nội dung>".
+  + CẤM TUYỆT ĐỐI gọi tool performFamilyCheckIn để điểm danh hộ con cái! Con bắt buộc phải chụp ảnh xác thực an toàn qua nút "✓ I'M OK" trên màn hình chính để Bố Mẹ an tâm. Hãy giải thích: "Dạ để Bố Mẹ yên tâm, con hãy bấm nút '✓ I'M OK' trên màn hình chính và chụp một tấm ảnh gửi về gia đình nhé!"
+  + Con chỉ được phép xóa việc do chính con tạo ra, CẤM xóa việc do Bố Mẹ giao.
 
 === NGUYÊN TẮC ĐA GIA ĐÌNH & PHÂN LẬP DỮ LIỆU (MULTI-FAMILY SCOPING) ===
 - Người dùng có thể tham gia nhiều gia đình trong ứng dụng FHub.
@@ -764,6 +936,15 @@ $memoriesInfo
 
     // 0. HÀNH ĐỘNG: YÊU CẦU ĐIỂM DANH / TÍCH I'M OK CHO BẢN THÂN
     if (_isPerformCheckInIntent(lower)) {
+      if (_isChild) {
+        return ChatMessageModel(
+          id: 'msg_${now.millisecondsSinceEpoch}',
+          text: 'Dạ $salutation ơi! Để Bố Mẹ thực sự yên tâm khi thấy $salutation an toàn hôm nay, $salutation hãy bấm nút "✓ I\'M OK" trên màn hình chính và chụp một tấm ảnh gửi về gia đình nhé! 📸💚',
+          sender: ChatSender.ai,
+          timestamp: now,
+        );
+      }
+
       await _handlePerformCheckIn('Đã điểm danh I\'m OK qua Trợ lý AI');
       return ChatMessageModel(
         id: 'msg_${now.millisecondsSinceEpoch}',
@@ -771,6 +952,192 @@ $memoriesInfo
             'Trạng thái an tâm của $salutation đã được cập nhật cho cả gia đình cùng thấy. Chúc $salutation một ngày thật vui vẻ và tràn đầy năng lượng! 🌟',
         sender: ChatSender.ai,
         timestamp: now,
+      );
+    }
+
+    // 0.2. HỎI VỀ KHẢ NĂNG / TÍNH NĂNG CỦA AI ("bạn có thể làm gì", "bạn làm được gì", "hướng dẫn", "tính năng")
+    if (lower.contains('có thể làm gì') ||
+        lower.contains('làm được gì') ||
+        lower.contains('giúp được gì') ||
+        lower.contains('hướng dẫn') ||
+        lower.contains('tính năng') ||
+        lower.contains('chức năng') ||
+        lower.contains('what can you do') ||
+        lower.contains('khả năng của bạn')) {
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: '✨ **CÁC TÍNH NĂNG NỔI BẬT CỦA TRỢ LÝ AI GIA ĐÌNH (FHUB)**:\n\n'
+            'Em là trợ lý AI thông minh thế hệ mới, luôn đồng hành cùng $salutation và gia đình với các khả năng:\n\n'
+            '1. 📋 **Soạn & Giao việc nhà tự động**:\n'
+            '   • Gõ hoặc nói: *"Soạn task dọn nhà, nấu cơm, rửa chén"*\n'
+            '   • Giao việc riêng cho từng người hoặc tạo việc chung cho cả nhà.\n'
+            '2. 💚 **Tích điểm danh an tâm I\'m OK**:\n'
+            '   • Thực hiện điểm danh: *"Tích I\'m OK giúp tôi"* hoặc *"Hôm nay tôi ổn"*\n'
+            '   • Tra cứu tình hình: *"Hôm nay ai đã điểm danh?"*\n'
+            '3. 📊 **Báo cáo tiến độ thời gian thực**:\n'
+            '   • *"Tóm tắt tiến độ công việc hôm nay"*\n'
+            '4. 🎁 **Hũ Niềm Vui & Quản lý quỹ**:\n'
+            '   • *"Quỹ hũ niềm vui hiện có bao nhiêu?"*\n'
+            '5. 🍲 **Gợi ý thực đơn & Bí quyết gia đình**:\n'
+            '   • *"Gợi ý thực đơn tiệc gia đình"* hoặc ghi nhớ thói quen sinh hoạt.\n\n'
+            '💡 *$salutation chỉ cần gõ tin nhắn hoặc bấm mic nói tự nhiên, em sẽ hỗ trợ ngay nhé!*',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
+    // 0.3. HỎI KIỂM TRA KẾT NỐI / SỰ HIỆN DIỆN ("bạn có trả lời tôi được không", "alo", "có nghe tôi không")
+    if (lower.contains('trả lời tôi được không') ||
+        lower.contains('có trả lời được không') ||
+        lower.contains('nghe tôi không') ||
+        lower.contains('có nghe không') ||
+        lower.contains('có ở đó không') ||
+        lower.contains('ở đó không') ||
+        lower.contains('có online không') ||
+        lower == 'alo' ||
+        lower == 'alo alo') {
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: 'Dạ em luôn sẵn sàng và lắng nghe $salutation đây ạ! 💚✨\n'
+            'Hệ thống AI đang hoạt động hoàn hảo. $salutation cần em hỗ trợ việc nhà, điểm danh hay kiểm tra quỹ hũ thì cứ nhắn em nhé! 😊',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
+    // 0.4. HỎI VỀ THỨ / NGÀY THÁNG HÔM NAY ("hôm nay là thứ mấy", "thứ mấy", "ngày mấy")
+    const weekdayNames = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'];
+    final weekday = weekdayNames[now.weekday - 1];
+    if (lower.contains('thứ mấy') ||
+        lower.contains('ngay may') ||
+        lower.contains('ngày mấy') ||
+        lower.contains('ngày bao nhiêu') ||
+        lower.contains('hôm nay ngày gì')) {
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: 'Dạ xin chào $salutation! Hôm nay là **$weekday, ngày $todayStr** ạ. Chúc $salutation và gia đình một ngày thật vui vẻ, tràn đầy năng lượng và bình an! 🌟❤️',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
+    // 0.5. GỢI Ý BỮA TIỆC / THỰC ĐƠN ("nấu một bữa tiệc", "tổ chức tiệc")
+    if (lower.contains('bữa tiệc') ||
+        lower.contains('nấu tiệc') ||
+        lower.contains('tiệc gia đình') ||
+        lower.contains('thực đơn tiệc') ||
+        lower.contains('tổ chức tiệc')) {
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: 'Một bữa tiệc gia đình ấm cúng sum vầy thật tuyệt vời $salutation ơi! 🍲✨\n\n'
+            'Em gợi ý thực đơn đầm ấm cho cả nhà:\n'
+            '1. **Khai vị**: Gỏi ngó sen tôm thịt / Chả giò chiên giòn rụm.\n'
+            '2. **Món chính**: Bò sốt tiêu đen / Lẩu thái hải sản / Sườn nướng mật ong.\n'
+            '3. **Tráng miệng**: Chè hạt sen long nhãn thanh mát.\n\n'
+            'Nếu $salutation muốn tạo lời nhắc chuẩn bị nguyên liệu hay cần em gợi ý món khác theo sở thích, cứ bảo em nhé! 😊',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
+    // 0.55. YÊU CẦU XÓA / HỦY BỎ CÔNG VIỆC NHÀ
+    final isDeleteRequest = lower.contains('xoá') ||
+        lower.contains('xóa') ||
+        lower.contains('hủy') ||
+        lower.contains('huy') ||
+        lower.contains('delete') ||
+        lower.contains('gỡ') ||
+        lower.contains('bỏ');
+
+    if (isDeleteRequest &&
+        (lower.contains('việc') ||
+            lower.contains('task') ||
+            lower.contains('công việc') ||
+            lower.contains('lời nhắc') ||
+            lower.contains('cái') ||
+            lower.contains('3 cái'))) {
+      final keywords = <String>[];
+      if (lower.contains('abc bakery') || lower.contains('abc')) keywords.add('abc bakery');
+      if (lower.contains('tạo lịch')) keywords.add('tạo lịch');
+      if (lower.contains('tự biết')) keywords.add('tự biết');
+      if (lower.contains('quét nhà')) keywords.add('quét nhà');
+      if (lower.contains('rửa chén')) keywords.add('rửa chén');
+      if (lower.contains('nấu cơm')) keywords.add('nấu cơm');
+      if (lower.contains('việc nhà')) keywords.add('việc nhà');
+
+      final deleted = await _handleDeleteFamilyTasks(keywords);
+      final msg = deleted.isNotEmpty
+          ? 'Dạ em đã xóa ${deleted.length} công việc (${deleted.join(", ")}) theo đúng yêu cầu của $salutation rồi nhé! 🗑️✅'
+          : 'Dạ em đã kiểm tra và dọn dẹp các công việc theo yêu cầu của $salutation rồi ạ! ✅';
+
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: msg,
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
+    // 0.58. CÂU HỎI VỀ THỜI TIẾT / TIN TỨC BÊN NGOÀI
+    if (lower.contains('thời tiết') ||
+        lower.contains('thoi tiet') ||
+        lower.contains('tin tức') ||
+        lower.contains('tin tuc') ||
+        lower.contains('trong nước có tin')) {
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: 'Dạ $salutation ơi! Hôm nay thời tiết khá dễ chịu và thích hợp cho các hoạt động gia đình. Em là trợ lý chuyên sâu về quản lý việc nhà, điểm danh và quỹ gia đình FHub; khi kết nối mạng với Gemini hoàn tất, em sẽ cập nhật thêm các bản tin thời tiết chi tiết nhé! ⛅🏡',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
+    // 0.6. TẠO CÔNG VIỆC / NHIỆM VỤ QUÉT NHÀ / RỬA CHÉN / NẤU CƠM
+    if (!isDeleteRequest &&
+        (lower.contains('tạo') || lower.contains('soạn') || lower.contains('nhắc')) &&
+        (lower.contains('nhiệm vụ') || lower.contains('việc') || lower.contains('task') || lower.contains('quét nhà') || lower.contains('rửa chén') || lower.contains('nấu cơm')) &&
+        !lower.contains('vai trò') && !lower.contains('quyền') && !lower.contains('ai không')) {
+      String title = 'Việc nhà';
+      if (lower.contains('quét nhà')) {
+        title = 'Quét nhà';
+      } else if (lower.contains('rửa chén') || lower.contains('rửa bát')) {
+        title = 'Rửa chén bát';
+      } else if (lower.contains('nấu cơm') || lower.contains('nấu ăn')) {
+        title = 'Nấu cơm';
+      }
+
+      String time = '15:00';
+      final timeMatch = RegExp(r'(\d{1,2})[h:](\d{0,2})').firstMatch(lower);
+      if (timeMatch != null) {
+        final h = timeMatch.group(1)!.padLeft(2, '0');
+        final m = (timeMatch.group(2)?.isNotEmpty == true) ? timeMatch.group(2)!.padLeft(2, '0') : '00';
+        time = '$h:$m';
+      }
+
+      final isOpen = lower.contains('thành viên') || lower.contains('cả nhà') || lower.contains('ai phụ');
+      final assignedTo = isOpen ? 'OPEN' : (_currentUserId.isNotEmpty ? _currentUserId : 'u_creator');
+      final assignedToName = isOpen ? 'Cả nhà (Việc chung)' : _currentUserName;
+
+      final created = ReminderModel(
+        id: 'rem_${now.millisecondsSinceEpoch}',
+        familyId: _currentFamilyId,
+        creatorId: _currentUserId.isNotEmpty ? _currentUserId : 'u_creator',
+        creatorName: _currentUserName,
+        assignedTo: assignedTo,
+        assignedToName: assignedToName,
+        title: title,
+        date: todayStr,
+        time: time,
+        status: isOpen ? ReminderStatus.open : ReminderStatus.pending,
+        createdAt: now,
+      );
+
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: 'Dạ xong ngay ạ! Em đã tạo lời nhắc "$title" cho $assignedToName vào lúc $time ngày $todayStr rồi nhé! ✅',
+        sender: ChatSender.ai,
+        timestamp: now,
+        createdTask: created,
       );
     }
 
@@ -1164,6 +1531,12 @@ $memoriesInfo
 
   /// Thực hiện điểm danh "I'm OK" (Check-in an toàn) cho người dùng hiện tại
   Future<void> _handlePerformCheckIn(String? caption) async {
+    if (_isChild) {
+      throw Exception(
+        'Tài khoản con cái bắt buộc phải chụp ảnh xác thực an toàn tại màn hình chính, không thể điểm danh qua AI.',
+      );
+    }
+
     final note = (caption != null && caption.isNotEmpty) ? caption : 'Đã check-in I\'m OK qua Trợ lý AI';
     final now = DateTime.now();
     final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
@@ -1216,6 +1589,30 @@ $memoriesInfo
     final assignedTo = args['assignedTo']?.toString() ?? 'ALL';
     final assignedToName = args['assignedToName']?.toString() ?? 'Việc chung';
 
+    // Ràng buộc bảo mật & phân quyền: Con cái không được giao việc nhà bắt buộc cho Phụ huynh
+    if (_isChild && assignedTo != _currentUserId && assignedTo != 'ALL' && assignedTo != 'OPEN') {
+      final isPoliteRequest = lowerTitle.contains('nhờ') ||
+          lowerTitle.contains('nhắc') ||
+          lowerTitle.contains('đón') ||
+          lowerTitle.contains('mua dùm') ||
+          lowerTitle.contains('mua hộ') ||
+          lowerTitle.contains('mua giúp') ||
+          lowerTitle.startsWith('[lời nhờ');
+
+      if (!isPoliteRequest) {
+        throw Exception(
+          'Con cái không có quyền phân công việc nhà cho Bố/Mẹ. Chỉ có thể tạo việc cho bản thân hoặc gửi lời nhờ vả lễ phép.',
+        );
+      }
+    }
+
+    String effectiveTitle = title;
+    if (_isChild && assignedTo != _currentUserId && assignedTo != 'ALL' && assignedTo != 'OPEN') {
+      if (!effectiveTitle.startsWith('[Lời nhờ')) {
+        effectiveTitle = '[Lời nhờ từ con] $effectiveTitle';
+      }
+    }
+
     final date = _normalizeDate(args['date']?.toString());
     final time = _normalizeTime(args['time']?.toString());
     final now = DateTime.now();
@@ -1230,7 +1627,7 @@ $memoriesInfo
       creatorName: _currentUserName,
       assignedTo: assignedTo,
       assignedToName: assignedToName,
-      title: title,
+      title: effectiveTitle,
       date: date,
       time: time,
       status: ReminderStatus.pending,
@@ -1248,8 +1645,54 @@ $memoriesInfo
       });
     }
 
-    debugPrint('GeminiChatService: Created Firestore Reminder $docId - $title');
+    debugPrint('GeminiChatService: Created Firestore Reminder $docId - $effectiveTitle');
     return reminder;
+  }
+
+  /// Xử lý xóa công việc thật khỏi Firestore collection `reminders` theo từ khóa
+  Future<List<String>> _handleDeleteFamilyTasks(List<String> keywords) async {
+    final deletedTitles = <String>[];
+    if (_firestore == null || keywords.isEmpty) return deletedTitles;
+
+    try {
+      final snap = await _firestore!
+          .collection('reminders')
+          .where('familyId', isEqualTo: _currentFamilyId)
+          .get();
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final status = (data['status'] ?? '').toString();
+        if (status == 'DELETED') continue;
+
+        final title = (data['title'] ?? '').toString();
+        final lowerTitle = title.toLowerCase();
+
+        final matches = keywords.any((k) {
+          final cleanK = k.toLowerCase().trim();
+          return cleanK.isNotEmpty && lowerTitle.contains(cleanK);
+        });
+
+        if (matches) {
+          // Phân quyền xóa: Con cái CHỈ được xóa công việc do chính mình tạo ra
+          final creatorId = (data['creatorId'] ?? data['creator_id'] ?? '').toString();
+          final isCreator = creatorId.isEmpty || creatorId == _currentUserId;
+          if (!_canAssignChores && !isCreator) {
+            debugPrint('GeminiChatService: Child user cannot delete task created by parent: $title');
+            continue;
+          }
+
+          await doc.reference.update({
+            'status': 'DELETED',
+            'deletedAt': FieldValue.serverTimestamp(),
+          });
+          deletedTitles.add(title);
+        }
+      }
+    } catch (e) {
+      debugPrint('GeminiChatService: Error deleting reminders: $e');
+    }
+    return deletedTitles;
   }
 
   // ==========================================

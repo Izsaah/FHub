@@ -700,5 +700,343 @@ void main() {
       expect(res.text, contains('TÌNH HÌNH ĐIỂM DANH'));
       expect(res.text, isNot(contains('Đã tích "I\'m OK" và hoàn tất điểm danh')));
     });
+
+    test('26. "bạn có thể làm gì" returns structured Markdown capabilities guide and never generic canned fallback', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'bạn có thể làm gì',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, contains('TÍNH NĂNG NỔI BẬT CỦA TRỢ LÝ AI'));
+      expect(res.text, contains('Soạn & Giao việc'));
+      expect(res.text, contains('I\'m OK'));
+      expect(res.text, contains('Hũ Niềm Vui'));
+      expect(res.text, isNot(contains('Lương Diệu Vinh muốn chia sẻ thêm điều gì')));
+    });
+
+    test('27. "bạn có trả lời tôi được không" returns active connection confirmation and never generic canned fallback', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'bạn có trả lời tôi được không',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, contains('luôn sẵn sàng và lắng nghe'));
+      expect(res.text, contains('hoạt động hoàn hảo'));
+      expect(res.text, isNot(contains('Lương Diệu Vinh muốn chia sẻ thêm điều gì')));
+    });
+
+    test('28. Conversational comma-separated input never splits into nonsense tasks (e.g. ABC bakery)', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'của ABC bakery, tạo lịch đi, thành viên gia đình tôi tự biết',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      // Must NEVER split into 3 nonsense tasks
+      expect(res.attachedReminders.length, isNot(equals(3)));
+      expect(res.text, isNot(contains('Tạo lịch đi')));
+      expect(res.text, isNot(contains('Thành viên gia đình tôi tự biết')));
+    });
+
+    test('29. Topic change cancels pending milk clarification and does not save milk memory', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      // Turn 1: user asks to buy milk
+      await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'tôi muốn đi mua sữa',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      // Turn 2: user changes topic to cooking party
+      final res2 = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'à không, tôi muốn nấu một bữa tiệc, bạn có đề xuất gì không',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      // Must not save milk memory with party prompt, must propose party menu
+      expect(res2.text, isNot(contains('thói quen mua sữa "à không')));
+      expect(res2.text, contains('bữa tiệc'));
+      expect(res2.attachedReminder?.title, isNot(contains('Mua sữa (à không')));
+    });
+
+    test('30. "hôm nay là thứ mấy" returns weekday and today date', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'xin chào, hôm nay là thứ mấy',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, contains('Thứ'));
+      expect(res.text, contains('ngày'));
+    });
+
+    test('31. Weather and news queries never trigger chore progress report', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'hehe, hôm nay thời tiết thế nào, trong nước có tin tức gì không',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, isNot(contains('BÁO CÁO TIẾN ĐỘ')));
+      expect(res.text, isNot(contains('Tổng số công việc')));
+      expect(res.text, contains('thời tiết'));
+    });
+
+    test('32. Delete request never creates new chore and handles deletion', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_vinh',
+          name: 'Lương Diệu Vinh',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      // Add a dummy reminder to delete
+      await repo.createReminder(
+        reminder: ReminderModel(
+          id: 'rem_abc',
+          familyId: 'f1',
+          creatorId: 'u_vinh',
+          assignedTo: 'ALL',
+          assignedToName: 'Việc chung',
+          title: 'Của ABC bakery',
+          date: '05/11/2026',
+          time: '18:00',
+        ),
+        currentUserId: 'u_vinh',
+      );
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'bạn xoá đi 3 cái công việc của abc bakery, tạo lịch đi, thành viên gia đình tôi tự biết được không',
+        familyId: 'f1',
+        currentUserId: 'u_vinh',
+        currentUserName: 'Lương Diệu Vinh',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, isNot(contains('Em đã tạo lời nhắc "Việc nhà"')));
+      expect(res.attachedReminder, isNull);
+      expect(res.text, contains('xóa'));
+    });
+
+    test('33. Child account asking AI to perform check-in is directed to take photo on home screen', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_child',
+          name: 'Bé Na',
+          role: FamilyMember.roleChild,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: "tích i'm ok dùm con",
+        familyId: 'f1',
+        currentUserId: 'u_child',
+        currentUserName: 'Bé Na',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.text, contains('chụp một tấm ảnh'));
+      expect(res.text, contains("✓ I'M OK"));
+    });
+
+    test('34. Child account attempting to assign chores to parents is rejected politely', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_child',
+          name: 'Bé Na',
+          role: FamilyMember.roleChild,
+          familyId: 'f1',
+        ),
+        FamilyMember(
+          id: 'u_dad',
+          name: 'Bố Tuấn',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'giao cho bố lau nhà lúc 17:00',
+        familyId: 'f1',
+        currentUserId: 'u_child',
+        currentUserName: 'Bé Na',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.attachedReminder, isNull);
+      expect(res.text, contains('không thể phân công việc nhà cho Bố/Mẹ'));
+    });
+
+    test('35. Child account politely requesting parent creates task with [Lời nhờ từ con] prefix', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_child',
+          name: 'Bé Na',
+          role: FamilyMember.roleChild,
+          familyId: 'f1',
+        ),
+        FamilyMember(
+          id: 'u_dad',
+          name: 'Bố Tuấn',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'nhờ bố đón con lúc 17:00',
+        familyId: 'f1',
+        currentUserId: 'u_child',
+        currentUserName: 'Bé Na',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      expect(res.attachedReminder, isNotNull);
+      expect(res.attachedReminder!.title, contains('[Lời nhờ từ con]'));
+      expect(res.attachedReminder!.assignedTo, equals('u_dad'));
+    });
+
+    test('36. Child account attempting to delete Parent chore protects the chore', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        FamilyMember(
+          id: 'u_child',
+          name: 'Bé Na',
+          role: FamilyMember.roleChild,
+          familyId: 'f1',
+        ),
+        FamilyMember(
+          id: 'u_dad',
+          name: 'Bố Tuấn',
+          role: FamilyMember.roleParent,
+          familyId: 'f1',
+        ),
+      ];
+
+      // Parent created chore
+      final parentTask = await repo.createReminder(
+        reminder: ReminderModel(
+          id: 'rem_parent',
+          familyId: 'f1',
+          creatorId: 'u_dad',
+          assignedTo: 'u_child',
+          assignedToName: 'Bé Na',
+          title: 'Quét nhà',
+          date: '05/11/2026',
+          time: '18:00',
+        ),
+        currentUserId: 'u_dad',
+      );
+
+      // Child tries to delete parent chore
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        userMessage: 'xoá việc quét nhà đi',
+        familyId: 'f1',
+        currentUserId: 'u_child',
+        currentUserName: 'Bé Na',
+        familyMembers: members,
+        repository: repo,
+      );
+
+      // Verify the task was NOT deleted in repository
+      final reminders = await repo.getReminders(familyId: 'f1');
+      final target = reminders.firstWhere((r) => r.id == parentTask.id);
+      expect(target.isDeleted, isFalse);
+      expect(res.text, contains('Bố/Mẹ'));
+    });
   });
 }
