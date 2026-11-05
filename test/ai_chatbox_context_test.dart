@@ -886,7 +886,7 @@ void main() {
           assignedToName: 'Việc chung',
           title: 'Của ABC bakery',
           date: '05/11/2026',
-          time: '18:00',
+          time: '23:59',
         ),
         currentUserId: 'u_vinh',
       );
@@ -1017,7 +1017,7 @@ void main() {
           assignedToName: 'Bé Na',
           title: 'Quét nhà',
           date: '05/11/2026',
-          time: '18:00',
+          time: '23:59',
         ),
         currentUserId: 'u_dad',
       );

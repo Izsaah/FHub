@@ -41,6 +41,7 @@ abstract class ReminderRepository {
     required String reminderId,
     required String currentUserId,
     String? proofImageUrl,
+    bool allowFutureCompletion = false,
   });
 
   Future<ReminderModel> claimOpenTask({
@@ -54,6 +55,7 @@ abstract class ReminderRepository {
     required String currentUserId,
     required String currentUserName,
     String? proofImageUrl,
+    bool allowFutureCompletion = false,
   });
 
   Future<bool> deleteReminder({
@@ -490,7 +492,15 @@ class InMemoryReminderRepository implements ReminderRepository {
     required String currentUserId,
     required String currentUserName,
     String? proofImageUrl,
+    bool allowFutureCompletion = false,
   }) async {
+    final index =
+        _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
+    if (index != -1 && !allowFutureCompletion && _reminders[index].isFutureDate) {
+      throw ReminderValidationException(
+        'Công việc này được lên lịch cho ngày ${_reminders[index].date}. Chỉ có thể đánh dấu hoàn thành khi đến đúng ngày hẹn!',
+      );
+    }
     await claimOpenTask(
       reminderId: reminderId,
       currentUserId: currentUserId,
@@ -500,6 +510,7 @@ class InMemoryReminderRepository implements ReminderRepository {
       reminderId: reminderId,
       currentUserId: currentUserId,
       proofImageUrl: proofImageUrl,
+      allowFutureCompletion: allowFutureCompletion,
     );
   }
 
@@ -525,6 +536,7 @@ class InMemoryReminderRepository implements ReminderRepository {
     required String reminderId,
     required String currentUserId,
     String? proofImageUrl,
+    bool allowFutureCompletion = false,
   }) async {
     final index =
         _reminders.indexWhere((r) => r.id == reminderId && !r.isDeleted);
@@ -538,6 +550,13 @@ class InMemoryReminderRepository implements ReminderRepository {
     if (existing.assignedTo != currentUserId) {
       throw ReminderPermissionException(
         'Only the assigned member can complete this reminder',
+      );
+    }
+
+    // Rule: Khóa hoàn thành nếu ngày thực hiện nằm ở tương lai (chưa đến ngày hẹn)
+    if (!allowFutureCompletion && existing.isFutureDate) {
+      throw ReminderValidationException(
+        'Công việc này được lên lịch cho ngày ${existing.date}. Chỉ có thể đánh dấu hoàn thành khi đến đúng ngày hẹn!',
       );
     }
 
