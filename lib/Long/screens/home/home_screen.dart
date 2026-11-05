@@ -236,6 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
           time:
               '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}',
           status: 'PENDING',
+          requiresProofImage: reminder.requiresProofImage,
         );
       }
 
@@ -848,10 +849,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                     )
                                    else
                                      IconButton(
-                                       tooltip: LongStrings.completeTaskSuccess,
-                                       icon: const Icon(
-                                         Icons.check_circle_outline,
-                                         color: Color(0xFF005F50),
+                                       tooltip: reminder.requiresProofImage
+                                           ? AppLanguage.text(
+                                               'Chụp ảnh nghiệm thu & Hoàn thành',
+                                               'Take photo proof & Complete',
+                                             )
+                                           : LongStrings.completeTaskSuccess,
+                                       icon: Icon(
+                                         reminder.requiresProofImage
+                                             ? Icons.camera_alt_outlined
+                                             : Icons.check_circle_outline,
+                                         color: const Color(0xFF005F50),
                                          size: 24,
                                        ),
                                        onPressed: () {
@@ -859,7 +867,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                            ScaffoldMessenger.of(context).showSnackBar(
                                              SnackBar(
                                                content: Text(AppLanguage.text(
-                                                 'C\xc3\xb4ng vi\xe1\xbb\x87c n\xc3\xa0y b\xe1\xba\xaft bu\xe1\xbb\x99c ch\xe1\xbb\xa5p \xe1\xba\xa3nh nghi\xe1\xbb\x87m thu! Vui l\xc3\xb2ng ch\xe1\xba\xa1m v\xc3\xa0o vi\xe1\xbb\x87c \xc4\x91\xe1\xbb\x83 ch\xe1\xbb\xa5p \xe1\xba\xa3nh.',
+                                                 'Công việc này bắt buộc chụp ảnh nghiệm thu! Vui lòng chạm vào việc để chụp ảnh.',
                                                  'This task requires proof photo! Please tap the task to take photo.',
                                                )),
                                                backgroundColor: Colors.amber[800],

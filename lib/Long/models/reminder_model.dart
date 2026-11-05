@@ -92,6 +92,8 @@ class ReminderModel {
           "${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:00",
       'status': status.name.toUpperCase(),
       'completed_at': completedAt?.toIso8601String(),
+      'requires_proof_image': requiresProofImage,
+      'requiresProofImage': requiresProofImage,
     };
   }
 }
