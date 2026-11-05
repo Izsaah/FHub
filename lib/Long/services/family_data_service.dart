@@ -1093,6 +1093,17 @@ class FamilyDataService implements IFamilyService {
       final reminderRef = _firestore.collection('reminders').doc(reminderId);
       final reminderDoc = await reminderRef.get();
       if (reminderDoc.exists) {
+        final data = reminderDoc.data();
+        final requiresProof = data?['requiresProofImage'] == true ||
+            data?['requires_proof_image'] == true;
+        final hasProof = (data?['proofImageUrl'] != null &&
+                data!['proofImageUrl'].toString().isNotEmpty) ||
+            (data?['proof_image_url'] != null &&
+                data!['proof_image_url'].toString().isNotEmpty);
+        if (requiresProof && !hasProof) {
+          debugPrint('Cannot complete reminder: requires proof image');
+          return;
+        }
         await reminderRef.update({
           'status': 'COMPLETED',
           'completed_at': Timestamp.fromDate(DateTime.now()),

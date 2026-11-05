@@ -33,6 +33,28 @@ class GeminiChatService {
   String? _activeModelName;
   String? _cachedSystemPrompt;
 
+  DateTime? _lastRequestTime;
+  static const Duration cooldownDuration = Duration(seconds: 5);
+
+  /// Cho biết chatbox có đang trong thời gian giãn cách 5 giây (Slow Mode) hay không
+  bool get isThrottled {
+    if (_lastRequestTime == null) return false;
+    return DateTime.now().difference(_lastRequestTime!) < cooldownDuration;
+  }
+
+  /// Số giây còn lại của thời gian giãn cách
+  int get remainingCooldownSeconds {
+    if (_lastRequestTime == null) return 0;
+    final elapsed = DateTime.now().difference(_lastRequestTime!);
+    final remaining = cooldownDuration.inSeconds - elapsed.inSeconds;
+    return remaining > 0 ? remaining : 0;
+  }
+
+  /// Đặt lại thời gian giãn cách (dùng cho test hoặc khi reset session)
+  void resetCooldown() {
+    _lastRequestTime = null;
+  }
+
   String _currentFamilyId = 'f1';
   String _currentFamilyName = 'Gia Đình';
   String _currentUserId = '';
@@ -40,6 +62,7 @@ class GeminiChatService {
   String _currentUserRole = 'Thành viên';
 
   String get currentFamilyId => _currentFamilyId;
+  String get currentFamilyName => _currentFamilyName;
   String get currentUserName => _currentUserName;
   String get currentUserRole => _currentUserRole;
 
@@ -122,6 +145,7 @@ class GeminiChatService {
   /// Đặt lại phiên trò chuyện hiện tại (Bắt đầu cuộc trò chuyện mới)
   void resetChatSession() {
     _chat = null;
+    _cachedSystemPrompt = null;
   }
 
   /// Khởi tạo hoặc làm mới ngữ cảnh gia đình cho AI Chatbot
@@ -149,15 +173,22 @@ class GeminiChatService {
     final apiKey = effectiveApiKey;
     final configuredModel = (dotenv.isInitialized ? dotenv.env['GEMINI_MODEL'] : null)?.trim();
 
-    // Cập nhật thông tin định danh
+    // Cập nhật thông tin định danh và hủy cache cũ nếu đổi gia đình
     if (familyId != null && familyId.isNotEmpty) {
-      _currentFamilyId = familyId;
+      if (_currentFamilyId != familyId) {
+        _currentFamilyId = familyId;
+        _cachedSystemPrompt = null;
+        _chat = null;
+      }
     } else {
       await _autoResolveFamilyId();
     }
 
     if (familyName != null && familyName.isNotEmpty) {
-      _currentFamilyName = familyName;
+      if (_currentFamilyName != familyName) {
+        _currentFamilyName = familyName;
+        _cachedSystemPrompt = null;
+      }
     }
 
     final user = _auth?.currentUser;
@@ -349,6 +380,7 @@ class GeminiChatService {
     String? userRole,
     List<FamilyMember>? familyMembers,
     bool fallbackToLocal = true,
+    bool checkThrottle = false,
   }) async {
     final cleanText = text.trim();
     if (cleanText.isEmpty) {
@@ -360,6 +392,21 @@ class GeminiChatService {
       );
     }
 
+    // Slow Mode Throttle: Chặn spam liên tiếp dưới 5 giây khi checkThrottle=true (Bảo toàn 100% quota token)
+    if (checkThrottle && isThrottled) {
+      final salutation = _resolveSalutation();
+      final sec = remainingCooldownSeconds;
+      return ChatMessageModel(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+        text: '⏳ **Slow Mode (Chế độ giãn cách)**: Dạ $salutation vui lòng chờ ${sec > 0 ? "$sec" : "vài"} giây nữa rồi gửi tiếp nhé! Để cuộc trò chuyện của gia đình mình luôn chu đáo và ổn định nhất ạ. ❤️',
+        sender: ChatSender.ai,
+        timestamp: DateTime.now(),
+      );
+    }
+    if (checkThrottle) {
+      _lastRequestTime = DateTime.now();
+    }
+
     if (familyMembers != null && familyMembers.isNotEmpty) {
       _cachedFamilyMembers = familyMembers;
     }
@@ -367,6 +414,7 @@ class GeminiChatService {
     // Cập nhật ngữ cảnh nếu truyền vào
     if (familyId != null && familyId != _currentFamilyId) {
       _currentFamilyId = familyId;
+      _cachedSystemPrompt = null;
       _chat = null; // Reset chat session để nạp lại system prompt của gia đình mới
     }
     if (userId != null && userId.isNotEmpty) _currentUserId = userId;
@@ -726,6 +774,22 @@ class GeminiChatService {
     final timeStr =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
+    // 0. Tự động truy vấn tên gia đình thực tế từ Firestore nếu có
+    if (_firestore != null && _currentFamilyId.isNotEmpty) {
+      try {
+        final famDoc = await _firestore!
+            .collection('families')
+            .doc(_currentFamilyId)
+            .get();
+        if (famDoc.exists && famDoc.data() != null) {
+          final fName = famDoc.data()!['name']?.toString().trim();
+          if (fName != null && fName.isNotEmpty) {
+            _currentFamilyName = fName;
+          }
+        }
+      } catch (_) {}
+    }
+
     // 1. Đọc danh sách thành viên gia đình và trạng thái điểm danh hôm nay
     final membersInfo = StringBuffer();
     if (_firestore != null) {
@@ -907,10 +971,18 @@ $memoriesInfo
 - CẤM TUYỆT ĐỐI gọi "createFamilyTask" khi người dùng đang ĐẶT CÂU HỎI, THẮC MẮC, TÂM SỰ hoặc HỎI VỀ QUYỀN HẠN/VAI TRÒ (VD: "tôi đóng vai trò gì trong căn nhà này?", "tôi có thể giao việc cho ai không?", "vai trò của tôi là gì?", "hôm nay ai làm việc nhà?").
 - Khi người dùng hỏi thắc mắc quyền hạn/vai trò: Trả lời giải thích trực tiếp bằng ngôn từ tự nhiên, hướng dẫn rõ ràng quyền của họ, TUYỆT ĐỐI KHÔNG TỰ Ý TẠO VIỆC NHÀ.
 
-=== QUYỀN HẠN HỆ THỐNG VÀ BẢN CHẤT CỦA BẠN ===
-- Bạn là Trợ lý AI Gia đình có TOÀN QUYỀN HỆ THỐNG ĐỌC DỮ LIỆU: Bạn nắm rõ danh tính của người dùng ($_currentUserName), vai trò ($_currentUserRole), ai đã điểm danh hôm nay, ai chưa, danh sách mọi công việc nhà, và số dư hũ.
-- Bạn kết nối trực tiếp với hệ thống để TẠO CÔNG VIỆC / LỜI NHẮC (Reminder) tự động thông qua công cụ (Tool Calling: createFamilyTask).
-- BẢN CHẤT TRÒ CHUYỆN: Bạn là một AI thế hệ mới (LLM) thông minh, ấm áp và uyên bác như khi người dùng chat trên web, có thể trả lời mọi câu hỏi, đưa ra lời khuyên, chia sẻ kinh nghiệm, đùa vui hóm hỉnh, hỗ trợ việc nhà một cách tự nhiên và chân thành nhất, KHÔNG BỊ GÒ BÓ bởi bất kỳ mẫu câu cứng nhắc nào.
+=== PHẠM VI NGHIỆP VỤ & QUY TẮC TỪ CHỐI NGOẠI PHẠM (DOMAIN GUARD) ===
+- BẢN CHẤT CỦA BẠN: Bạn là Trợ lý AI Gia đình thông minh của ứng dụng FHub. Bạn CHỈ hỗ trợ các vấn đề gắn kết tổ ấm và sinh hoạt gia đình:
+  1. Quản lý việc nhà, phân công trách nhiệm, nhắc nhở sinh hoạt, kiểm tra tiến độ việc nhà.
+  2. Điểm danh an toàn gia đình (Check-in I'm OK).
+  3. Hũ Niềm Vui (thông tin số dư, người nạp nhiều nhất, luật lắc hũ 30 giây).
+  4. Thói quen gia đình, gợi ý bữa cơm nhà ấm cúng, mẹo vặt nhà cửa và gắn kết tình cảm tổ ấm.
+- TỪ CHỐI TUYỆT ĐỐI CÁC CÂU HỎI NGOẠI PHẠM ĐỂ BẢO VỆ TOKEN HỆ THỐNG:
+  + CẤM giải bài tập học tập (Toán, Lý, Hóa, Văn, bài tập về nhà, thuật toán, bài thi trường lớp...).
+  + CẤM viết code lập trình hoặc sửa lỗi kỹ thuật phần mềm (Python, JavaScript, C++, Java, Dart, HTML/CSS...).
+  + CẤM viết bài luận văn, phân tích kiến trúc phần mềm, dịch tài liệu dài hoặc chém gió học thuật ngoài lề.
+- CÁCH THỨC TỪ CHỐI: Ngắn gọn (tối đa 1-2 câu), ấm áp, xưng hô chuẩn mực theo vai vế của người dùng (Bố/Mẹ/Ông/Bà/tên con), và khéo léo hướng họ quay về công việc hoặc lịch sinh hoạt gia đình. KHÔNG sinh mã code, KHÔNG giải thích kiến thức ngoài luồng để tiết kiệm token tối đa.
+- CẤM TỰ Ý TÍCH HOÀN THÀNH VIỆC NHÀ (Complete Reminder): AI không thể làm thay việc nhà ngoài đời thực. Nếu người dùng bảo "tích xong việc nhà hộ tôi", hãy giải thích lịch sự rằng thành viên cần tự làm việc thực tế và tích hoàn thành trong ứng dụng (kèm ảnh nghiệm thu nếu có).
 - GIỚI HẠN DUY NHẤT VỀ HŨ NIỀM VUI (JACKPOT): Bạn nắm rõ thông tin Hũ, nhưng bạn KHÔNG THỂ VÀ KHÔNG ĐƯỢC PHÉP tự bấm lắc hũ giùm người dùng! Lắc hũ là tính năng tương tác thực tế giữa các thành viên: mỗi người phải tự cầm điện thoại thật của mình lên và lắc cơ học trong 30 giây (hoặc bấm nút Lắc trên màn hình Hũ) để tranh giải. Nếu người dùng bảo bạn "lắc hũ đi", "nổ hũ hộ tôi", hãy giải thích vui vẻ rằng bạn không có tay để lắc điện thoại hộ được, và mời họ vào tab Hũ Niềm Vui để cùng cả nhà lắc!
 
 === CÁC CHỈ DẪN TRẢ LỜI NGHIỆP VỤ ===
@@ -933,6 +1005,42 @@ $memoriesInfo
     final salutation = _resolveSalutation();
     final now = DateTime.now();
     final todayStr = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+
+    // 0.0. TỪ CHỐI NGOẠI PHẠM (DOMAIN GUARD - Bài tập, code lập trình, kiến thức ngoài lề)
+    final isCodingOrHomework = lower.contains('python') ||
+        lower.contains('javascript') ||
+        lower.contains('c++') ||
+        lower.contains('algorithm') ||
+        lower.contains('thuật toán') ||
+        lower.contains('bài tập về nhà') ||
+        lower.contains('homework') ||
+        lower.contains('viết code') ||
+        lower.contains('lập trình') ||
+        lower.contains('if high < low') ||
+        lower.contains('function(');
+    if (isCodingOrHomework) {
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: 'Dạ $salutation ơi! Em là Trợ lý AI Gia đình FHub chuyên hỗ trợ việc nhà, điểm danh và gắn kết tổ ấm nên không thể giải bài tập hay viết mã code lập trình được ạ. $salutation có việc nhà hay lịch trình nào cần em hỗ trợ không ạ? 🏡❤️',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
+
+    // 0.1. TỪ CHỐI TỰ Ý TÍCH HOÀN THÀNH VIỆC NHÀ (Bảo vệ tính thực tế và minh bạch)
+    if (lower.contains('tích hoàn thành') ||
+        lower.contains('tích xong việc') ||
+        lower.contains('đánh dấu hoàn thành') ||
+        lower.contains('hoàn thành việc nhà giúp') ||
+        lower.contains('hoàn tất việc nhà giúp') ||
+        lower.contains('complete task')) {
+      return ChatMessageModel(
+        id: 'msg_${now.millisecondsSinceEpoch}',
+        text: 'Dạ $salutation ơi! Để đảm bảo việc nhà được hoàn thành thực tế và công bằng cho cả nhà, em không thể tự ý tích hoàn thành việc nhà hộ được ạ. $salutation vui lòng mở danh sách việc nhà trên ứng dụng để kiểm tra và tích hoàn thành (kèm ảnh chụp nghiệm thu nếu có) nhé! 📸✅',
+        sender: ChatSender.ai,
+        timestamp: now,
+      );
+    }
 
     // 0. HÀNH ĐỘNG: YÊU CẦU ĐIỂM DANH / TÍCH I'M OK CHO BẢN THÂN
     if (_isPerformCheckInIntent(lower)) {

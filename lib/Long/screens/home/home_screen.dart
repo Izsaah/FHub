@@ -236,6 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
           time:
               '${reminder.date.hour.toString().padLeft(2, '0')}:${reminder.date.minute.toString().padLeft(2, '0')}',
           status: 'PENDING',
+          requiresProofImage: reminder.requiresProofImage,
         );
       }
 
@@ -846,19 +847,45 @@ class _HomeScreenState extends State<HomeScreen> {
                                         );
                                       },
                                     )
-                                  else
-                                    IconButton(
-                                      tooltip: LongStrings.completeTaskSuccess,
-                                      icon: const Icon(
-                                        Icons.check_circle_outline,
-                                        color: Color(0xFF005F50),
-                                        size: 24,
-                                      ),
-                                      onPressed: () => _handleCompleteReminder(
-                                        reminder.id,
-                                        reminder.date,
-                                      ),
-                                    ),
+                                   else
+                                     IconButton(
+                                       tooltip: reminder.requiresProofImage
+                                           ? AppLanguage.text(
+                                               'Chụp ảnh nghiệm thu & Hoàn thành',
+                                               'Take photo proof & Complete',
+                                             )
+                                           : LongStrings.completeTaskSuccess,
+                                       icon: Icon(
+                                         reminder.requiresProofImage
+                                             ? Icons.camera_alt_outlined
+                                             : Icons.check_circle_outline,
+                                         color: const Color(0xFF005F50),
+                                         size: 24,
+                                       ),
+                                       onPressed: () {
+                                         if (reminder.requiresProofImage) {
+                                           ScaffoldMessenger.of(context).showSnackBar(
+                                             SnackBar(
+                                               content: Text(AppLanguage.text(
+                                                 'Công việc này bắt buộc chụp ảnh nghiệm thu! Vui lòng chạm vào việc để chụp ảnh.',
+                                                 'This task requires proof photo! Please tap the task to take photo.',
+                                               )),
+                                               backgroundColor: Colors.amber[800],
+                                             ),
+                                           );
+                                           _handleOpenReminderDetail(
+                                             reminder,
+                                             family.name,
+                                             user,
+                                           );
+                                           return;
+                                         }
+                                         _handleCompleteReminder(
+                                           reminder.id,
+                                           reminder.date,
+                                         );
+                                       },
+                                     ),
                                 ],
                               ),
                             ),

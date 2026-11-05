@@ -168,6 +168,7 @@ class FamilyAiAssistantService {
     required ReminderRepository repository,
     required String userMessage,
     DateTime? now,
+    bool checkThrottle = false,
   }) async {
     final query = userMessage.trim();
     if (query.isEmpty) {
@@ -206,6 +207,7 @@ class FamilyAiAssistantService {
           userRole: myRole,
           familyMembers: familyMembers,
           fallbackToLocal: false,
+          checkThrottle: checkThrottle,
         );
 
         if (!geminiRes.isError && geminiRes.text.trim().isNotEmpty) {
