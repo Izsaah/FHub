@@ -93,6 +93,27 @@ class ReminderModel {
     return false;
   }
 
+  /// Kiểm tra xem nhắc việc có ngày thực hiện trong tương lai (sau ngày hôm nay) hay không.
+  /// So sánh theo ngày (calendar date):
+  /// - Nếu ngày hẹn > hôm nay (từ ngày mai trở đi): true (chưa đến ngày thực hiện, bị khóa hoàn thành).
+  /// - Nếu ngày hẹn <= hôm nay (hôm nay hoặc đã quá hạn): false (đã mở, không khóa lại).
+  bool isFutureDateAt([DateTime? referenceTime]) {
+    final dt = dueDateTime;
+    if (dt == null) return false;
+    final now = referenceTime ?? DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final taskDay = DateTime(dt.year, dt.month, dt.day);
+    return taskDay.isAfter(todayStart);
+  }
+
+  /// Trạng thái ngày hẹn có ở tương lai hay không (tính theo thời điểm hiện tại).
+  bool get isFutureDate => isFutureDateAt();
+
+  /// Trạng thái công việc có được phép hoàn thành hay không:
+  /// Không thể hoàn thành nếu ngày làm việc nằm ở tương lai (chưa đến ngày).
+  /// Khi đã đến ngày thực hiện (hôm nay hoặc quá hạn), việc được mở và không bị khóa lại.
+  bool get canBeCompleted => !isFutureDate;
+
   /// Returns parsed DateTime from [date] ("dd/MM/yyyy" or "yyyy-MM-dd") and [time] ("HH:mm" or "HH:mm:ss")
   DateTime? get dueDateTime {
     try {

@@ -160,8 +160,37 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _handleCompleteReminder(String reminderId) async {
+  Future<void> _handleCompleteReminder(
+    String reminderId, [
+    DateTime? reminderDate,
+  ]) async {
     try {
+      if (reminderDate != null) {
+        final now = DateTime.now();
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final taskDay =
+            DateTime(reminderDate.year, reminderDate.month, reminderDate.day);
+        if (taskDay.isAfter(todayStart)) {
+          final dStr =
+              '${reminderDate.day.toString().padLeft(2, '0')}/${reminderDate.month.toString().padLeft(2, '0')}/${reminderDate.year}';
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  AppLanguage.text(
+                    'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn ($dStr)!',
+                    'This task can only be completed on its scheduled date ($dStr)!',
+                  ),
+                ),
+                backgroundColor: const Color(0xFF455A64),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
       await _familydataService.completeReminder(reminderId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -765,16 +794,71 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ],
                                     ),
                                   ),
-                                  IconButton(
-                                    tooltip: LongStrings.completeTaskSuccess,
-                                    icon: const Icon(
-                                      Icons.check_circle_outline,
-                                      color: Color(0xFF005F50),
-                                      size: 24,
+                                  if (DateTime(reminder.date.year,
+                                          reminder.date.month,
+                                          reminder.date.day)
+                                      .isAfter(DateTime(
+                                          DateTime.now().year,
+                                          DateTime.now().month,
+                                          DateTime.now().day)))
+                                    IconButton(
+                                      tooltip: AppLanguage.text(
+                                        'Khóa đến ngày ${reminder.date.day.toString().padLeft(2, '0')}/${reminder.date.month.toString().padLeft(2, '0')}/${reminder.date.year}',
+                                        'Locked until ${reminder.date.day.toString().padLeft(2, '0')}/${reminder.date.month.toString().padLeft(2, '0')}/${reminder.date.year}',
+                                      ),
+                                      icon: const Icon(
+                                        Icons.lock_clock_outlined,
+                                        color: Color(0xFF8E9B96),
+                                        size: 24,
+                                      ),
+                                      onPressed: () {
+                                        final dStr =
+                                            '${reminder.date.day.toString().padLeft(2, '0')}/${reminder.date.month.toString().padLeft(2, '0')}/${reminder.date.year}';
+                                        ScaffoldMessenger.of(context)
+                                            .hideCurrentSnackBar();
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Row(
+                                              children: [
+                                                const Icon(
+                                                    Icons.lock_clock_rounded,
+                                                    color: Colors.white,
+                                                    size: 20),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    AppLanguage.text(
+                                                      'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn ($dStr)!',
+                                                      'This task can only be completed on its scheduled date ($dStr)!',
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor:
+                                                const Color(0xFF455A64),
+                                            behavior:
+                                                SnackBarBehavior.floating,
+                                            duration:
+                                                const Duration(seconds: 3),
+                                          ),
+                                        );
+                                      },
+                                    )
+                                  else
+                                    IconButton(
+                                      tooltip: LongStrings.completeTaskSuccess,
+                                      icon: const Icon(
+                                        Icons.check_circle_outline,
+                                        color: Color(0xFF005F50),
+                                        size: 24,
+                                      ),
+                                      onPressed: () => _handleCompleteReminder(
+                                        reminder.id,
+                                        reminder.date,
+                                      ),
                                     ),
-                                    onPressed: () =>
-                                        _handleCompleteReminder(reminder.id),
-                                  ),
                                 ],
                               ),
                             ),

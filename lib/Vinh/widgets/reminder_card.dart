@@ -89,8 +89,12 @@ class ReminderCard extends StatelessWidget {
       builder: (context, isEn, child) {
         final isCompleted = reminder.isCompleted;
         final isOpenTask = reminder.isOpenTask;
+        final isAssignedToMe = reminder.assignedTo == currentUserId;
+        final isFuture = reminder.isFutureDate;
         final canComplete =
-            !isCompleted && reminder.assignedTo == currentUserId;
+            !isCompleted && isAssignedToMe && reminder.canBeCompleted;
+        final isLockedCompletion =
+            !isCompleted && isAssignedToMe && isFuture;
         final canDelete = onDelete != null;
 
         const primaryColor = Color(0xFF0D7A68);
@@ -467,6 +471,44 @@ class ReminderCard extends StatelessWidget {
                                   ),
                             onPressed: onComplete,
                           )
+                        else if (isLockedCompletion)
+                          IconButton(
+                            icon: const Icon(
+                              Icons.lock_clock_outlined,
+                              color: Color(0xFF8E9B96),
+                              size: 26,
+                            ),
+                            tooltip: AppLanguage.text(
+                              'Khóa đến ngày ${reminder.date}',
+                              'Locked until ${reminder.date}',
+                            ),
+                            onPressed: () {
+                              ScaffoldMessenger.of(context)
+                                  .hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      const Icon(Icons.lock_clock_rounded,
+                                          color: Colors.white, size: 20),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          AppLanguage.text(
+                                            'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn (${reminder.date})!',
+                                            'This task can only be completed on its scheduled date (${reminder.date})!',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  backgroundColor: const Color(0xFF455A64),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            },
+                          )
                         else if (canDelete && onDelete != null)
                           IconButton(
                             icon: const Icon(
@@ -542,13 +584,47 @@ class ReminderCard extends StatelessWidget {
                           if (onClaimAndComplete != null)
                             Expanded(
                               child: InkWell(
-                                onTap: onClaimAndComplete,
+                                onTap: isFuture
+                                    ? () {
+                                        ScaffoldMessenger.of(context)
+                                            .hideCurrentSnackBar();
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Row(
+                                              children: [
+                                                const Icon(
+                                                    Icons.lock_clock_rounded,
+                                                    color: Colors.white,
+                                                    size: 20),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    AppLanguage.text(
+                                                      'Công việc này lên lịch cho ngày ${reminder.date}. Bạn có thể nhận việc trước, nhưng chỉ được đánh dấu hoàn thành vào đúng ngày!',
+                                                      'This task is scheduled for ${reminder.date}. You can claim it now, but can only complete it on that day!',
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor:
+                                                const Color(0xFF455A64),
+                                            behavior: SnackBarBehavior.floating,
+                                            duration:
+                                                const Duration(seconds: 3),
+                                          ),
+                                        );
+                                      }
+                                    : onClaimAndComplete,
                                 borderRadius: BorderRadius.circular(10),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 6, vertical: 8),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF005F50),
+                                    color: isFuture
+                                        ? const Color(0xFFBDC9C4)
+                                        : const Color(0xFF005F50),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Row(
@@ -556,29 +632,40 @@ class ReminderCard extends StatelessWidget {
                                         MainAxisAlignment.center,
                                     children: [
                                       Icon(
-                                        reminder.requiresProofImage
-                                            ? Icons.camera_alt_rounded
-                                            : Icons
-                                                .check_circle_outline_rounded,
+                                        isFuture
+                                            ? Icons.lock_clock_rounded
+                                            : (reminder.requiresProofImage
+                                                ? Icons.camera_alt_rounded
+                                                : Icons
+                                                    .check_circle_outline_rounded),
                                         size: 15,
-                                        color: Colors.white,
+                                        color: isFuture
+                                            ? const Color(0xFF455A64)
+                                            : Colors.white,
                                       ),
                                       const SizedBox(width: 4),
                                       Flexible(
                                         child: Text(
-                                          reminder.requiresProofImage
+                                          isFuture
                                               ? AppLanguage.text(
-                                                  'Làm & Chụp ảnh',
-                                                  'Do & Take photo',
+                                                  'Khóa đến ${reminder.date}',
+                                                  'Locked until ${reminder.date}',
                                                 )
-                                              : AppLanguage.text(
-                                                  'Làm ngay & Xong',
-                                                  'Do now & Done',
-                                                ),
+                                              : (reminder.requiresProofImage
+                                                  ? AppLanguage.text(
+                                                      'Làm & Chụp ảnh',
+                                                      'Do & Take photo',
+                                                    )
+                                                  : AppLanguage.text(
+                                                      'Làm ngay & Xong',
+                                                      'Do now & Done',
+                                                    )),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: Colors.white,
+                                          style: TextStyle(
+                                            color: isFuture
+                                                ? const Color(0xFF455A64)
+                                                : Colors.white,
                                             fontWeight: FontWeight.bold,
                                             fontSize: 12,
                                           ),

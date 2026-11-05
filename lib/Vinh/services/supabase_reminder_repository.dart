@@ -407,7 +407,27 @@ class SupabaseReminderRepository implements ReminderRepository {
     required String currentUserId,
     required String currentUserName,
     String? proofImageUrl,
+    bool allowFutureCompletion = false,
   }) async {
+    final client = _client;
+    if (client != null) {
+      try {
+        final existingRes = await client
+            .from('reminders')
+            .select()
+            .eq('id', reminderId)
+            .single();
+        final existing =
+            ReminderModel.fromJson(Map<String, dynamic>.from(existingRes));
+        if (!allowFutureCompletion && existing.isFutureDate) {
+          throw ReminderValidationException(
+            'Công việc này được lên lịch cho ngày ${existing.date}. Chỉ có thể đánh dấu hoàn thành khi đến đúng ngày hẹn!',
+          );
+        }
+      } catch (e) {
+        if (e is ReminderValidationException) rethrow;
+      }
+    }
     await claimOpenTask(
       reminderId: reminderId,
       currentUserId: currentUserId,
@@ -417,6 +437,7 @@ class SupabaseReminderRepository implements ReminderRepository {
       reminderId: reminderId,
       currentUserId: currentUserId,
       proofImageUrl: proofImageUrl,
+      allowFutureCompletion: allowFutureCompletion,
     );
   }
 
@@ -442,6 +463,7 @@ class SupabaseReminderRepository implements ReminderRepository {
     required String reminderId,
     required String currentUserId,
     String? proofImageUrl,
+    bool allowFutureCompletion = false,
   }) async {
     final client = _client;
     if (client == null) {
@@ -449,6 +471,7 @@ class SupabaseReminderRepository implements ReminderRepository {
         reminderId: reminderId,
         currentUserId: currentUserId,
         proofImageUrl: proofImageUrl,
+        allowFutureCompletion: allowFutureCompletion,
       );
     }
 
@@ -464,6 +487,12 @@ class SupabaseReminderRepository implements ReminderRepository {
       if (existing.assignedTo != currentUserId) {
         throw ReminderPermissionException(
           'Only the assigned member can complete this reminder',
+        );
+      }
+
+      if (!allowFutureCompletion && existing.isFutureDate) {
+        throw ReminderValidationException(
+          'Công việc này được lên lịch cho ngày ${existing.date}. Chỉ có thể đánh dấu hoàn thành khi đến đúng ngày hẹn!',
         );
       }
 
@@ -529,6 +558,7 @@ class SupabaseReminderRepository implements ReminderRepository {
         reminderId: reminderId,
         currentUserId: currentUserId,
         proofImageUrl: proofImageUrl,
+        allowFutureCompletion: allowFutureCompletion,
       );
     }
   }

@@ -130,6 +130,7 @@ class _MultiTierSimulationDialogState extends State<MultiTierSimulationDialog>
         await widget.repository!.completeReminder(
           reminderId: widget.reminder.id,
           currentUserId: widget.currentUserId!,
+          allowFutureCompletion: true,
         );
       }
       widget.onReminderCompleted?.call();
