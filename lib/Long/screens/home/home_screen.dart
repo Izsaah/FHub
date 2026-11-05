@@ -772,8 +772,26 @@ class _HomeScreenState extends State<HomeScreen> {
                                       color: Color(0xFF005F50),
                                       size: 24,
                                     ),
-                                    onPressed: () =>
-                                        _handleCompleteReminder(reminder.id),
+                                    onPressed: () {
+                                      if (reminder.requiresProofImage) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(AppLanguage.text(
+                                              'Công việc này bắt buộc chụp ảnh nghiệm thu! Vui lòng chạm vào việc để chụp ảnh.',
+                                              'This task requires proof photo! Please tap the task to take photo.',
+                                            )),
+                                            backgroundColor: Colors.amber[800],
+                                          ),
+                                        );
+                                        _handleOpenReminderDetail(
+                                          reminder,
+                                          family.name,
+                                          user,
+                                        );
+                                        return;
+                                      }
+                                      _handleCompleteReminder(reminder.id);
+                                    },
                                   ),
                                 ],
                               ),

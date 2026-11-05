@@ -61,6 +61,9 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
   String _liveTranscript = '';
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _membershipSub;
 
+  int _cooldownSeconds = 0;
+  Timer? _cooldownTimer;
+
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   CollectionReference<Map<String, dynamic>> get _sessionsCollection => _firestore
@@ -494,8 +497,28 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     });
   }
 
+  /// Kích hoạt chế độ đếm ngược giãn cách gửi tin nhắn (Slow Mode 5s)
+  void _startCooldown([int seconds = 5]) {
+    _cooldownTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _cooldownSeconds = seconds);
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_cooldownSeconds <= 1) {
+        timer.cancel();
+        setState(() => _cooldownSeconds = 0);
+      } else {
+        setState(() => _cooldownSeconds--);
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _cooldownTimer?.cancel();
     _membershipSub?.cancel();
     AiSpeechPlatform.instance.stopSpeaking();
     AiSpeechPlatform.instance.stopListening();
@@ -598,7 +621,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     if (!_hasFamilyAccess || widget.familyId.trim().isEmpty) return;
 
     final text = predefinedText ?? _textController.text.trim();
-    if (text.isEmpty || _isThinking) return;
+    if (text.isEmpty || _isThinking || _cooldownSeconds > 0) return;
 
     if (predefinedText == null) {
       _textController.clear();
@@ -618,6 +641,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     });
     _scrollToBottom();
     _persistMessage(userMsg);
+    _startCooldown(5);
 
     // Độ trễ phản hồi tự nhiên (350ms)
     await Future.delayed(const Duration(milliseconds: 350));
@@ -629,6 +653,7 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
       familyMembers: widget.familyMembers,
       repository: widget.repository,
       userMessage: text,
+      checkThrottle: true,
     );
 
     if (mounted) {
@@ -1962,14 +1987,34 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
           ),
           const SizedBox(width: 6),
           IconButton.filled(
-            style: IconButton.styleFrom(backgroundColor: primaryColor),
-            icon: const Icon(
-              Icons.send_rounded,
-              size: 18,
-              color: Colors.white,
+            style: IconButton.styleFrom(
+              backgroundColor: (_cooldownSeconds > 0 || _isThinking)
+                  ? Colors.grey.shade400
+                  : primaryColor,
             ),
-            tooltip: AppLanguage.text('Gửi tin nhắn', 'Send message'),
-            onPressed: () => _handleSendMessage(),
+            icon: _cooldownSeconds > 0
+                ? Text(
+                    '${_cooldownSeconds}s',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(
+                    Icons.send_rounded,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+            tooltip: _cooldownSeconds > 0
+                ? AppLanguage.text(
+                    'Vui lòng chờ ${_cooldownSeconds}s (Slow Mode)',
+                    'Please wait ${_cooldownSeconds}s (Slow Mode)',
+                  )
+                : AppLanguage.text('Gửi tin nhắn', 'Send message'),
+            onPressed: (_cooldownSeconds > 0 || _isThinking)
+                ? null
+                : () => _handleSendMessage(),
           ),
         ],
       ),

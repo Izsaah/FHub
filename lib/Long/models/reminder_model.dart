@@ -10,6 +10,7 @@ class ReminderModel {
   final DateTime date;
   ReminderStatus status;
   DateTime? completedAt;
+  final bool requiresProofImage;
 
   ReminderModel({
     required this.id,
@@ -21,6 +22,7 @@ class ReminderModel {
     required this.date,
     this.status = ReminderStatus.pending,
     this.completedAt,
+    this.requiresProofImage = false,
   });
 
   static DateTime? _parseDateAndTime(dynamic rawDate, dynamic rawTime) {
@@ -71,6 +73,8 @@ class ReminderModel {
       completedAt: json['completed_at'] != null
           ? DateTime.tryParse(json['completed_at'].toString())
           : null,
+      requiresProofImage: json['requiresProofImage'] == true ||
+          json['requires_proof_image'] == true,
     );
   }
 

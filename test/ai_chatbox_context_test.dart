@@ -14,6 +14,10 @@ void main() {
   group('Phase 2: AI Chatbox Context & Brain Overhaul Tests', () {
     final aiService = GeminiChatService.instance;
 
+    setUp(() {
+      aiService.resetCooldown();
+    });
+
     test('1. ChatMessageModel serialization with toMap and fromMap', () {
       final now = DateTime.now();
       final task = ReminderModel(
@@ -886,7 +890,7 @@ void main() {
           assignedToName: 'Việc chung',
           title: 'Của ABC bakery',
           date: '05/11/2026',
-          time: '18:00',
+          time: '23:59',
         ),
         currentUserId: 'u_vinh',
       );
@@ -1017,7 +1021,7 @@ void main() {
           assignedToName: 'Bé Na',
           title: 'Quét nhà',
           date: '05/11/2026',
-          time: '18:00',
+          time: '23:59',
         ),
         currentUserId: 'u_dad',
       );
@@ -1037,6 +1041,189 @@ void main() {
       final target = reminders.firstWhere((r) => r.id == parentTask.id);
       expect(target.isDeleted, isFalse);
       expect(res.text, contains('Bố/Mẹ'));
+    });
+
+    test('37. Family switch and resetChatSession properly invalidates _cachedSystemPrompt and updates family name', () async {
+      final gemini = GeminiChatService.instance;
+      gemini.resetCooldown();
+
+      // Initialize family 1: "Gia Đình Cũ"
+      await gemini.initChat(
+        familyId: 'fam_old',
+        familyName: 'Gia Đình Cũ',
+        userId: 'u_khoa',
+        userName: 'Khoa Cao',
+        userRole: 'Bố Mẹ',
+      );
+      expect(gemini.currentFamilyId, 'fam_old');
+      expect(gemini.currentFamilyName, 'Gia Đình Cũ');
+
+      // Reset chat session must clean cached prompt
+      gemini.resetChatSession();
+
+      // Switch to new family: "Yeah"
+      await gemini.initChat(
+        familyId: 'fam_yeah',
+        familyName: 'Yeah',
+        userId: 'u_khoa',
+        userName: 'Khoa Cao',
+        userRole: 'Bố Mẹ',
+      );
+      expect(gemini.currentFamilyId, 'fam_yeah');
+      expect(gemini.currentFamilyName, 'Yeah');
+    });
+
+    test('38. Domain guard: Programming and homework queries (if high < low, Python) are rejected politely without generating code', () async {
+      final gemini = GeminiChatService.instance;
+      gemini.resetCooldown();
+
+      await gemini.initChat(
+        familyId: 'f1',
+        familyName: 'Tổ Ấm',
+        userId: 'u_khoa',
+        userName: 'Khoa Cao',
+        userRole: 'Bố Mẹ',
+      );
+
+      final res = await gemini.sendMessage(
+        'if high < low then fail, viết cho tôi code Python và JavaScript',
+        familyId: 'f1',
+        fallbackToLocal: true,
+      );
+
+      // Must refuse programming/homework and redirect to family chores
+      expect(res.text.toLowerCase(), anyOf([contains('viết mã code'), contains('giải bài tập'), contains('không thể')]));
+      expect(res.text, isNot(contains('```python')));
+      expect(res.text, isNot(contains('def ')));
+      expect(res.text, isNot(contains('console.log')));
+    });
+
+    test('39. Task completion guard: Asking AI to tick/complete chore is rejected, directing user to proof verification', () async {
+      final gemini = GeminiChatService.instance;
+      gemini.resetCooldown();
+
+      await gemini.initChat(
+        familyId: 'f1',
+        familyName: 'Tổ Ấm',
+        userId: 'u_khoa',
+        userName: 'Khoa Cao',
+        userRole: 'Bố Mẹ',
+      );
+
+      final res = await gemini.sendMessage(
+        'tích hoàn thành việc nhà giúp tôi với',
+        familyId: 'f1',
+        fallbackToLocal: true,
+      );
+
+      // AI must decline marking chore completed and instruct user to complete in app with proof photo
+      expect(res.text, contains('không thể tự ý tích hoàn thành việc nhà'));
+      expect(res.text, contains('nghiệm thu'));
+    });
+
+    test('40. Slow mode service-layer throttling: Consecutive messages within 5s return cooldown notice without API call', () async {
+      final gemini = GeminiChatService.instance;
+      gemini.resetCooldown();
+
+      await gemini.initChat(
+        familyId: 'f1',
+        familyName: 'Tổ Ấm',
+        userId: 'u_khoa',
+        userName: 'Khoa Cao',
+        userRole: 'Bố Mẹ',
+      );
+
+      // First message: succeeds
+      final res1 = await gemini.sendMessage(
+        'hôm nay có việc gì',
+        familyId: 'f1',
+        fallbackToLocal: true,
+        checkThrottle: true,
+      );
+      expect(res1.text, isNotEmpty);
+      expect(gemini.isThrottled, isTrue);
+
+      // Immediate second message: triggers Slow Mode throttle
+      final res2 = await gemini.sendMessage(
+        'ai đã điểm danh',
+        familyId: 'f1',
+        fallbackToLocal: true,
+        checkThrottle: true,
+      );
+      expect(res2.text, contains('Slow Mode'));
+      expect(res2.text, contains('giây nữa rồi gửi tiếp'));
+    });
+
+    test('41. Slow mode cooldown resets and allows message when cooldown is cleared', () async {
+      final gemini = GeminiChatService.instance;
+      gemini.resetCooldown();
+
+      await gemini.initChat(
+        familyId: 'f1',
+        familyName: 'Tổ Ấm',
+        userId: 'u_khoa',
+        userName: 'Khoa Cao',
+        userRole: 'Bố Mẹ',
+      );
+
+      // Send first message with throttle check
+      await gemini.sendMessage(
+        'hôm nay có việc gì',
+        familyId: 'f1',
+        fallbackToLocal: true,
+        checkThrottle: true,
+      );
+      expect(gemini.isThrottled, isTrue);
+
+      // Reset cooldown
+      gemini.resetCooldown();
+      expect(gemini.isThrottled, isFalse);
+
+      // Sending now proceeds without throttle
+      final res = await gemini.sendMessage(
+        'hôm nay ai đã điểm danh',
+        familyId: 'f1',
+        fallbackToLocal: true,
+        checkThrottle: true,
+      );
+      expect(res.text, isNot(contains('Slow Mode')));
+    });
+
+    testWidgets('42. FamilyAiChatScreen UI widgets reflect slow mode countdown and disables send button', (tester) async {
+      final repo = InMemoryReminderRepository();
+      GeminiChatService.instance.resetCooldown();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FamilyAiChatScreen(
+              familyId: 'fam_demo',
+              currentUserId: 'u_test',
+              currentUserName: 'Khoa Cao',
+              familyMembers: const [],
+              repository: repo,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Enter text and tap send
+      final inputField = find.byType(TextField);
+      expect(inputField, findsOneWidget);
+      await tester.enterText(inputField, 'Xin chào AI');
+      await tester.pump();
+
+      final sendBtn = find.byIcon(Icons.send_rounded);
+      expect(sendBtn, findsOneWidget);
+      await tester.tap(sendBtn);
+      await tester.pump();
+
+      // Now slow mode is active (5s cooldown) -> Send button should show countdown text
+      expect(find.textContaining('s'), findsWidgets);
+
+      // Advance through cooldown so the periodic timer completes cleanly
+      await tester.pump(const Duration(seconds: 6));
     });
   });
 }

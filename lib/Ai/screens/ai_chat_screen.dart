@@ -140,8 +140,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
       // Nạp ngữ cảnh vào GeminiChatService thời gian thực
       final myMember = _familyMembers.where((m) => m.id == _currentUserId).firstOrNull;
       final myRole = myMember?.role ?? 'Thành viên';
+      final activeFamily = myFamilies.where((f) => f.id == _familyId).firstOrNull;
+      final activeFamilyName = activeFamily?.name ?? '';
       unawaited(GeminiChatService.instance.initChat(
         familyId: _familyId,
+        familyName: activeFamilyName.isNotEmpty ? activeFamilyName : null,
         userId: _currentUserId,
         userName: _currentUserName,
         userRole: myRole,
