@@ -1210,6 +1210,7 @@ void main() {
       await repo.completeReminder(
         reminderId: created.id,
         currentUserId: 'user_dad',
+        allowFutureCompletion: true,
       );
       expect(service.hasActiveEscalation(created.id), isFalse);
 
@@ -1676,6 +1677,7 @@ void main() {
       await repo.completeReminder(
         reminderId: recurring.id,
         currentUserId: 'user_dad',
+        allowFutureCompletion: true,
       );
 
       // Old occurrence canceled
@@ -2130,6 +2132,279 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Gia đình: '), findsOneWidget);
       expect(find.text('Gia Đình An Bình'), findsAtLeastNWidgets(1));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('Date Lock & Accidental Completion Prevention Tests', () {
+    final now = DateTime.now();
+    final todayStr =
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+    final tomorrow = now.add(const Duration(days: 1));
+    final tomorrowStr =
+        '${tomorrow.day.toString().padLeft(2, '0')}/${tomorrow.month.toString().padLeft(2, '0')}/${tomorrow.year}';
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayStr =
+        '${yesterday.day.toString().padLeft(2, '0')}/${yesterday.month.toString().padLeft(2, '0')}/${yesterday.year}';
+
+    test('ReminderModel: isFutureDate returns true for tomorrow, false for today and yesterday', () {
+      final futureTask = ReminderModel(
+        id: 'fut_1',
+        familyId: 'f1',
+        creatorId: 'u1',
+        assignedTo: 'u1',
+        assignedToName: 'User 1',
+        title: 'Future Task',
+        date: tomorrowStr,
+        time: '08:00',
+      );
+      expect(futureTask.isFutureDate, isTrue);
+      expect(futureTask.canBeCompleted, isFalse);
+
+      final todayTask = ReminderModel(
+        id: 'tod_1',
+        familyId: 'f1',
+        creatorId: 'u1',
+        assignedTo: 'u1',
+        assignedToName: 'User 1',
+        title: 'Today Task',
+        date: todayStr,
+        time: '08:00',
+      );
+      expect(todayTask.isFutureDate, isFalse);
+      expect(todayTask.canBeCompleted, isTrue);
+
+      final pastTask = ReminderModel(
+        id: 'past_1',
+        familyId: 'f1',
+        creatorId: 'u1',
+        assignedTo: 'u1',
+        assignedToName: 'User 1',
+        title: 'Past Task',
+        date: yesterdayStr,
+        time: '08:00',
+      );
+      expect(pastTask.isFutureDate, isFalse);
+      expect(pastTask.canBeCompleted, isTrue);
+    });
+
+    test('Repository: Cannot complete future reminder ahead of time', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        ReminderModel(
+          id: 'locked_tomorrow',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Học bài ngày mai',
+          date: tomorrowStr,
+          time: '09:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      // Tries to complete tomorrow's task today -> Throws ReminderValidationException
+      expect(
+        () => repo.completeReminder(
+          reminderId: 'locked_tomorrow',
+          currentUserId: 'user_minh',
+        ),
+        throwsA(isA<ReminderValidationException>()),
+      );
+
+      // Bypass with allowFutureCompletion: true succeeds (e.g. for simulations)
+      final completed = await repo.completeReminder(
+        reminderId: 'locked_tomorrow',
+        currentUserId: 'user_minh',
+        allowFutureCompletion: true,
+      );
+      expect(completed.isCompleted, isTrue);
+    });
+
+    test("Repository: Can complete today's and overdue reminder normally (once opened, stays unlocked)", () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        ReminderModel(
+          id: 'task_today',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Rửa chén hôm nay',
+          date: todayStr,
+          time: '19:00',
+          status: ReminderStatus.pending,
+        ),
+        ReminderModel(
+          id: 'task_overdue',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Tưới cây hôm qua',
+          date: yesterdayStr,
+          time: '17:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      // Complete today's task succeeds
+      final resToday = await repo.completeReminder(
+        reminderId: 'task_today',
+        currentUserId: 'user_minh',
+      );
+      expect(resToday.isCompleted, isTrue);
+
+      // Complete overdue task succeeds
+      final resOverdue = await repo.completeReminder(
+        reminderId: 'task_overdue',
+        currentUserId: 'user_minh',
+      );
+      expect(resOverdue.isCompleted, isTrue);
+    });
+
+    test('Repository: Cannot claim and complete open task for future date, but can claim for later', () async {
+      final repo = InMemoryReminderRepository(initialReminders: [
+        ReminderModel(
+          id: 'open_tomorrow',
+          familyId: 'f1',
+          creatorId: 'user_dad',
+          assignedTo: '',
+          assignedToName: 'Cả nhà',
+          title: 'Sơn lại hàng rào ngày mai',
+          date: tomorrowStr,
+          time: '08:00',
+          status: ReminderStatus.open,
+        ),
+      ]);
+
+      // Cannot claim and complete immediately for tomorrow
+      expect(
+        () => repo.claimAndCompleteOpenTask(
+          reminderId: 'open_tomorrow',
+          currentUserId: 'user_minh',
+          currentUserName: 'Minh',
+        ),
+        throwsA(isA<ReminderValidationException>()),
+      );
+
+      // But can claim for later in advance!
+      final claimed = await repo.claimOpenTask(
+        reminderId: 'open_tomorrow',
+        currentUserId: 'user_minh',
+        currentUserName: 'Minh',
+      );
+      expect(claimed.assignedTo, 'user_minh');
+      expect(claimed.status, ReminderStatus.pending);
+    });
+
+    testWidgets('ReminderCard: Future task renders locked clock icon; Today task renders checkmark', (tester) async {
+      bool completedTapped = false;
+
+      final futureReminder = ReminderModel(
+        id: 'card_fut',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Việc ngày mai',
+        date: tomorrowStr,
+        time: '10:00',
+        status: ReminderStatus.pending,
+      );
+
+      final todayReminder = ReminderModel(
+        id: 'card_tod',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Việc hôm nay',
+        date: todayStr,
+        time: '10:00',
+        status: ReminderStatus.pending,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                ReminderCard(
+                  reminder: futureReminder,
+                  currentUserId: 'user_minh',
+                  onTap: () {},
+                  onComplete: () => completedTapped = true,
+                ),
+                ReminderCard(
+                  reminder: todayReminder,
+                  currentUserId: 'user_minh',
+                  onTap: () {},
+                  onComplete: () => completedTapped = true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Future task renders lock_clock_outlined
+      expect(find.byIcon(Icons.lock_clock_outlined), findsOneWidget);
+      // Today task renders check_circle_outline
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+
+      // Tapping locked icon does NOT invoke onComplete; shows SnackBar
+      await tester.tap(find.byIcon(Icons.lock_clock_outlined));
+      await tester.pumpAndSettle();
+      expect(completedTapped, isFalse);
+      expect(find.byType(SnackBar), findsOneWidget);
+
+      // Tapping checkmark invokes onComplete
+      await tester.tap(find.byIcon(Icons.check_circle_outline));
+      await tester.pumpAndSettle();
+      expect(completedTapped, isTrue);
+    });
+
+    testWidgets('ReminderDetailBottomSheet: Future task renders locked button', (tester) async {
+      final repo = InMemoryReminderRepository();
+      final futureReminder = ReminderModel(
+        id: 'sheet_fut',
+        familyId: 'f1',
+        creatorId: 'user_dad',
+        assignedTo: 'user_minh',
+        assignedToName: 'Minh',
+        title: 'Bài tập ngày mai',
+        date: tomorrowStr,
+        time: '14:00',
+        status: ReminderStatus.pending,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReminderDetailBottomSheet(
+              reminder: futureReminder,
+              currentUserId: 'user_minh',
+              currentUserName: 'Minh',
+              familyName: 'Gia Đình',
+              repository: repo,
+              familyMembers: const [
+                FamilyMember(id: 'user_minh', name: 'Minh', role: 'Child', familyId: 'f1'),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Renders locked button with date
+      expect(find.byIcon(Icons.lock_clock_rounded), findsOneWidget);
+      expect(find.textContaining('Chưa đến ngày thực hiện'), findsOneWidget);
+
+      // Tapping locked button displays SnackBar
+      await tester.tap(find.byIcon(Icons.lock_clock_rounded));
+      await tester.pumpAndSettle();
+      expect(find.byType(SnackBar), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

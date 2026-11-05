@@ -160,8 +160,37 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _handleCompleteReminder(String reminderId) async {
+  Future<void> _handleCompleteReminder(
+    String reminderId, [
+    DateTime? reminderDate,
+  ]) async {
     try {
+      if (reminderDate != null) {
+        final now = DateTime.now();
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final taskDay =
+            DateTime(reminderDate.year, reminderDate.month, reminderDate.day);
+        if (taskDay.isAfter(todayStart)) {
+          final dStr =
+              '${reminderDate.day.toString().padLeft(2, '0')}/${reminderDate.month.toString().padLeft(2, '0')}/${reminderDate.year}';
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  AppLanguage.text(
+                    'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn ($dStr)!',
+                    'This task can only be completed on its scheduled date ($dStr)!',
+                  ),
+                ),
+                backgroundColor: const Color(0xFF455A64),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
       await _familydataService.completeReminder(reminderId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -765,34 +794,90 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ],
                                     ),
                                   ),
-                                  IconButton(
-                                    tooltip: LongStrings.completeTaskSuccess,
-                                    icon: const Icon(
-                                      Icons.check_circle_outline,
-                                      color: Color(0xFF005F50),
-                                      size: 24,
-                                    ),
-                                    onPressed: () {
-                                      if (reminder.requiresProofImage) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                  if (DateTime(reminder.date.year,
+                                          reminder.date.month,
+                                          reminder.date.day)
+                                      .isAfter(DateTime(
+                                          DateTime.now().year,
+                                          DateTime.now().month,
+                                          DateTime.now().day)))
+                                    IconButton(
+                                      tooltip: AppLanguage.text(
+                                        'Khóa đến ngày ${reminder.date.day.toString().padLeft(2, '0')}/${reminder.date.month.toString().padLeft(2, '0')}/${reminder.date.year}',
+                                        'Locked until ${reminder.date.day.toString().padLeft(2, '0')}/${reminder.date.month.toString().padLeft(2, '0')}/${reminder.date.year}',
+                                      ),
+                                      icon: const Icon(
+                                        Icons.lock_clock_outlined,
+                                        color: Color(0xFF8E9B96),
+                                        size: 24,
+                                      ),
+                                      onPressed: () {
+                                        final dStr =
+                                            '${reminder.date.day.toString().padLeft(2, '0')}/${reminder.date.month.toString().padLeft(2, '0')}/${reminder.date.year}';
+                                        ScaffoldMessenger.of(context)
+                                            .hideCurrentSnackBar();
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
                                           SnackBar(
-                                            content: Text(AppLanguage.text(
-                                              'Công việc này bắt buộc chụp ảnh nghiệm thu! Vui lòng chạm vào việc để chụp ảnh.',
-                                              'This task requires proof photo! Please tap the task to take photo.',
-                                            )),
-                                            backgroundColor: Colors.amber[800],
+                                            content: Row(
+                                              children: [
+                                                const Icon(
+                                                    Icons.lock_clock_rounded,
+                                                    color: Colors.white,
+                                                    size: 20),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    AppLanguage.text(
+                                                      'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn ($dStr)!',
+                                                      'This task can only be completed on its scheduled date ($dStr)!',
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor:
+                                                const Color(0xFF455A64),
+                                            behavior:
+                                                SnackBarBehavior.floating,
+                                            duration:
+                                                const Duration(seconds: 3),
                                           ),
                                         );
-                                        _handleOpenReminderDetail(
-                                          reminder,
-                                          family.name,
-                                          user,
-                                        );
-                                        return;
-                                      }
-                                      _handleCompleteReminder(reminder.id);
-                                    },
-                                  ),
+                                      },
+                                    )
+                                   else
+                                     IconButton(
+                                       tooltip: LongStrings.completeTaskSuccess,
+                                       icon: const Icon(
+                                         Icons.check_circle_outline,
+                                         color: Color(0xFF005F50),
+                                         size: 24,
+                                       ),
+                                       onPressed: () {
+                                         if (reminder.requiresProofImage) {
+                                           ScaffoldMessenger.of(context).showSnackBar(
+                                             SnackBar(
+                                               content: Text(AppLanguage.text(
+                                                 'C\xc3\xb4ng vi\xe1\xbb\x87c n\xc3\xa0y b\xe1\xba\xaft bu\xe1\xbb\x99c ch\xe1\xbb\xa5p \xe1\xba\xa3nh nghi\xe1\xbb\x87m thu! Vui l\xc3\xb2ng ch\xe1\xba\xa1m v\xc3\xa0o vi\xe1\xbb\x87c \xc4\x91\xe1\xbb\x83 ch\xe1\xbb\xa5p \xe1\xba\xa3nh.',
+                                                 'This task requires proof photo! Please tap the task to take photo.',
+                                               )),
+                                               backgroundColor: Colors.amber[800],
+                                             ),
+                                           );
+                                           _handleOpenReminderDetail(
+                                             reminder,
+                                             family.name,
+                                             user,
+                                           );
+                                           return;
+                                         }
+                                         _handleCompleteReminder(
+                                           reminder.id,
+                                           reminder.date,
+                                         );
+                                       },
+                                     ),
                                 ],
                               ),
                             ),

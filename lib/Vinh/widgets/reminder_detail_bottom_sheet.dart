@@ -60,10 +60,19 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     );
   }
 
+  bool get isAssignedToMe => reminder.assignedTo == currentUserId;
+
   bool get canComplete =>
       !reminder.isCompleted &&
       !reminder.isDeleted &&
-      reminder.assignedTo == currentUserId;
+      isAssignedToMe &&
+      reminder.canBeCompleted;
+
+  bool get isLockedCompletion =>
+      !reminder.isCompleted &&
+      !reminder.isDeleted &&
+      isAssignedToMe &&
+      reminder.isFutureDate;
 
   bool get canDelete {
     if (reminder.creatorId == currentUserId) return true;
@@ -89,6 +98,21 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   }
 
   Future<void> _handleComplete(BuildContext context) async {
+    if (reminder.isFutureDate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn (${reminder.date})!',
+              'This task can only be completed on its scheduled date (${reminder.date})!',
+            ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
+
     try {
       String? proofUrl;
       if (reminder.requiresProofImage) {
@@ -225,6 +249,21 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   }
 
   Future<void> _handleClaimAndComplete(BuildContext context) async {
+    if (reminder.isFutureDate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Công việc này lên lịch cho ngày ${reminder.date}. Bạn có thể nhận việc trước, nhưng chỉ được đánh dấu hoàn thành vào đúng ngày!',
+              'This task is scheduled for ${reminder.date}. You can claim it now, but can only complete it on that day!',
+            ),
+          ),
+          backgroundColor: const Color(0xFF455A64),
+        ),
+      );
+      return;
+    }
+
     try {
       String? proofUrl;
       if (reminder.requiresProofImage) {
@@ -901,69 +940,130 @@ class ReminderDetailBottomSheet extends StatelessWidget {
 
                       // Nút hành động: Xung phong nhận việc / Hoàn thành
                       if (isOpenTask && !isCompleted) ...[
-                        SizedBox(
-                          height: 52,
-                          child: FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF005F50),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                        if (reminder.isFutureDate) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFECEFF1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: const Color(0xFFCFD8DC)),
                             ),
-                            icon: Icon(
-                              reminder.requiresProofImage
-                                  ? Icons.camera_alt_rounded
-                                  : Icons.check_circle_outline_rounded,
-                              size: 22,
-                            ),
-                            label: Text(
-                              reminder.requiresProofImage
-                                  ? AppLanguage.text(
-                                      'Làm ngay & Chụp ảnh',
-                                      'Do now & Take photo',
-                                    )
-                                  : AppLanguage.text(
-                                      'Làm ngay & Hoàn thành',
-                                      'Do now & Complete',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.lock_clock_rounded,
+                                    color: Color(0xFF455A64), size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    AppLanguage.text(
+                                      'Công việc này lên lịch cho ngày ${reminder.date}. Bạn có thể nhận việc trước, nhưng chỉ được đánh dấu hoàn thành vào đúng ngày!',
+                                      'This task is scheduled for ${reminder.date}. You can claim it now, but can only complete it on that day!',
                                     ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      color: Color(0xFF455A64),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            onPressed: () => _handleClaimAndComplete(context),
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          height: 48,
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF005F50),
-                              side: const BorderSide(color: Color(0xFF005F50)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 48,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF005F50),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                               ),
+                              icon: const Icon(Icons.front_hand_rounded,
+                                  size: 20),
+                              label: Text(
+                                AppLanguage.text(
+                                  'Nhận việc trước',
+                                  'Claim task in advance',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              onPressed: () => _handleClaim(context),
                             ),
-                            icon:
-                                const Icon(Icons.front_hand_rounded, size: 20),
-                            label: Text(
-                              AppLanguage.text(
-                                'Nhận việc để làm sau',
-                                'Claim task for later',
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            onPressed: () => _handleClaim(context),
                           ),
-                        ),
+                        ] else ...[
+                          SizedBox(
+                            height: 52,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF005F50),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              icon: Icon(
+                                reminder.requiresProofImage
+                                    ? Icons.camera_alt_rounded
+                                    : Icons.check_circle_outline_rounded,
+                                size: 22,
+                              ),
+                              label: Text(
+                                reminder.requiresProofImage
+                                    ? AppLanguage.text(
+                                        'Làm ngay & Chụp ảnh',
+                                        'Do now & Take photo',
+                                      )
+                                    : AppLanguage.text(
+                                        'Làm ngay & Hoàn thành',
+                                        'Do now & Complete',
+                                      ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              onPressed: () =>
+                                  _handleClaimAndComplete(context),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 48,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF005F50),
+                                side:
+                                    const BorderSide(color: Color(0xFF005F50)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              icon: const Icon(Icons.front_hand_rounded,
+                                  size: 20),
+                              label: Text(
+                                AppLanguage.text(
+                                  'Nhận việc để làm sau',
+                                  'Claim task for later',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              onPressed: () => _handleClaim(context),
+                            ),
+                          ),
+                        ],
                       ] else if (canComplete)
                         SizedBox(
                           height: 52,
@@ -998,6 +1098,59 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                               ),
                             ),
                             onPressed: () => _handleComplete(context),
+                          ),
+                        )
+                      else if (isLockedCompletion)
+                        SizedBox(
+                          height: 52,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFBDC9C4),
+                              foregroundColor: const Color(0xFF455A64),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            icon:
+                                const Icon(Icons.lock_clock_rounded, size: 22),
+                            label: Text(
+                              AppLanguage.text(
+                                'Chưa đến ngày thực hiện (${reminder.date})',
+                                'Locked until scheduled date (${reminder.date})',
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            onPressed: () {
+                              ScaffoldMessenger.of(context)
+                                  .hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      const Icon(Icons.lock_clock_rounded,
+                                          color: Colors.white, size: 20),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          AppLanguage.text(
+                                            'Công việc này được lên lịch cho ngày ${reminder.date}. Bạn chỉ có thể đánh dấu hoàn thành khi đến đúng ngày này!',
+                                            'This task is scheduled for ${reminder.date}. It can only be completed on that day!',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  backgroundColor: const Color(0xFF455A64),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            },
                           ),
                         )
                       else if (isCompleted)
