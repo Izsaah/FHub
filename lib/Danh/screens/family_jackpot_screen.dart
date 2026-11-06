@@ -310,25 +310,27 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           if (jackpot.totalUnclaimedPrizes > 0) ...[
             const SizedBox(height: 10),
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(14),
+                color: Colors.white.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: const Color(0xFFFFB74D), width: 1.2),
               ),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.savings_outlined, color: Color(0xFFE65100), size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
+                  const Icon(Icons.savings_outlined, color: Color(0xFFE65100), size: 16),
+                  const SizedBox(width: 6),
+                  Flexible(
                     child: Text(
                       AppLanguage.text(
-                        'Tiền thưởng chưa rút của cả nhà: ${jackpot.totalUnclaimedPrizes.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ',
-                        'Unclaimed family rewards: ${jackpot.totalUnclaimedPrizes.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ',
+                        'Chưa rút cả nhà: ${jackpot.totalUnclaimedPrizes.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ',
+                        'Unclaimed: ${jackpot.totalUnclaimedPrizes.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ',
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFFB75B00),
                       ),
@@ -414,7 +416,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                             style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
                           ),
                           Text(
-                            '${_jackpotService.myWalletBalance} đ',
+                            '${_jackpotService.myWalletBalance.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -1136,12 +1138,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         ],
                       ),
                       const SizedBox(height: 10),
-                      // Thanh trạng thái rút tiền & Nút rút riêng của từng người
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      // Thanh trạng thái rút tiền & Nút rút riêng của từng người (Adaptive Wrap chống tràn trên mọi độ phân giải)
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 6,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                             decoration: BoxDecoration(
                               color: isWithdrawn ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
                               borderRadius: BorderRadius.circular(12),
@@ -1161,7 +1166,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                                 Text(
                                   isWithdrawn
                                       ? AppLanguage.text('Đã nhận thưởng', 'Claimed')
-                                      : AppLanguage.text('Chưa rút (còn $formattedRemaining đ)', 'Unclaimed ($formattedRemaining đ)'),
+                                      : AppLanguage.text('Chưa rút: $formattedRemaining đ', 'Unclaimed: $formattedRemaining đ'),
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
@@ -1225,25 +1230,27 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           const SizedBox(height: 10),
         ],
 
-        // Nút Rút tiền về Ngân hàng
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE65100),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        // Nút Rút tiền về Ngân hàng (Chỉ hiển thị khi ví còn tiền thưởng)
+        if (_jackpotService.myWalletBalance > 0) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE65100),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.account_balance_rounded),
+              label: Text(
+                'Rút Tiền Thưởng Về Ngân Hàng (${_jackpotService.myWalletBalance.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ)',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              onPressed: _openBankAndWithdrawModal,
             ),
-            icon: const Icon(Icons.account_balance_rounded),
-            label: Text(
-              'Rút Tiền Thưởng Về Ngân Hàng (${_jackpotService.myWalletBalance} đ)',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-            ),
-            onPressed: _openBankAndWithdrawModal,
           ),
-        ),
-        const SizedBox(height: 10),
+          const SizedBox(height: 10),
+        ],
 
         // Nút Tạo Hũ Mới
         SizedBox(
