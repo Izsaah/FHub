@@ -127,6 +127,18 @@ class FamilyJackpotModel {
     return topShakerId != firstPrizeWinnerId;
   }
 
+  /// Tổng số tiền thưởng tích lũy trong ví chưa được rút của toàn bộ thành viên trong gia đình
+  int get totalUnclaimedPrizes {
+    if (memberWallets.isEmpty) return 0;
+    return memberWallets.values.fold(0, (total, val) => total + val);
+  }
+
+  /// Kiểm tra xem một thành viên đã rút hết tiền thưởng hay chưa
+  bool isMemberWithdrawn(String uid) {
+    final bal = memberWallets[uid] ?? 0;
+    return bal <= 0;
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'familyId': familyId,
