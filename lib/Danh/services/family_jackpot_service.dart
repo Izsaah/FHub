@@ -391,20 +391,20 @@ class FamilyJackpotService extends ChangeNotifier {
     _saveMyShakeCountOnly(uid, _localMyShakeCount);
   }
 
-  /// Chỉ cập nhật đúng trường số lần lắc của user hiện tại lên Firestore để tránh ghi đè dữ liệu của thành viên khác
+  /// Chỉ cập nhật đúng trường số lần lắc của user hiện tại lên Firestore bằng Dot-Notation để tránh ghi đè dữ liệu của thành viên khác
   Future<void> _saveMyShakeCountOnly(String uid, int count) async {
     if (_currentFamilyId == null || _currentFamilyId!.isEmpty || _firestore == null) return;
     try {
-      await _firestore!
+      final docRef = _firestore!
           .collection('families')
           .doc(_currentFamilyId)
           .collection('jackpot')
-          .doc('current')
-          .set({
-        'shakeCounts': {uid: count},
-        'memberNames': {uid: currentUserName},
+          .doc('current');
+      await docRef.update({
+        'shakeCounts.$uid': count,
+        'memberNames.$uid': currentUserName,
         'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      });
     } catch (e) {
       debugPrint('Save shake count error: $e');
     }
@@ -490,7 +490,7 @@ class FamilyJackpotService extends ChangeNotifier {
         });
   }
 
-  /// Nạp thêm tiền vào Hũ Niềm Vui Gia Đình
+  /// Nạp thêm tiền vào Hũ Niềm Vui Gia Đình (Bảo toàn 100% ví thưởng tích lũy chưa rút của các thành viên)
   Future<void> contributeMoney({
     required int amount,
     String? memberName,
@@ -503,39 +503,88 @@ class FamilyJackpotService extends ChangeNotifier {
     final name = memberName ?? currentUserName;
     final uid = currentUserId;
 
-    final updatedContribs = Map<String, int>.from(_jackpot.contributions);
-    final currentVal = updatedContribs[uid] ?? 0;
-    updatedContribs[uid] = currentVal + amount;
+    if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+      final docRef = _firestore!
+          .collection('families')
+          .doc(_currentFamilyId)
+          .collection('jackpot')
+          .doc('current');
 
-    final updatedNames = Map<String, String>.from(_jackpot.memberNames);
-    updatedNames[uid] = name;
+      await _firestore!.runTransaction((transaction) async {
+        final snap = await transaction.get(docRef);
+        int currentPool = 0;
+        Map<String, int> contribs = {};
+        Map<String, String> names = {};
 
-    // Tìm người nạp nhiều nhất (Realtime Đại Gia Đình)
-    String? topUid;
-    int maxAmount = 0;
-    updatedContribs.forEach((k, v) {
-      if (v > maxAmount) {
-        maxAmount = v;
-        topUid = k;
-      }
-    });
+        if (snap.exists && snap.data() != null) {
+          final data = snap.data()!;
+          currentPool = (data['totalPoolAmount'] as num?)?.toInt() ?? 0;
+          final rawContribs = (data['contributions'] as Map<String, dynamic>?) ?? {};
+          contribs = rawContribs.map((k, v) => MapEntry(k, (v as num).toInt()));
+          final rawNames = (data['memberNames'] as Map<String, dynamic>?) ?? {};
+          names = rawNames.map((k, v) => MapEntry(k, v.toString()));
+        }
 
-    final newTotal = _jackpot.totalPoolAmount + amount;
+        contribs[uid] = (contribs[uid] ?? 0) + amount;
+        names[uid] = name;
 
-    _jackpot = _jackpot.copyWith(
-      totalPoolAmount: newTotal,
-      status: JackpotStatus.idle,
-      topContributorId: topUid,
-      topContributorName: updatedNames[topUid] ?? name,
-      contributions: updatedContribs,
-      memberNames: updatedNames,
-      clearShakeStartTime: true,
-      clearSuspenseStartTime: true,
-      lostDueToPremiumExpired: false,
-    );
+        String? topUid;
+        int maxAmount = 0;
+        contribs.forEach((k, v) {
+          if (v > maxAmount) {
+            maxAmount = v;
+            topUid = k;
+          }
+        });
 
-    notifyListeners();
-    await _saveToFirestore();
+        final newTotal = currentPool + amount;
+
+        transaction.set(docRef, {
+          'totalPoolAmount': newTotal,
+          'status': JackpotStatus.idle.name,
+          'topContributorId': topUid,
+          'topContributorName': names[topUid] ?? name,
+          'contributions': contribs,
+          'memberNames': names,
+          'shakeStartTime': null,
+          'suspenseStartTime': null,
+          'lostDueToPremiumExpired': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      });
+    } else {
+      final updatedContribs = Map<String, int>.from(_jackpot.contributions);
+      final currentVal = updatedContribs[uid] ?? 0;
+      updatedContribs[uid] = currentVal + amount;
+
+      final updatedNames = Map<String, String>.from(_jackpot.memberNames);
+      updatedNames[uid] = name;
+
+      String? topUid;
+      int maxAmount = 0;
+      updatedContribs.forEach((k, v) {
+        if (v > maxAmount) {
+          maxAmount = v;
+          topUid = k;
+        }
+      });
+
+      final newTotal = _jackpot.totalPoolAmount + amount;
+
+      _jackpot = _jackpot.copyWith(
+        totalPoolAmount: newTotal,
+        status: JackpotStatus.idle,
+        topContributorId: topUid,
+        topContributorName: updatedNames[topUid] ?? name,
+        contributions: updatedContribs,
+        memberNames: updatedNames,
+        clearShakeStartTime: true,
+        clearSuspenseStartTime: true,
+        lostDueToPremiumExpired: false,
+      );
+
+      notifyListeners();
+    }
 
     // Ghi vào Sổ cái biến động ví gia đình
     await _recordTransaction(
@@ -657,134 +706,262 @@ class FamilyJackpotService extends ChangeNotifier {
     }
   }
 
-  /// Vừa kết thúc 30s lắc: LẬP TỨC TÌM VÀ CÔNG BỐ NGƯỜI LẮC NHIỀU NHẤT!
-  /// Đồng thời chuyển sang giai đoạn Hồi Hộp (Suspense) 10 giây trước khi Thần May Mắn chia thưởng.
+  /// Vừa kết thúc 30s lắc: Chuyển sang giai đoạn Hồi Hộp (Suspense) qua Transaction chống Race Condition
   Future<void> _enterSuspensePhase() async {
     if (_isTransitioningPhase || !_jackpot.isShaking) return;
     _isTransitioningPhase = true;
 
     try {
-      final finalShakes = Map<String, int>.from(_jackpot.shakeCounts);
-      if (currentUserId.isNotEmpty && _localMyShakeCount > (finalShakes[currentUserId] ?? 0)) {
-        finalShakes[currentUserId] = _localMyShakeCount;
-      }
+      final docRef = _firestore
+          ?.collection('families')
+          .doc(_currentFamilyId)
+          .collection('jackpot')
+          .doc('current');
 
-      // Tìm người lắc nhiều nhất ngay lập tức (chỉ ghi nhận khi có ít nhất 1 lần lắc > 0)
-      String? topShaker;
-      int maxShakes = 0;
-      finalShakes.forEach((uid, cnt) {
-        if (cnt > maxShakes) {
-          maxShakes = cnt;
-          topShaker = uid;
+      if (docRef != null && _firestore != null) {
+        await _firestore!.runTransaction((transaction) async {
+          final snap = await transaction.get(docRef);
+          if (!snap.exists) return;
+          final data = snap.data()!;
+          final currentStatus = data['status'] as String? ?? '';
+          if (currentStatus != JackpotStatus.shaking.name) return;
+
+          final rawShakes = (data['shakeCounts'] as Map<String, dynamic>?) ?? {};
+          final finalShakes = rawShakes.map((k, v) => MapEntry(k, (v as num).toInt()));
+          if (currentUserId.isNotEmpty && _localMyShakeCount > (finalShakes[currentUserId] ?? 0)) {
+            finalShakes[currentUserId] = _localMyShakeCount;
+          }
+
+          String? topShaker;
+          int maxShakes = 0;
+          finalShakes.forEach((uid, cnt) {
+            if (cnt > maxShakes) {
+              maxShakes = cnt;
+              topShaker = uid;
+            }
+          });
+
+          transaction.update(docRef, {
+            'status': JackpotStatus.suspense.name,
+            'shakeCounts': finalShakes,
+            'prizeResults': <String, int>{},
+            'topShakerId': topShaker,
+            'firstPrizeWinnerId': null,
+            'suspenseStartTime': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        });
+      } else {
+        final finalShakes = Map<String, int>.from(_jackpot.shakeCounts);
+        if (currentUserId.isNotEmpty && _localMyShakeCount > (finalShakes[currentUserId] ?? 0)) {
+          finalShakes[currentUserId] = _localMyShakeCount;
         }
-      });
 
-      final suspenseTime = DateTime.now();
+        String? topShaker;
+        int maxShakes = 0;
+        finalShakes.forEach((uid, cnt) {
+          if (cnt > maxShakes) {
+            maxShakes = cnt;
+            topShaker = uid;
+          }
+        });
 
-      _jackpot = _jackpot.copyWith(
-        status: JackpotStatus.suspense,
-        shakeCounts: finalShakes,
-        prizeResults: const {},
-        topShakerId: topShaker,
-        clearFirstPrizeWinnerId: true,
-        suspenseStartTime: suspenseTime,
-      );
+        _jackpot = _jackpot.copyWith(
+          status: JackpotStatus.suspense,
+          shakeCounts: finalShakes,
+          prizeResults: const {},
+          topShakerId: topShaker,
+          clearFirstPrizeWinnerId: true,
+          suspenseStartTime: DateTime.now(),
+        );
 
-      notifyListeners();
-      await _saveToFirestore();
-
-
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Enter suspense phase error: $e');
     } finally {
       _isTransitioningPhase = false;
       _ensureCountdownTimerRunning();
     }
   }
 
-  /// Sau 10 giây Hồi Hộp: Thần may mắn chính thức trao thưởng cho cả nhà bằng JackpotAlgorithm!
+  /// Sau 10 giây Hồi Hộp: Thần may mắn phân xử trao thưởng qua Atomic Transaction
+  /// Tiền trúng giải CỘNG DỒN vào ví cá nhân, không bị ghi đè hay mất tiền của bất kỳ ai!
   Future<void> _finishShakeBattle() async {
     if (_isTransitioningPhase || !_jackpot.isSuspense) return;
     _isTransitioningPhase = true;
     _stopCountdownTimer();
 
     try {
-      final participantIds = _jackpot.memberNames.keys.toList();
-      if (currentUserId.isNotEmpty && !participantIds.contains(currentUserId)) {
-        participantIds.add(currentUserId);
-      }
+      final docRef = _firestore
+          ?.collection('families')
+          .doc(_currentFamilyId)
+          .collection('jackpot')
+          .doc('current');
 
-      final finalShakes = Map<String, int>.from(_jackpot.shakeCounts);
-      if (currentUserId.isNotEmpty && _localMyShakeCount > (finalShakes[currentUserId] ?? 0)) {
-        finalShakes[currentUserId] = _localMyShakeCount;
-      }
+      if (docRef != null && _firestore != null) {
+        JackpotDistributionResult? finalResult;
+        String? winnerIdToNotify;
+        int winnerPrizeToNotify = 0;
 
-      final result = JackpotAlgorithm.calculate(
-        totalAmount: _jackpot.totalPoolAmount,
-        shakeCounts: finalShakes,
-        participantIds: participantIds,
-      );
+        await _firestore!.runTransaction((transaction) async {
+          final snap = await transaction.get(docRef);
+          if (!snap.exists) return;
+          final data = snap.data()!;
+          final currentStatus = data['status'] as String? ?? '';
+          // Idempotency: Chỉ 1 thiết bị đầu tiên thực thi chia giải. Thiết bị sau nhận status == finished thì thoát ngay
+          if (currentStatus != JackpotStatus.suspense.name) return;
 
-      // Tiền trúng thưởng lập tức cộng dồn vào ví số dư trong App của từng thành viên
-      final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
-      result.prizes.forEach((uid, wonAmount) {
-        updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonAmount;
-        if (wonAmount > 0) {
-          final isTop1 = uid == result.firstPrizeWinnerId;
-          final mName = _jackpot.memberNames[uid] ?? 'Thành viên';
-          _recordTransaction(
-            type: WalletTransactionType.prize,
-            amount: wonAmount,
-            title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
-            description: 'Phần thưởng chia từ quỹ Hũ',
-            targetUserId: uid,
-            targetUserName: mName,
+          final poolAmount = (data['totalPoolAmount'] as num?)?.toInt() ?? 0;
+          final rawShakes = (data['shakeCounts'] as Map<String, dynamic>?) ?? {};
+          final finalShakes = rawShakes.map((k, v) => MapEntry(k, (v as num).toInt()));
+          if (currentUserId.isNotEmpty && _localMyShakeCount > (finalShakes[currentUserId] ?? 0)) {
+            finalShakes[currentUserId] = _localMyShakeCount;
+          }
+
+          final rawNames = (data['memberNames'] as Map<String, dynamic>?) ?? {};
+          final names = rawNames.map((k, v) => MapEntry(k, v.toString()));
+          final participantIds = names.keys.toList();
+          if (currentUserId.isNotEmpty && !participantIds.contains(currentUserId)) {
+            participantIds.add(currentUserId);
+          }
+
+          final result = JackpotAlgorithm.calculate(
+            totalAmount: poolAmount,
+            shakeCounts: finalShakes,
+            participantIds: participantIds,
           );
+          finalResult = result;
+
+          // Tiền trúng thưởng lập tức CỘNG DỒN vào ví số dư trong App của từng thành viên
+          final rawWallets = (data['memberWallets'] as Map<String, dynamic>?) ?? {};
+          final updatedWallets = rawWallets.map((k, v) => MapEntry(k, (v as num).toInt()));
+          result.prizes.forEach((uid, wonAmount) {
+            updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonAmount;
+          });
+
+          transaction.update(docRef, {
+            'totalPoolAmount': 0, // Tiền quỹ vòng này đã được phân bổ 100% vào ví cá nhân
+            'status': JackpotStatus.finished.name,
+            'shakeCounts': finalShakes,
+            'prizeResults': result.prizes,
+            'memberWallets': updatedWallets,
+            'topShakerId': result.topShakerId,
+            'firstPrizeWinnerId': result.firstPrizeWinnerId,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+          winnerIdToNotify = result.firstPrizeWinnerId;
+          winnerPrizeToNotify = winnerIdToNotify != null ? (result.prizes[winnerIdToNotify] ?? 0) : 0;
+        });
+
+        if (finalResult != null) {
+          finalResult!.prizes.forEach((uid, wonAmount) {
+            if (wonAmount > 0) {
+              final isTop1 = uid == finalResult!.firstPrizeWinnerId;
+              final mName = _jackpot.memberNames[uid] ?? 'Thành viên';
+              _recordTransaction(
+                type: WalletTransactionType.prize,
+                amount: wonAmount,
+                title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
+                description: 'Phần thưởng chia từ quỹ Hũ',
+                targetUserId: uid,
+                targetUserName: mName,
+              );
+            }
+          });
+
+          if (winnerIdToNotify != null && winnerPrizeToNotify > 0) {
+            final winnerName = _jackpot.memberNames[winnerIdToNotify] ?? 'Thành viên';
+            final formattedPrize = winnerPrizeToNotify.toString().replaceAllMapped(
+              RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+              (Match m) => '${m[1]}.',
+            );
+            unawaited(NotificationService.instance.addNotification(
+              familyId: _currentFamilyId ?? 'f1',
+              title: 'Kết quả Nổ Hũ Gia Đình! 🎉',
+              titleEn: 'Family Pot Battle Results! 🎉',
+              body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize đ!',
+              bodyEn: '$winnerName won 1st Prize with a reward of $formattedPrize đ!',
+              type: 'jackpot_win',
+            ));
+          }
         }
-      });
+      } else {
+        final participantIds = _jackpot.memberNames.keys.toList();
+        if (currentUserId.isNotEmpty && !participantIds.contains(currentUserId)) {
+          participantIds.add(currentUserId);
+        }
 
-      _jackpot = _jackpot.copyWith(
-        totalPoolAmount: 0, // Tiền đã nổ hũ chia hết 100% vào ví cá nhân các thành viên
-        status: JackpotStatus.finished,
-        shakeCounts: finalShakes,
-        prizeResults: result.prizes,
-        memberWallets: updatedWallets,
-        topShakerId: result.topShakerId,
-        firstPrizeWinnerId: result.firstPrizeWinnerId,
-      );
+        final finalShakes = Map<String, int>.from(_jackpot.shakeCounts);
+        if (currentUserId.isNotEmpty && _localMyShakeCount > (finalShakes[currentUserId] ?? 0)) {
+          finalShakes[currentUserId] = _localMyShakeCount;
+        }
 
-      notifyListeners();
-      await _saveToFirestore();
-
-      final winnerId = result.firstPrizeWinnerId;
-      final winnerPrize = winnerId != null ? (result.prizes[winnerId] ?? 0) : 0;
-      if (winnerId != null && winnerPrize > 0) {
-        final winnerName = _jackpot.memberNames[winnerId] ?? 'Thành viên';
-        final formattedPrize = winnerPrize.toString().replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]}.',
+        final result = JackpotAlgorithm.calculate(
+          totalAmount: _jackpot.totalPoolAmount,
+          shakeCounts: finalShakes,
+          participantIds: participantIds,
         );
-        unawaited(NotificationService.instance.addNotification(
-          familyId: _currentFamilyId ?? 'f1',
-          title: 'Kết quả Nổ Hũ Gia Đình! 🎉',
-          titleEn: 'Family Pot Battle Results! 🎉',
-          body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize đ!',
-          bodyEn: '$winnerName won 1st Prize with a reward of $formattedPrize đ!',
-          type: 'jackpot_win',
-        ));
+
+        final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
+        result.prizes.forEach((uid, wonAmount) {
+          updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonAmount;
+          if (wonAmount > 0) {
+            final isTop1 = uid == result.firstPrizeWinnerId;
+            final mName = _jackpot.memberNames[uid] ?? 'Thành viên';
+            _recordTransaction(
+              type: WalletTransactionType.prize,
+              amount: wonAmount,
+              title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
+              description: 'Phần thưởng chia từ quỹ Hũ',
+              targetUserId: uid,
+              targetUserName: mName,
+            );
+          }
+        });
+
+        _jackpot = _jackpot.copyWith(
+          totalPoolAmount: 0,
+          status: JackpotStatus.finished,
+          shakeCounts: finalShakes,
+          prizeResults: result.prizes,
+          memberWallets: updatedWallets,
+          topShakerId: result.topShakerId,
+          firstPrizeWinnerId: result.firstPrizeWinnerId,
+        );
+
+        notifyListeners();
       }
+    } catch (e) {
+      debugPrint('Finish shake battle error: $e');
     } finally {
       _isTransitioningPhase = false;
     }
   }
 
-  /// Cập nhật thông tin tài khoản ngân hàng của thành viên hiện tại
+  /// Cập nhật thông tin tài khoản ngân hàng của thành viên hiện tại (Dot-notation an toàn không đè ví)
   Future<void> saveMyBankInfo(UserBankInfo bankInfo) async {
     final updatedBanks = Map<String, UserBankInfo>.from(_jackpot.memberBanks);
     updatedBanks[currentUserId] = bankInfo;
 
     _jackpot = _jackpot.copyWith(memberBanks: updatedBanks);
-
     notifyListeners();
-    await _saveToFirestore();
+
+    if (_currentFamilyId == null || _currentFamilyId!.isEmpty || _firestore == null) return;
+    try {
+      final docRef = _firestore!
+          .collection('families')
+          .doc(_currentFamilyId)
+          .collection('jackpot')
+          .doc('current');
+      await docRef.update({
+        'memberBanks.$currentUserId': bankInfo.toMap(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Save bank info error: $e');
+    }
   }
 
   /// Rút tiền từ Ví thành viên về Số tài khoản ngân hàng cá nhân
@@ -860,7 +1037,7 @@ class FamilyJackpotService extends ChangeNotifier {
     }
   }
 
-  /// Đặt lại Hũ mới sau khi nổ hũ xong
+  /// Đặt lại Hũ mới sau khi nổ hũ xong (Bảo toàn 100% ví tiền thưởng tích lũy chưa rút của thành viên)
   Future<void> resetJackpot() async {
     _localMyShakeCount = 0;
     _isTransitioningPhase = false;
@@ -882,7 +1059,32 @@ class FamilyJackpotService extends ChangeNotifier {
     );
 
     notifyListeners();
-    await _saveToFirestore();
+
+    if (_currentFamilyId == null || _currentFamilyId!.isEmpty || _firestore == null) return;
+    try {
+      final docRef = _firestore!
+          .collection('families')
+          .doc(_currentFamilyId)
+          .collection('jackpot')
+          .doc('current');
+      await docRef.update({
+        'totalPoolAmount': 0,
+        'status': JackpotStatus.idle.name,
+        'topContributorId': null,
+        'topContributorName': 'Chưa có',
+        'contributions': <String, dynamic>{},
+        'shakeCounts': <String, dynamic>{},
+        'prizeResults': <String, dynamic>{},
+        'topShakerId': null,
+        'firstPrizeWinnerId': null,
+        'shakeStartTime': null,
+        'suspenseStartTime': null,
+        'lostDueToPremiumExpired': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Reset jackpot error: $e');
+    }
   }
 
   /// Ghi đè toàn bộ trạng thái Hũ hiện tại lên Firestore (không dùng merge: true để xóa sạch các Map rỗng khi reset)
