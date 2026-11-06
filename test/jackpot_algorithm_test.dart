@@ -3,7 +3,7 @@ import 'package:fhub/Danh/services/jackpot_algorithm.dart';
 
 void main() {
   group('JackpotAlgorithm Comprehensive Unit Tests', () {
-    test('1. Solo shaker (1 nguoi lac, 2 nguoi con lai 0 lac) -> Nguoi lac 100% nhan Giai Nhat', () {
+    test('1. Solo shaker (1 người lắc, 2 người còn lại 0 lắc) -> Người lắc nhận trọn 100% quỹ Hũ, người 0 lắc nhận 0đ', () {
       final participants = ['user_active', 'user_parent_1', 'user_parent_2'];
       final shakes = {
         'user_active': 25,
@@ -12,7 +12,6 @@ void main() {
       };
       const totalPot = 200000;
 
-      // Run multiple times to verify 100% deterministic guarantee
       for (int i = 0; i < 20; i++) {
         final result = JackpotAlgorithm.calculate(
           totalAmount: totalPot,
@@ -20,23 +19,25 @@ void main() {
           participantIds: participants,
         );
 
-        // Nguoi lac duy nhat phai la Giai Nhat
+        // Người lắc duy nhất phải là Giải Nhất
         expect(result.firstPrizeWinnerId, equals('user_active'));
         expect(result.topShakerId, equals('user_active'));
         expect(result.isTopShakerUnlucky, isFalse);
 
-        // Tong tien trao thuong phai bang 100% tong hu (200.000)
+        // Người lắc duy nhất nhận trọn 100% quỹ hũ (200.000 đ)
+        expect(result.prizes['user_active'], equals(totalPot));
+
+        // 2 người không lắc nhận 0 đ
+        expect(result.prizes['user_parent_1'] ?? 0, equals(0));
+        expect(result.prizes['user_parent_2'] ?? 0, equals(0));
+
+        // Tổng tiền trao thưởng đúng bằng 100% tổng hũ
         final totalWon = result.prizes.values.fold<int>(0, (sum, val) => sum + val);
         expect(totalWon, equals(totalPot));
-
-        // Nguoi lac phai nhan nhieu tien nhat
-        final activePrize = result.prizes['user_active']!;
-        expect(activePrize, greaterThan(result.prizes['user_parent_1']!));
-        expect(activePrize, greaterThan(result.prizes['user_parent_2']!));
       }
     });
 
-    test('2. Multi-shakers: Active shakers luon dung truoc idle shakers (0 lac)', () {
+    test('2. Multi-shakers: Chỉ những người CÓ LẮC mới chia nhau quỹ hũ, người 0 lần lắc nhận 0đ', () {
       final participants = ['shaker_A', 'shaker_B', 'idle_C', 'idle_D'];
       final shakes = {
         'shaker_A': 50,
@@ -53,22 +54,20 @@ void main() {
           participantIds: participants,
         );
 
-        // Giai nhat phai thuoc ve A hoac B, KHONG BAO GIO la C hoac D
+        // Giải nhất phải thuộc về A hoặc B, KHÔNG BAO GIỜ là C hoặc D
         expect(['shaker_A', 'shaker_B'].contains(result.firstPrizeWinnerId), isTrue);
 
-        // Tong tien phai bang chinh xac 100%
+        // Người không lắc nhận 0đ (không có trong map prizes)
+        expect(result.prizes['idle_C'] ?? 0, equals(0));
+        expect(result.prizes['idle_D'] ?? 0, equals(0));
+
+        // Tổng tiền chia giữa A và B phải đúng bằng 100% tổng quỹ (500.000)
         final totalWon = result.prizes.values.fold<int>(0, (sum, val) => sum + val);
         expect(totalWon, equals(totalPot));
-
-        // Nguoi khong lac van nhan duoc phan chia du theo nguyen tac ca nha co qua
-        expect(result.prizes['idle_C'], greaterThanOrEqualTo(0));
-        expect(result.prizes['idle_D'], greaterThanOrEqualTo(0));
       }
     });
 
-    test('3. Ý Trời Dramatic Event: Top shaker bi nguoi lac it hon giat mat Giai Nhat', () {
-      // Top shaker co 40 lac, Shaker B co 10 lac
-      // Run loop to encounter Ý Trời
+    test('3. Ý Trời Dramatic Event: Top shaker bị người lắc ít hơn giật mất Giải Nhất', () {
       bool sawYTroi = false;
       const totalPot = 100000;
 
@@ -86,11 +85,10 @@ void main() {
           break;
         }
       }
-      // Voi ti le 10 / 50 = 20%, trong 100 lan test chac chan gap it nhat 1 lan Y Troi
       expect(sawYTroi, isTrue);
     });
 
-    test('4. Khi tat ca deu 0 lac: Chia deu / bac thang an toan, 100% pot', () {
+    test('4. Khi tất cả đều 0 lần lắc: Trả về prizes rỗng (hũ bảo toàn để chơi lại)', () {
       final participants = ['user_1', 'user_2', 'user_3'];
       final shakes = {'user_1': 0, 'user_2': 0, 'user_3': 0};
       const totalPot = 300000;
@@ -101,13 +99,12 @@ void main() {
         participantIds: participants,
       );
 
-      final totalWon = result.prizes.values.fold<int>(0, (sum, val) => sum + val);
-      expect(totalWon, equals(totalPot));
+      expect(result.prizes.isEmpty, isTrue);
       expect(result.topShakerId, isNull);
       expect(result.isTopShakerUnlucky, isFalse);
     });
 
-    test('5. Hu 0 dong hoac khong co thanh vien: Tra ve rong an toan', () {
+    test('5. Hũ 0 đồng hoặc không có thành viên: Trả về rỗng an toàn', () {
       final resultZeroPot = JackpotAlgorithm.calculate(
         totalAmount: 0,
         shakeCounts: {'u1': 10},

@@ -833,6 +833,21 @@ class FamilyJackpotService extends ChangeNotifier {
           );
           finalResult = result;
 
+          // Nếu cả nhà không ai lắc (0 lượt lắc) -> Bảo toàn 100% quỹ hũ, trở về idle để chơi lại
+          if (result.prizes.isEmpty) {
+            transaction.update(docRef, {
+              'status': JackpotStatus.idle.name,
+              'shakeCounts': <String, dynamic>{},
+              'prizeResults': <String, dynamic>{},
+              'topShakerId': null,
+              'firstPrizeWinnerId': null,
+              'shakeStartTime': null,
+              'suspenseStartTime': null,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+            return;
+          }
+
           // Tiền trúng thưởng lập tức CỘNG DỒN vào ví số dư trong App của từng thành viên
           final rawWallets = (data['memberWallets'] as Map<String, dynamic>?) ?? {};
           final updatedWallets = rawWallets.map((k, v) => MapEntry(k, (v as num).toInt()));
@@ -903,6 +918,20 @@ class FamilyJackpotService extends ChangeNotifier {
           shakeCounts: finalShakes,
           participantIds: participantIds,
         );
+
+        if (result.prizes.isEmpty) {
+          _jackpot = _jackpot.copyWith(
+            status: JackpotStatus.idle,
+            shakeCounts: const {},
+            prizeResults: const {},
+            clearTopShakerId: true,
+            clearFirstPrizeWinnerId: true,
+            clearShakeStartTime: true,
+            clearSuspenseStartTime: true,
+          );
+          notifyListeners();
+          return;
+        }
 
         final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
         result.prizes.forEach((uid, wonAmount) {

@@ -71,10 +71,13 @@ void main() {
       // Giải nhất phải thuộc về 1 trong 3 người có lắc (Minh, An, Bố)
       expect(['u_child1', 'u_child2', 'u_dad'], contains(result.firstPrizeWinnerId));
 
-      // Mẹ và Chú không lắc thì chỉ nhận phần dư hoặc giải an ủi bậc thang sau cùng
+      // Mẹ và Chú không lắc thì tuyệt đối không được nhận tiền thưởng (0 đ)
       final minhPrize = result.prizes['u_child1'] ?? 0;
       final momPrize = result.prizes['u_mom'] ?? 0;
-      expect(minhPrize > momPrize, isTrue); // Người lắc nhiều nhất nhận nhiều hơn người 0 lắc
+      final unclePrize = result.prizes['u_uncle'] ?? 0;
+      expect(momPrize, 0, reason: 'Người không lắc nhận 0 đ');
+      expect(unclePrize, 0, reason: 'Người không lắc nhận 0 đ');
+      expect(minhPrize > momPrize, isTrue);
 
       // Đảm bảo 100% quỹ 200k được chia hết, không dư không thiếu 1 đồng
       final sumPrizes = result.prizes.values.fold<int>(0, (sum, val) => sum + val);
