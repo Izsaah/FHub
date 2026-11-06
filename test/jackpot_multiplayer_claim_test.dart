@@ -204,5 +204,25 @@ void main() {
       expect(postWithdrawJackpot.isMemberWithdrawn('user_2'), isTrue);
       expect(postWithdrawJackpot.totalUnclaimedPrizes, 35000); // 15k + 20k còn lại
     });
+    test('6. Zero shakes penalty: Member with 0 shakes is strictly excluded from prize distribution (0 VND)', () {
+      const potAmount = 100000;
+      // Kịch bản từ screenshot người dùng: Lương Diệu Vinh lắc 5 cái, Con lắc 0 cái
+      final shakes = {'u_vinh': 5, 'u_con': 0};
+      final participants = ['u_vinh', 'u_con'];
+
+      final result = JackpotAlgorithm.calculate(
+        totalAmount: potAmount,
+        shakeCounts: shakes,
+        participantIds: participants,
+      );
+
+      // Vinh là người lắc duy nhất -> Nhận trọn 100% quỹ hũ (100.000 đ)
+      expect(result.firstPrizeWinnerId, 'u_vinh');
+      expect(result.prizes['u_vinh'], 100000);
+
+      // Con lắc 0 lần -> Tuyệt đối không trúng thưởng (0 đ)
+      expect(result.prizes['u_con'] ?? 0, 0, reason: 'Con 0 lần lắc nhận 0 đ');
+      expect(result.prizes.containsKey('u_con'), isFalse, reason: 'Con không có trong danh sách trúng thưởng');
+    });
   });
 }

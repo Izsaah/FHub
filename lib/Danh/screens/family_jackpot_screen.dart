@@ -88,12 +88,17 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           _lastRenderedShakeCount = 0;
         }
 
-        // Tự động bật Modal meme "Ý Trời" khi kết thúc mà người lắc nhiều nhất trượt giải nhất
+        // Tự động bật Modal meme "Ý Trời" khi kết thúc: Chỉ popup với Quán quân thể lực bị trượt Giải Nhất
         if (jackpot.isFinished && !_hasShownYTroiDialog) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && jackpot.isTopShakerUnlucky) {
               _hasShownYTroiDialog = true;
-              _showYTroiDialog(jackpot);
+              final myUid = _jackpotService.currentUserId;
+              final isMeTopShaker = myUid == jackpot.topShakerId;
+              final isMeWinner = myUid == jackpot.firstPrizeWinnerId;
+              if (isMeTopShaker && !isMeWinner) {
+                _showYTroiDialog(jackpot);
+              }
             }
           });
         }
@@ -1042,7 +1047,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               ),
               const Divider(height: 28),
 
-              ...prizes.entries.map((entry) {
+              ...prizes.entries.where((entry) => entry.value > 0).map((entry) {
                 final uid = entry.key;
                 final amount = entry.value;
                 final name = jackpot.memberNames[uid] ?? 'Thành viên';
@@ -1210,24 +1215,37 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
 
         // Nút Xem lại Poster Ý Trời nếu Quán quân lắc tay trượt Giải Nhất
         if (jackpot.isTopShakerUnlucky) ...[
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFB71C1C),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              icon: const Icon(Icons.movie_filter_rounded),
-              label: const Text(
-                '🎬 Xem Lại Poster Kỷ Niệm "Ý Trời"',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-              ),
-              onPressed: () => _showYTroiDialog(jackpot),
-            ),
+          Builder(
+            builder: (ctx) {
+              final myUid = _jackpotService.currentUserId;
+              final isMeTop = myUid == jackpot.topShakerId;
+              final topName = jackpot.memberNames[jackpot.topShakerId] ?? 'Quán quân';
+              return Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFB71C1C),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      icon: const Icon(Icons.movie_filter_rounded),
+                      label: Text(
+                        isMeTop
+                            ? '🎬 Xem Lại Poster Kỷ Niệm "Ý Trời"'
+                            : '🎬 Xem Poster "Ý Trời" Của $topName',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () => _showYTroiDialog(jackpot),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              );
+            },
           ),
-          const SizedBox(height: 10),
         ],
 
         // Nút Rút tiền về Ngân hàng (Chỉ hiển thị khi ví còn tiền thưởng)
@@ -2275,6 +2293,22 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     final topShakerName = jackpot.memberNames[jackpot.topShakerId] ?? 'Bạn';
     final winnerName = jackpot.memberNames[jackpot.firstPrizeWinnerId] ?? 'người khác';
     final shakes = jackpot.shakeCounts[jackpot.topShakerId] ?? 0;
+    final myUid = _jackpotService.currentUserId;
+    final isMeTopShaker = myUid == jackpot.topShakerId;
+    final isMeWinner = myUid == jackpot.firstPrizeWinnerId;
+
+    String headerBannerTitle = 'VẠN SỰ DO TRỜI ĐỊNH! 😂';
+    String posterBody = 'Cật lực lắc điện thoại $shakes lần (nhiều nhất cả nhà!)\nnhưng Giải Nhất 3/4 quỹ hũ đã thuộc về $winnerName! 😭💸\n\nThần may mắn nhắn gửi: "Mưu sự tại nhân, thành sự tại thiên" 🙏\nThôi thì nhận tiền khuyến khích và giữ tấm Poster này làm kỷ niệm nhé!';
+    String closeButtonLabel = 'Thuận Theo Ý Trời 😂';
+
+    if (isMeWinner) {
+      headerBannerTitle = '👑 BẠN ĐÃ LẬT KÈO NGOẠN MỤC!';
+      posterBody = 'Dù $topShakerName cật lực lắc $shakes lần (nhiều nhất cả nhà),\nnhưng Thần May Mắn hôm nay đã mỉm cười và trao Giải Nhất cho bạn! 🏆✨\n\nĐúng là "Vạn sự do trời định" 😂!';
+      closeButtonLabel = 'Vui Vẻ Nhận Giải 👑';
+    } else if (!isMeTopShaker) {
+      posterBody = '$topShakerName cật lực lắc điện thoại $shakes lần (nhiều nhất cả nhà)\nnhưng Giải Nhất đã thuộc về $winnerName! 😭💸\n\nĐúng là mưu sự tại nhân, thành sự tại thiên 🙏!';
+      closeButtonLabel = 'Xem Tiếp Kết Quả 😂';
+    }
 
     showDialog(
       context: context,
@@ -2313,9 +2347,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         ),
                         borderRadius: BorderRadius.vertical(top: Radius.circular(21)),
                       ),
-                      child: const Column(
+                      child: Column(
                         children: [
-                          Text(
+                          const Text(
                             '🎬 POSTER KỶ NIỆM GIA ĐÌNH',
                             style: TextStyle(
                               color: Color(0xFFFFD54F),
@@ -2326,8 +2360,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           ),
                           SizedBox(height: 2),
                           Text(
-                            'VẠN SỰ DO TRỜI ĐỊNH! 😂',
-                            style: TextStyle(
+                            headerBannerTitle,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
@@ -2386,7 +2421,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            'Cật lực lắc điện thoại $shakes lần (nhiều nhất cả nhà!)\nnhưng Giải Nhất 3/4 quỹ hũ đã thuộc về $winnerName! 😭💸\n\nThần may mắn nhắn gửi: "Mưu sự tại nhân, thành sự tại thiên" 🙏\nThôi thì nhận tiền khuyến khích và giữ tấm Poster này làm kỷ niệm nhé!',
+                            posterBody,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 12.5,
@@ -2407,7 +2442,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               onPressed: () => Navigator.pop(ctx),
-                              child: const Text('Thuận Theo Ý Trời 😂', style: TextStyle(fontWeight: FontWeight.bold)),
+                              child: Text(closeButtonLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
                           const SizedBox(height: 16),
