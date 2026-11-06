@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import '../services/ai_speech_service.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
@@ -56,6 +57,8 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   TimeOfDay? _selectedTime;
   String _selectedRepeatRule = 'NONE';
   bool _requiresProofImage = false;
+  String _selectedTaskType = TaskType.assign.dbValue;
+  int _rewardStars = 2;
 
   String? _voiceNotePath;
   int? _voiceDurationSeconds;
@@ -137,6 +140,8 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       _voiceNoteDescription = existing.voiceNoteDescription;
       _selectedRepeatRule = existing.repeatRule ?? 'NONE';
       _requiresProofImage = existing.requiresProofImage;
+      _selectedTaskType = existing.taskType.dbValue;
+      _rewardStars = existing.rewardStars;
 
       // Parse existing date and time
       final parsedDt = existing.dueDateTime;
@@ -181,6 +186,8 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
 
       // Default assigned to: Người khác (nếu là Parent), hoặc chính mình (nếu là Child/Thành viên)
       if (_canAssignChores) {
+        _selectedTaskType = TaskType.assign.dbValue;
+        _rewardStars = 2;
         final otherMember = _activeMembers.firstWhere(
           (m) => m.id != widget.currentUserId,
           orElse: () => _activeMembers.isNotEmpty
@@ -194,6 +201,8 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         );
         _selectedMember = otherMember;
       } else {
+        _selectedTaskType = TaskType.favor.dbValue;
+        _rewardStars = 0;
         _selectedMember = _activeMembers.firstWhere(
           (m) => m.id == widget.currentUserId,
           orElse: () => FamilyMember(
@@ -307,13 +316,13 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   }
 
   Future<void> _showMemberPickerBottomSheet() async {
-    if (!_canAssignChores) {
+    if (_selectedTaskType == TaskType.assign.dbValue && !_canAssignChores) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             AppLanguage.text(
-              'Chỉ Bố/Mẹ mới có quyền phân công việc cho thành viên khác.',
-              'Only parents can assign tasks to other members.',
+              'Chỉ Bố/Mẹ mới có quyền phân công việc bắt buộc cho thành viên khác.',
+              'Only parents can assign mandatory tasks to other members.',
             ),
           ),
           backgroundColor: const Color(0xFFE77D2B),
@@ -403,13 +412,37 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       return;
     }
 
+    final taskTypeEnum = TaskType.fromValue(_selectedTaskType);
+    final creatorRole = _currentMember?.role ?? 'Member';
+    final creatorLevel = getMemberHierarchyLevel(creatorRole);
+    final targetRole = _selectedMember?.role ?? 'Member';
+    final targetLevel = _selectedMember?.id == 'OPEN' ? 0 : getMemberHierarchyLevel(targetRole);
+
+    if (taskTypeEnum == TaskType.assign && creatorLevel < targetLevel) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Trẻ em không được giao việc bắt buộc có thưởng/phạt cho người lớn. Hãy chọn chế độ "Nhờ vả (FAVOR)".',
+              'Children cannot assign mandatory chores to elders. Please select "Favor".',
+            ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
       final dateStr = _formatDate(_selectedDate!);
       final timeStr = _formatTime(_selectedTime!);
       final isNowOpenTask = _selectedMember!.id == 'OPEN';
-      final effectiveProofRequired = _canAssignChores && _requiresProofImage;
+      final effectiveProofRequired =
+          taskTypeEnum == TaskType.assign && _canAssignChores && _requiresProofImage;
+      final effectiveRewardStars =
+          taskTypeEnum == TaskType.assign ? _rewardStars : 0;
 
       if (widget.isEditing) {
         String updatedStatus;
@@ -435,7 +468,11 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           voiceNoteDescription: _voiceNoteDescription,
           clearVoiceNote: _voiceNotePath == null,
           requiresProofImage: effectiveProofRequired,
-          rewardStars: 0,
+          rewardStars: effectiveRewardStars,
+          taskType: taskTypeEnum,
+          creatorHierarchyRole:
+              widget.existingReminder!.creatorHierarchyRole ?? creatorRole,
+          targetHierarchyRole: isNowOpenTask ? null : targetRole,
           status: updatedStatus,
         );
 
@@ -523,11 +560,15 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
           time: timeStr,
           repeatRule: _selectedRepeatRule,
           status: isNowOpenTask ? ReminderStatus.open : ReminderStatus.pending,
+          taskType: taskTypeEnum,
+          taskStatus: TaskStatus.pending,
           requiresProofImage: effectiveProofRequired,
-          rewardStars: 0,
+          rewardStars: effectiveRewardStars,
           voiceNotePath: _voiceNotePath,
           voiceDurationSeconds: _voiceDurationSeconds,
           voiceNoteDescription: _voiceNoteDescription,
+          creatorHierarchyRole: creatorRole,
+          targetHierarchyRole: isNowOpenTask ? null : targetRole,
           createdAt: DateTime.now(),
         );
 
@@ -787,6 +828,116 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                           ),
                           const SizedBox(height: 16),
                         ],
+
+                        // 0.5. CHỌN LOẠI CÔNG VIỆC (TASK TYPE)
+                        Text(
+                          AppLanguage.text('Loại công việc', 'Task Type'),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final bool isNarrow = constraints.maxWidth < 360;
+                            return SizedBox(
+                              width: double.infinity,
+                              child: SegmentedButton<String>(
+                                showSelectedIcon: false,
+                                segments: [
+                                  ButtonSegment<String>(
+                                    value: TaskType.assign.dbValue,
+                                    icon: isNarrow
+                                        ? null
+                                        : const Icon(Icons.assignment_outlined, size: 16),
+                                    label: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        AppLanguage.text('Giao việc', 'Assign'),
+                                        maxLines: 1,
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ),
+                                  ButtonSegment<String>(
+                                    value: TaskType.favor.dbValue,
+                                    icon: isNarrow
+                                        ? null
+                                        : const Icon(Icons.volunteer_activism_outlined, size: 16),
+                                    label: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        AppLanguage.text('Nhờ vả', 'Favor'),
+                                        maxLines: 1,
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ),
+                                  ButtonSegment<String>(
+                                    value: TaskType.care.dbValue,
+                                    icon: isNarrow
+                                        ? null
+                                        : const Icon(Icons.favorite_outline, size: 16),
+                                    label: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        AppLanguage.text('Chăm sóc', 'Care'),
+                                        maxLines: 1,
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                selected: {_selectedTaskType},
+                                onSelectionChanged: (newSelection) {
+                                  setState(() {
+                                    _selectedTaskType = newSelection.first;
+                                    if (_selectedTaskType == TaskType.favor.dbValue ||
+                                        _selectedTaskType == TaskType.care.dbValue) {
+                                      _rewardStars = 0;
+                                      _requiresProofImage = false;
+                                    } else if (_rewardStars == 0) {
+                                      _rewardStars = 2;
+                                    }
+                                  });
+                                },
+                                style: ButtonStyle(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const WidgetStatePropertyAll(
+                                    EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+                                  ),
+                                  backgroundColor:
+                                      WidgetStateProperty.resolveWith((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      if (_selectedTaskType == TaskType.care.dbValue) {
+                                        return const Color(0xFFFFE0B2);
+                                      } else if (_selectedTaskType == TaskType.favor.dbValue) {
+                                        return const Color(0xFFB2DFDB);
+                                      }
+                                      return const Color(0xFFD4ECE5);
+                                    }
+                                    return Colors.white;
+                                  }),
+                                  foregroundColor:
+                                      WidgetStateProperty.resolveWith((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      if (_selectedTaskType == TaskType.care.dbValue) {
+                                        return const Color(0xFFE65100);
+                                      } else if (_selectedTaskType == TaskType.favor.dbValue) {
+                                        return const Color(0xFF00796B);
+                                      }
+                                      return primaryColor;
+                                    }
+                                    return textPrimary;
+                                  }),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
 
                         // 1. TIÊU ĐỀ
                         Text(
@@ -1073,84 +1224,221 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: SegmentedButton<String>(
-                            showSelectedIcon: false,
-                            segments: [
-                              ButtonSegment<String>(
-                                value: 'NONE',
-                                label: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    AppLanguage.text('Một lần', 'Once'),
-                                    maxLines: 1,
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final bool isNarrow = constraints.maxWidth < 360;
+                            return SizedBox(
+                              width: double.infinity,
+                              child: SegmentedButton<String>(
+                                showSelectedIcon: false,
+                                segments: [
+                                  ButtonSegment<String>(
+                                    value: 'NONE',
+                                    label: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        AppLanguage.text('Một lần', 'Once'),
+                                        maxLines: 1,
+                                      ),
+                                    ),
+                                    icon: isNarrow
+                                        ? null
+                                        : const Icon(Icons.event_outlined, size: 18),
                                   ),
-                                ),
-                                icon: const Icon(Icons.event_outlined,
-                                    size: 18),
-                              ),
-                              ButtonSegment<String>(
-                                value: 'DAILY',
-                                label: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    AppLanguage.text('Hàng ngày', 'Daily'),
-                                    maxLines: 1,
+                                  ButtonSegment<String>(
+                                    value: 'DAILY',
+                                    label: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        AppLanguage.text('Hàng ngày', 'Daily'),
+                                        maxLines: 1,
+                                      ),
+                                    ),
+                                    icon: isNarrow
+                                        ? null
+                                        : const Icon(Icons.repeat, size: 18),
                                   ),
-                                ),
-                                icon: const Icon(Icons.repeat, size: 18),
-                              ),
-                              ButtonSegment<String>(
-                                value: 'WEEKLY',
-                                label: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    AppLanguage.text('Hàng tuần', 'Weekly'),
-                                    maxLines: 1,
+                                  ButtonSegment<String>(
+                                    value: 'WEEKLY',
+                                    label: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        AppLanguage.text('Hàng tuần', 'Weekly'),
+                                        maxLines: 1,
+                                      ),
+                                    ),
+                                    icon: isNarrow
+                                        ? null
+                                        : const Icon(Icons.calendar_view_week, size: 18),
                                   ),
+                                ],
+                                selected: {_selectedRepeatRule},
+                                onSelectionChanged: (newSelection) {
+                                  setState(() {
+                                    _selectedRepeatRule = newSelection.first;
+                                  });
+                                },
+                                style: ButtonStyle(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const WidgetStatePropertyAll(
+                                    EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+                                  ),
+                                  backgroundColor:
+                                      WidgetStateProperty.resolveWith((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return const Color(0xFFD4ECE5);
+                                    }
+                                    return Colors.white;
+                                  }),
+                                  foregroundColor:
+                                      WidgetStateProperty.resolveWith((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return primaryColor;
+                                    }
+                                    return textPrimary;
+                                  }),
                                 ),
-                                icon: const Icon(Icons.calendar_view_week,
-                                    size: 18),
                               ),
-                            ],
-                            selected: {_selectedRepeatRule},
-                            onSelectionChanged: (newSelection) {
-                              setState(() {
-                                _selectedRepeatRule = newSelection.first;
-                              });
-                            },
-                            style: ButtonStyle(
-                              visualDensity: VisualDensity.compact,
-                              padding: const WidgetStatePropertyAll(
-                                EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 8),
-                              ),
-                              backgroundColor:
-                                  WidgetStateProperty.resolveWith((states) {
-                                if (states.contains(WidgetState.selected)) {
-                                  return const Color(0xFFD4ECE5);
-                                }
-                                return Colors.white;
-                              }),
-                              foregroundColor:
-                                  WidgetStateProperty.resolveWith((states) {
-                                if (states.contains(WidgetState.selected)) {
-                                  return primaryColor;
-                                }
-                                return textPrimary;
-                              }),
-                            ),
-                          ),
+                            );
+                          },
                         ),
 
-                        // 4.6. NGHIỆM THU VIỆC NHÀ (CAMERA PROOF)
-                        if (_canAssignChores) ...[
+                        // 4.6. TÙY CHỌN RIÊNG THEO LOẠI CÔNG VIỆC
+                        if (_selectedTaskType == TaskType.assign.dbValue) ...[
                           const SizedBox(height: 20),
-                          ChoreRewardCard(
-                            requiresProofImage: _requiresProofImage,
-                            onProofRequiredChanged: (val) =>
-                                setState(() => _requiresProofImage = val),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFBDC9C4)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star_rounded, color: Colors.amber, size: 24),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        AppLanguage.text('Thưởng sao hoàn thành', 'Star Reward'),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textPrimary),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  children: [1, 2, 3, 5].map((star) {
+                                    final isSelected = _rewardStars == star;
+                                    return ChoiceChip(
+                                      label: Text(
+                                        '$star ⭐',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: isSelected ? Colors.amber.shade900 : textPrimary,
+                                        ),
+                                      ),
+                                      selected: isSelected,
+                                      selectedColor: Colors.amber.shade100,
+                                      backgroundColor: Colors.grey.shade50,
+                                      side: BorderSide(
+                                        color: isSelected ? Colors.amber.shade700 : const Color(0xFFBDC9C4),
+                                      ),
+                                      onSelected: (selected) {
+                                        if (selected) setState(() => _rewardStars = star);
+                                      },
+                                    );
+                                  }).toList(),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_canAssignChores) ...[
+                            const SizedBox(height: 16),
+                            ChoreRewardCard(
+                              requiresProofImage: _requiresProofImage,
+                              onProofRequiredChanged: (val) =>
+                                  setState(() => _requiresProofImage = val),
+                            ),
+                          ],
+                        ] else if (_selectedTaskType == TaskType.care.dbValue) ...[
+                          const SizedBox(height: 20),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF3E0),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFFFB74D), width: 1.5),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.favorite_rounded, color: Color(0xFFE65100), size: 24),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        AppLanguage.text('Chế độ Chăm sóc Người cao tuổi', 'Elderly Care Mode'),
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFFE65100)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  AppLanguage.text(
+                                    'Lời nhắc sẽ hiển thị với chữ lớn, tương phản cao và hỗ trợ đọc to bằng giọng nói tiếng Việt tự động cho Ông Bà.',
+                                    'Reminder will display with large high-contrast text and automated Vietnamese speech for Elders.',
+                                  ),
+                                  style: const TextStyle(fontSize: 13, color: Color(0xFF5D4037)),
+                                ),
+                                const SizedBox(height: 12),
+                                FilledButton.tonalIcon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFFFFE0B2),
+                                    foregroundColor: const Color(0xFFE65100),
+                                  ),
+                                  icon: const Icon(Icons.volume_up_rounded, size: 20),
+                                  label: Text(AppLanguage.text('🔊 Thử giọng đọc TTS', '🔊 Test TTS Voice')),
+                                  onPressed: () {
+                                    final title = _titleController.text.trim();
+                                    final sample = title.isNotEmpty ? title : 'Uống thuốc huyết áp sau ăn';
+                                    AiSpeechPlatform.instance.speak("Kính mời Ông Bà: $sample", isEnglish: false);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (_selectedTaskType == TaskType.favor.dbValue) ...[
+                          const SizedBox(height: 20),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0F2F1),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFF80CBC4), width: 1.5),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.volunteer_activism_rounded, color: Color(0xFF00796B), size: 24),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    AppLanguage.text(
+                                      'Chế độ Nhờ vả tự nguyện: Không tính điểm phạt hay thưởng sao, có thể chuyển tiếp công việc tối đa 1 lần.',
+                                      'Voluntary Favor Mode: No star rewards or penalties, can be delegated at most 1 time.',
+                                    ),
+                                    style: const TextStyle(fontSize: 13, color: Color(0xFF004D40)),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
 

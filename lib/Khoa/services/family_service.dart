@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/family.dart';
 import '../models/family_member.dart';
+import '../../Long/services/family_data_service.dart';
 
 enum LeaveFamilyResult { memberLeft, familyDeleted }
 
@@ -93,6 +94,7 @@ class FamilyService {
         userRef,
         {
           'familyId': familyRef.id,
+          'familyIds': FieldValue.arrayUnion([familyRef.id]),
           'role': role,
           'updatedAt': FieldValue.serverTimestamp(),
         },
@@ -211,6 +213,7 @@ class FamilyService {
           _firestore.collection('users').doc(uid),
           {
             'familyId': family.id,
+            'familyIds': FieldValue.arrayUnion([family.id]),
             'role': role,
             'updatedAt': FieldValue.serverTimestamp(),
           },
@@ -228,21 +231,60 @@ class FamilyService {
   Future<List<Family>> getMyFamilies() async {
     final uid = currentUserId;
     try {
-      final memberDocs = await _members.where('userId', isEqualTo: uid).get();
-      final seenIds = <String>{};
+      // 1. Truy vấn song song users/{uid} và family_members
+      final results = await Future.wait([
+        _firestore.collection('users').doc(uid).get(),
+        _members.where('userId', isEqualTo: uid).get(),
+      ]);
+
+      final userDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
+      final memberDocs = results[1] as QuerySnapshot<Map<String, dynamic>>;
+
+      final List<String> directFamilyIds = [];
+      if (userDoc.exists && userDoc.data() != null) {
+        final data = userDoc.data()!;
+        final rawIds = data['familyIds'] ?? data['family_ids'];
+        if (rawIds is List && rawIds.isNotEmpty) {
+          directFamilyIds.addAll(
+            rawIds.map((e) => e.toString().trim()).where((e) => e.isNotEmpty),
+          );
+        }
+      }
+
+      final List<Map<String, dynamic>> rawMembers =
+          memberDocs.docs.map((d) => d.data()).toList();
+
+      final unification = MembershipUnifier.unify(
+        directFamilyIds: directFamilyIds,
+        rawMemberDocs: rawMembers,
+        memberQuerySucceeded: true,
+      );
+
+      final Set<String> targetFamilyIds = unification.activeFamilyIds;
+
+      // Tự động làm lành (self-heal) users/{uid}.familyIds
+      if (unification.shouldSelfHealUnion || (targetFamilyIds.isNotEmpty && directFamilyIds.isEmpty)) {
+        final toAdd = unification.missingInDirect.isNotEmpty
+            ? unification.missingInDirect.toList()
+            : targetFamilyIds.toList();
+        await _firestore.collection('users').doc(uid).set({
+          'familyIds': FieldValue.arrayUnion(toAdd),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true)).catchError((_) {});
+      }
+
+      if (unification.shouldSelfHealPrune) {
+        await _firestore.collection('users').doc(uid).update({
+          'familyIds': FieldValue.arrayRemove(unification.toPruneFromDirect.toList()),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }).catchError((_) {});
+      }
+
+      // 2. Tải thông tin song song Future.wait
+      final docFutures = targetFamilyIds.map((fid) => _families.doc(fid).get());
+      final familyDocs = await Future.wait(docFutures);
       final families = <Family>[];
-      for (final memberDoc in memberDocs.docs) {
-        final memberData = memberDoc.data();
-        if ((memberData['status'] as String? ?? FamilyMember.statusActive) !=
-            FamilyMember.statusActive) {
-          continue;
-        }
-        final familyId =
-            (memberData['familyId'] ?? memberData['family_id'])?.toString();
-        if (familyId == null || familyId.isEmpty || !seenIds.add(familyId)) {
-          continue;
-        }
-        final familyDoc = await _families.doc(familyId).get();
+      for (final familyDoc in familyDocs) {
         if (familyDoc.exists &&
             familyDoc.data() != null &&
             familyDoc.data()!['deleting'] != true) {
@@ -251,6 +293,7 @@ class FamilyService {
           );
         }
       }
+
       families.sort(
         (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
       );
@@ -446,14 +489,16 @@ class FamilyService {
   ) {
     if (!userSnapshot.exists) return;
     final data = userSnapshot.data()!;
-    final update = <String, dynamic>{};
+    final update = <String, dynamic>{
+      'familyIds': FieldValue.arrayRemove([familyId]),
+    };
     if (data['familyId'] == familyId) {
       update['familyId'] = FieldValue.delete();
     }
     if (data['family_id'] == familyId) {
       update['family_id'] = FieldValue.delete();
     }
-    if (update.isNotEmpty) transaction.update(userRef, update);
+    transaction.update(userRef, update);
   }
 
   /// Owner can deactivate or memorialize a member. Historical data is not deleted.

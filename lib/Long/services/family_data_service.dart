@@ -17,6 +17,72 @@ import '../models/check_in_reminder_model.dart';
 import 'family_service_interface.dart';
 import 'mock_data_service.dart';
 
+/// Result of unifiying direct users/{uid}.familyIds with active family_members documents
+class MembershipUnificationResult {
+  final Set<String> activeFamilyIds;
+  final Set<String> missingInDirect;
+  final Set<String> toPruneFromDirect;
+
+  const MembershipUnificationResult({
+    required this.activeFamilyIds,
+    required this.missingInDirect,
+    required this.toPruneFromDirect,
+  });
+
+  bool get shouldSelfHealUnion => missingInDirect.isNotEmpty;
+  bool get shouldSelfHealPrune => toPruneFromDirect.isNotEmpty;
+}
+
+/// Pure helper that unifies direct user familyIds with active family_members documents
+class MembershipUnifier {
+  static MembershipUnificationResult unify({
+    required List<String> directFamilyIds,
+    required List<Map<String, dynamic>> rawMemberDocs,
+    bool memberQuerySucceeded = true,
+  }) {
+    final cleanDirect = directFamilyIds
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet();
+
+    final activeFromMembers = <String>{};
+    final inactiveFromMembers = <String>{};
+
+    for (final data in rawMemberDocs) {
+      final status = (data['status'] ?? 'ACTIVE').toString().toUpperCase();
+      final fid = (data['familyId'] ?? data['family_id'])?.toString().trim();
+      if (fid == null || fid.isEmpty) continue;
+
+      if (status == 'ACTIVE') {
+        activeFromMembers.add(fid);
+      } else {
+        inactiveFromMembers.add(fid);
+      }
+    }
+
+    final Set<String> resolvedIds = <String>{};
+
+    if (memberQuerySucceeded) {
+      // family_members is authoritative for active status:
+      // Include active memberships + direct IDs not known to be inactive
+      resolvedIds.addAll(activeFromMembers);
+      resolvedIds.addAll(cleanDirect.difference(inactiveFromMembers));
+    } else {
+      // Fallback to cached direct IDs if member query failed
+      resolvedIds.addAll(cleanDirect);
+    }
+
+    final missingInDirect = activeFromMembers.difference(cleanDirect);
+    final toPruneFromDirect = cleanDirect.intersection(inactiveFromMembers);
+
+    return MembershipUnificationResult(
+      activeFamilyIds: resolvedIds,
+      missingInDirect: missingInDirect,
+      toPruneFromDirect: toPruneFromDirect,
+    );
+  }
+}
+
 /// Central data service bridging Firebase Auth & Firestore with Long's screens
 /// (Home, Family, Profile, Reminders, and Jackpot).
 /// Implements IFamilyService for full Module 2 & Module 3 support.
@@ -226,48 +292,109 @@ class FamilyDataService implements IFamilyService {
 
   Future<List<FamilyModel>> _fetchMyFamiliesInternal(String uid) async {
     final List<FamilyModel> resolved = [];
-    final Set<String> familyIds = {};
 
     try {
-      // Chỉ chấp nhận tư cách thành viên đang ACTIVE thực tế trong family_members
-      final memberDocs = await _firestore
+      // BƯỚC 1: Truy vấn song song users/{uid} và family_members (where userId == uid)
+      final userDocFuture = _firestore
+          .collection('users')
+          .doc(uid)
+          .get()
+          .timeout(const Duration(seconds: 3))
+          .then<DocumentSnapshot<Map<String, dynamic>>?>((doc) => doc)
+          .catchError((e) {
+        debugPrint('Direct user familyIds read error: $e');
+        return null;
+      });
+
+      final memberDocsFuture = _firestore
           .collection('family_members')
           .where('userId', isEqualTo: uid)
           .get()
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 4))
+          .then<QuerySnapshot<Map<String, dynamic>>?>((snap) => snap)
+          .catchError((e) {
+        debugPrint('Family members read error: $e');
+        return null;
+      });
 
-      for (final doc in memberDocs.docs) {
-        final data = doc.data();
-        final status = (data['status'] ?? 'ACTIVE').toString().toUpperCase();
-        if (status != 'ACTIVE') continue;
-        final fid = (data['familyId'] ?? data['family_id'])?.toString();
-        if (fid != null && fid.isNotEmpty) {
-          familyIds.add(fid);
+      final results = await Future.wait([userDocFuture, memberDocsFuture]);
+      final userDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>?;
+      final memberSnap = results[1] as QuerySnapshot<Map<String, dynamic>>?;
+
+      List<String> directFamilyIds = [];
+      if (userDoc != null && userDoc.exists && userDoc.data() != null) {
+        final data = userDoc.data()!;
+        final rawIds = data['familyIds'] ?? data['family_ids'];
+        if (rawIds is List && rawIds.isNotEmpty) {
+          directFamilyIds = rawIds
+              .map((e) => e.toString().trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
         }
       }
 
-      for (final fid in familyIds) {
-        try {
-          final famDoc = await _firestore
-              .collection('families')
-              .doc(fid)
-              .get()
-              .timeout(const Duration(seconds: 3));
-          if (famDoc.exists && famDoc.data() != null) {
-            final data = famDoc.data()!;
-            if (data['deleting'] == true) continue;
-            resolved.add(
-              FamilyModel(
-                id: famDoc.id,
-                name: data['name']?.toString() ?? 'Gia đình',
-                joinCode:
-                    (data['joinCode'] ?? data['join_code'])?.toString() ?? '',
-                ownerId:
-                    (data['ownerId'] ?? data['owner_id'])?.toString() ?? '',
-              ),
-            );
-          }
-        } catch (_) {}
+      final List<Map<String, dynamic>> rawMembers = memberSnap != null
+          ? memberSnap.docs.map((d) => d.data()).toList()
+          : <Map<String, dynamic>>[];
+
+      // UNIFY: Hợp nhất active memberships từ family_members với directFamilyIds
+      final unification = MembershipUnifier.unify(
+        directFamilyIds: directFamilyIds,
+        rawMemberDocs: rawMembers,
+        memberQuerySucceeded: memberSnap != null,
+      );
+
+      final Set<String> targetFamilyIds = unification.activeFamilyIds;
+
+      // Tự động làm lành (self-heal) users/{uid}.familyIds trong nền:
+      // 1. Bổ sung các gia đình mới được Guardian duyệt
+      if (unification.shouldSelfHealUnion || (targetFamilyIds.isNotEmpty && directFamilyIds.isEmpty)) {
+        final toAdd = unification.missingInDirect.isNotEmpty
+            ? unification.missingInDirect.toList()
+            : targetFamilyIds.toList();
+        _firestore.collection('users').doc(uid).set({
+          'familyIds': FieldValue.arrayUnion(toAdd),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true)).catchError((e) {
+          debugPrint('Self-heal users/{uid}.familyIds (union) error: $e');
+        });
+      }
+
+      // 2. Dọn dẹp các gia đình đã bị hủy kích hoạt (deactivated)
+      if (unification.shouldSelfHealPrune) {
+        _firestore.collection('users').doc(uid).update({
+          'familyIds': FieldValue.arrayRemove(unification.toPruneFromDirect.toList()),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }).catchError((e) {
+          debugPrint('Self-heal users/{uid}.familyIds (prune) error: $e');
+        });
+      }
+
+      // BƯỚC 2: Truy vấn song song Future.wait các document gia đình
+      final docFutures = targetFamilyIds.map((fid) => _firestore
+          .collection('families')
+          .doc(fid)
+          .get()
+          .timeout(const Duration(seconds: 3))
+          .then<DocumentSnapshot<Map<String, dynamic>>?>((doc) => doc)
+          .catchError((_) => null));
+
+      final famDocs = await Future.wait(docFutures);
+      for (final famDoc in famDocs) {
+        if (famDoc != null && famDoc.exists && famDoc.data() != null) {
+          final data = famDoc.data()!;
+          if (data['deleting'] == true) continue;
+          resolved.add(
+            FamilyModel(
+              id: famDoc.id,
+              name: data['name']?.toString() ?? 'Gia đình',
+              joinCode:
+                  (data['joinCode'] ?? data['join_code'])?.toString() ?? '',
+              ownerId:
+                  (data['ownerId'] ?? data['owner_id'])?.toString() ?? '',
+            ),
+          );
+        }
       }
 
       resolved.sort(
@@ -458,6 +585,12 @@ class FamilyDataService implements IFamilyService {
         'lastActiveAt': FieldValue.serverTimestamp(),
       });
 
+      await _firestore.collection('users').doc(uid).set({
+        'familyId': docRef.id,
+        'familyIds': FieldValue.arrayUnion([docRef.id]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
       clearCache();
       await selectFamily(docRef.id);
 
@@ -519,6 +652,12 @@ class FamilyDataService implements IFamilyService {
         'status': 'ACTIVE',
         'lastActiveAt': FieldValue.serverTimestamp(),
       });
+
+      await _firestore.collection('users').doc(uid).set({
+        'familyId': familyId,
+        'familyIds': FieldValue.arrayUnion([familyId]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       clearCache();
       await selectFamily(familyId);

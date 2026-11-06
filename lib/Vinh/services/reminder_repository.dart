@@ -88,6 +88,74 @@ abstract class ReminderRepository {
     required String time,
     String? excludeReminderId,
   });
+
+  Future<void> submitTaskWithProof({
+    required String taskId,
+    required String proofImageUrl,
+  });
+
+  Future<void> rejectTaskSubmission({
+    required String taskId,
+    required String reason,
+  });
+
+  Future<ReminderModel> delegateFavorTask({
+    required String taskId,
+    required String delegatedToUserId,
+    required String delegatedToUserName,
+    required String currentUserId,
+    required String currentUserRole,
+    required String targetUserRole,
+  });
+
+  Future<void> acceptFavorTask(String taskId);
+
+  Future<void> declineFavorTask(String taskId);
+
+  Future<void> approveTaskSubmission({
+    required String taskId,
+    required String reviewerId,
+    required String reviewerName,
+  });
+}
+
+/// Returns cultural hierarchy level for role or member:
+/// Grandparent = 3, Parent/Owner/Admin = 2, Member = 1, Child = 0
+int getMemberHierarchyLevel(dynamic memberOrRole) {
+  if (memberOrRole == null) return 1;
+  String str = '';
+  if (memberOrRole is FamilyMember) {
+    if (memberOrRole.isGrandparent) return 3;
+    if (memberOrRole.isParent) return 2;
+    if (memberOrRole.isChild) return 0;
+    str = '${memberOrRole.role} ${memberOrRole.name}';
+  } else {
+    str = memberOrRole.toString();
+  }
+  final upper = str.toUpperCase();
+  if (upper.contains('GRANDPARENT') ||
+      upper.contains('TRƯỞNG BỐI') ||
+      upper.contains('TRUONG BOI') ||
+      upper.contains('ÔNG') ||
+      upper.contains('BÀ')) {
+    return 3;
+  }
+  if (upper.contains('PARENT') ||
+      upper.contains('OWNER') ||
+      upper.contains('ADMIN') ||
+      upper.contains('DAD') ||
+      upper.contains('MOM') ||
+      upper.contains('BỐ') ||
+      upper.contains('MẸ')) {
+    return 2;
+  }
+  if (upper.contains('CHILD') ||
+      upper.contains('KID') ||
+      upper.contains('CON') ||
+      upper.contains('TRẺ')) {
+    return 0;
+  }
+  return 1;
 }
 
 class InMemoryReminderRepository implements ReminderRepository {
@@ -342,6 +410,42 @@ class InMemoryReminderRepository implements ReminderRepository {
       throw ReminderPermissionException(
         'Only the creator can set their ID as creator',
       );
+    }
+
+    // 5. Cultural Hierarchy Check
+    if (reminder.taskType == TaskType.assign) {
+      int creatorLevel = 1;
+      int targetLevel = 1;
+
+      if (reminder.creatorHierarchyRole != null) {
+        creatorLevel = getMemberHierarchyLevel(reminder.creatorHierarchyRole);
+      } else if (familyMembers != null && familyMembers.isNotEmpty) {
+        try {
+          final cm = familyMembers.firstWhere((m) => m.id == currentUserId);
+          creatorLevel = getMemberHierarchyLevel(cm);
+        } catch (_) {}
+      }
+
+      if (reminder.targetHierarchyRole != null) {
+        targetLevel = getMemberHierarchyLevel(reminder.targetHierarchyRole);
+      } else if (familyMembers != null && familyMembers.isNotEmpty) {
+        try {
+          final tm =
+              familyMembers.firstWhere((m) => m.id == reminder.assignedTo);
+          targetLevel = getMemberHierarchyLevel(tm);
+        } catch (_) {}
+      }
+
+      if (reminder.assignedTo != 'OPEN' &&
+          reminder.assignedTo != 'ALL' &&
+          reminder.assignedTo != currentUserId &&
+          reminder.assignedTo.isNotEmpty) {
+        if (creatorLevel < targetLevel) {
+          throw StateError(
+            'CULTURE_HIERARCHY_VIOLATION: Trẻ em không được giao việc bắt buộc có thưởng/phạt cho người lớn.',
+          );
+        }
+      }
     }
 
     final newReminder = reminder.copyWith(
@@ -747,6 +851,143 @@ class InMemoryReminderRepository implements ReminderRepository {
     _reminders[index] = updated;
     _notify(existing.familyId);
     return true;
+  }
+
+  @override
+  Future<void> submitTaskWithProof({
+    required String taskId,
+    required String proofImageUrl,
+  }) async {
+    final index = _reminders.indexWhere((r) => r.id == taskId && !r.isDeleted);
+    if (index == -1) {
+      throw const ReminderNotFoundException('Không tìm thấy công việc');
+    }
+    final existing = _reminders[index];
+    final updated = existing.copyWith(
+      proofImageUrl: proofImageUrl,
+      taskStatus: TaskStatus.submitted,
+      status: 'SUBMITTED',
+      clearRejectionReason: true,
+    );
+    _reminders[index] = updated;
+    _notify(updated.familyId);
+  }
+
+  @override
+  Future<void> rejectTaskSubmission({
+    required String taskId,
+    required String reason,
+  }) async {
+    final index = _reminders.indexWhere((r) => r.id == taskId && !r.isDeleted);
+    if (index == -1) {
+      throw const ReminderNotFoundException('Không tìm thấy công việc');
+    }
+    final existing = _reminders[index];
+    final updated = existing.copyWith(
+      clearProofImage: true,
+      rejectionReason: reason,
+      taskStatus: TaskStatus.pending,
+      status: ReminderStatus.pending,
+    );
+    _reminders[index] = updated;
+    _notify(updated.familyId);
+  }
+
+  @override
+  Future<ReminderModel> delegateFavorTask({
+    required String taskId,
+    required String delegatedToUserId,
+    required String delegatedToUserName,
+    required String currentUserId,
+    required String currentUserRole,
+    required String targetUserRole,
+  }) async {
+    final index = _reminders.indexWhere((r) => r.id == taskId && !r.isDeleted);
+    if (index == -1) {
+      throw const ReminderNotFoundException('Không tìm thấy công việc');
+    }
+    final existing = _reminders[index];
+
+    if (existing.delegationCount >= 1) {
+      throw StateError(
+        'DELEGATION_LIMIT_EXCEEDED: Nhờ vả chỉ được chuyển tiếp tối đa 1 lần.',
+      );
+    }
+
+    final currentLevel = getMemberHierarchyLevel(currentUserRole);
+    final targetLevel = getMemberHierarchyLevel(targetUserRole);
+
+    if (currentLevel < targetLevel && currentLevel == 0) {
+      throw StateError(
+        'CULTURE_HIERARCHY_VIOLATION: Trẻ em không được chuyển tiếp công việc lên cho người lớn.',
+      );
+    }
+    if (currentLevel < targetLevel) {
+      throw StateError(
+        'CULTURE_HIERARCHY_VIOLATION: Không được chuyển tiếp công việc lên cấp bậc cao hơn.',
+      );
+    }
+
+    final updated = existing.copyWith(
+      assignedTo: delegatedToUserId,
+      assignedToName: delegatedToUserName,
+      delegationCount: existing.delegationCount + 1,
+      delegatedFromUserId: currentUserId,
+      taskType: TaskType.favor,
+    );
+    _reminders[index] = updated;
+    _notify(updated.familyId);
+    return updated;
+  }
+
+  @override
+  Future<void> acceptFavorTask(String taskId) async {
+    final index = _reminders.indexWhere((r) => r.id == taskId && !r.isDeleted);
+    if (index == -1) {
+      throw const ReminderNotFoundException('Không tìm thấy công việc');
+    }
+    final existing = _reminders[index];
+    final updated = existing.copyWith(
+      taskStatus: TaskStatus.accepted,
+      status: 'ACCEPTED',
+    );
+    _reminders[index] = updated;
+    _notify(updated.familyId);
+  }
+
+  @override
+  Future<void> declineFavorTask(String taskId) async {
+    final index = _reminders.indexWhere((r) => r.id == taskId && !r.isDeleted);
+    if (index == -1) {
+      throw const ReminderNotFoundException('Không tìm thấy công việc');
+    }
+    final existing = _reminders[index];
+    final updated = existing.copyWith(
+      taskStatus: TaskStatus.declined,
+      status: 'DECLINED',
+    );
+    _reminders[index] = updated;
+    _notify(updated.familyId);
+  }
+
+  @override
+  Future<void> approveTaskSubmission({
+    required String taskId,
+    required String reviewerId,
+    required String reviewerName,
+  }) async {
+    final index = _reminders.indexWhere((r) => r.id == taskId && !r.isDeleted);
+    if (index == -1) {
+      throw const ReminderNotFoundException('Không tìm thấy công việc');
+    }
+    final existing = _reminders[index];
+    final updated = existing.copyWith(
+      taskStatus: TaskStatus.completed,
+      status: ReminderStatus.completed,
+      completedAt: DateTime.now(),
+    );
+    _reminders[index] = updated;
+    _notify(updated.familyId);
   }
 
   void dispose() {

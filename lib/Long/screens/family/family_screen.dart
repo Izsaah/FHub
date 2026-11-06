@@ -7,6 +7,8 @@ import '../../models/family_model.dart';
 import '../../models/family_member_model.dart';
 import '../../models/hierarchy_role.dart';
 import '../../models/member_status.dart';
+import '../../models/join_request_model.dart';
+import '../../services/join_request_service.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/family_member_tile.dart';
 import '../../widgets/family_selector_bar.dart';
@@ -26,6 +28,7 @@ class FamilyScreen extends StatefulWidget {
 class _FamilyScreenState extends State<FamilyScreen> {
   final _familyDataService = FamilyDataService();
   final _familyService = FamilyService();
+  final _joinRequestService = JoinRequestService();
 
   late Future<Map<String, dynamic>> _familyDataFuture;
   bool _isLeaving = false;
@@ -595,10 +598,22 @@ class _FamilyScreenState extends State<FamilyScreen> {
               }
 
               final currentUserId = _familyDataService.currentUserId;
+              FamilyMemberModel? currentMember;
+              for (final m in members) {
+                if (m.user.id == currentUserId) {
+                  currentMember = m;
+                  break;
+                }
+              }
               final isOwner = family.ownerId.isNotEmpty &&
                   (family.ownerId == currentUserId ||
                       members.any((m) =>
                           m.user.id == currentUserId && m.role == Role.owner));
+
+              final bool isGuardian = isOwner ||
+                  (currentMember != null &&
+                      (currentMember.hierarchyRole == HierarchyRole.parent ||
+                       currentMember.hierarchyRole == HierarchyRole.grandparent));
 
               final isTakeoverEligible =
                   _familyDataService.isTakeoverEligible(familyId: family.id);
@@ -618,6 +633,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       onAddFamily: _openFamilySetup,
                     ),
                     const SizedBox(height: 16),
+
+                    // Guardian Reviewer Section for Pending Join Requests
+                    if (isGuardian) ...[
+                      _buildPendingRequestsSection(family.id),
+                    ],
 
                     // Inactive Owner Alert / Passive Takeover Banner
                     if (isTakeoverEligible && !isOwner) ...[
@@ -914,5 +934,320 @@ class _FamilyScreenState extends State<FamilyScreen> {
         );
       },
     );
+  }
+
+  Widget _buildPendingRequestsSection(String familyId) {
+    return StreamBuilder<List<JoinRequestModel>>(
+      stream: _joinRequestService.watchPendingRequests(familyId),
+      builder: (context, snapshot) {
+        final requests = snapshot.data ?? [];
+        if (requests.isEmpty) return const SizedBox.shrink();
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF86EFAC)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A000000),
+                offset: Offset(0, 2),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: const BoxDecoration(
+                      color: Color(0x1F005F50),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.person_add_alt_1,
+                      color: Color(0xFF005F50),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      LongStrings.t(
+                        'Yêu cầu gia nhập (${requests.length})',
+                        'Join Requests (${requests.length})',
+                      ),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF005F50),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.amber.shade300),
+                    ),
+                    child: Text(
+                      LongStrings.t('Chờ duyệt', 'Pending'),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Divider(height: 1, color: Color(0xFFBBF7D0)),
+              const SizedBox(height: 8),
+              ...requests.map((req) => _buildJoinRequestCard(req)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildJoinRequestCard(JoinRequestModel req) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: const Color(0x1A005F50),
+            child: Text(
+              req.userName.isNotEmpty ? req.userName[0].toUpperCase() : '?',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF005F50),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  req.userName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Color(0xFF151D1B),
+                  ),
+                ),
+                Text(
+                  '${LongStrings.t("Đề xuất", "Requested")}: ${HierarchyRole.fromString(req.suggestedRole).displayName}',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF6E7A75)),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.red),
+            tooltip: LongStrings.t('Từ chối', 'Reject'),
+            onPressed: () => _showRejectDialog(req),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF005F50),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            icon: const Icon(Icons.check_rounded, size: 16),
+            label: Text(LongStrings.t('Duyệt', 'Approve')),
+            onPressed: () => _showApproveDialog(req),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showApproveDialog(JoinRequestModel req) async {
+    HierarchyRole selectedRole = HierarchyRole.fromString(req.suggestedRole);
+    bool isKid = (selectedRole == HierarchyRole.child) && (req.isKid ?? true);
+
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(
+              LongStrings.t(
+                'Duyệt yêu cầu: ${req.userName}',
+                'Approve Request: ${req.userName}',
+              ),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  LongStrings.t('Vai vế thực tế trong gia đình:', 'Assigned Role:'),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<HierarchyRole>(
+                  initialValue: selectedRole,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  items: HierarchyRole.values.map((role) {
+                    return DropdownMenuItem(
+                      value: role,
+                      child: Text(role.displayName),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() {
+                        selectedRole = val;
+                        isKid = (val == HierarchyRole.child) && (req.isKid ?? true);
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    LongStrings.t('Chế độ Trẻ em (isKid)', 'Kid Mode (isKid)'),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    selectedRole == HierarchyRole.child
+                        ? LongStrings.t(
+                            'Bật: Trẻ nhỏ rèn luyện tích sao, đổi quà.\nTắt: Con lớn đi làm xa.',
+                            'On: Young child earning stars & rewards.\nOff: Adult child away from home.',
+                          )
+                        : LongStrings.t(
+                            'Chỉ áp dụng cờ Trẻ em cho vai vế Con cái.',
+                            'Kid mode only applies to Child role.',
+                          ),
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  value: isKid,
+                  onChanged: selectedRole == HierarchyRole.child
+                      ? (val) => setDialogState(() => isKid = val)
+                      : null,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: Text(LongStrings.cancel),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF005F50),
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  Navigator.pop(dialogCtx);
+                  try {
+                    await _joinRequestService.approveJoinRequest(
+                      requestId: req.id,
+                      assignedRole: selectedRole.code,
+                      isKid: isKid,
+                    );
+                    _familyDataService.clearCache();
+                    setState(_loadData);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          LongStrings.t(
+                            'Đã duyệt "${req.userName}" vào gia đình!',
+                            'Approved "${req.userName}" into family!',
+                          ),
+                        ),
+                        backgroundColor: const Color(0xFF005F50),
+                      ),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString()), backgroundColor: Colors.red[700]),
+                    );
+                  }
+                },
+                child: Text(LongStrings.confirm),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showRejectDialog(JoinRequestModel req) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(LongStrings.t('Từ chối yêu cầu?', 'Reject Request?')),
+        content: Text(
+          LongStrings.t(
+            'Bạn có chắc chắn muốn từ chối yêu cầu của "${req.userName}"?',
+            'Are you sure you want to reject "${req.userName}"?',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(LongStrings.cancel),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(LongStrings.t('Từ chối', 'Reject')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _joinRequestService.rejectJoinRequest(req.id);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              LongStrings.t('Đã từ chối yêu cầu tham gia.', 'Join request rejected.'),
+            ),
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red[700]),
+        );
+      }
+    }
   }
 }

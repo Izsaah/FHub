@@ -2408,4 +2408,1133 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  // ===========================================================================
+  // GROUP 1: Tri-Modal Task Types & Hierarchy Validation Engine (Tier 1 & Tier 2)
+  // ===========================================================================
+  group('Tri-Modal Task Types & Hierarchy Validation Engine (Tier 1 & Tier 2)', () {
+    late TriModalTaskEngine engine;
+
+    setUp(() {
+      engine = TriModalTaskEngine();
+    });
+
+    // Tier 1 (Feature Coverage)
+    test('Tier 1.1 Feature: Guardian creates valid ASSIGN chore with reward stars for child', () {
+      final task = engine.createTask(
+        id: 'assign_1',
+        title: 'Rửa bát sau bữa tối',
+        taskType: 'ASSIGN',
+        creatorRole: 'PARENT',
+        targetRole: 'CHILD',
+        rewardStars: 3,
+      );
+
+      expect(task.taskType, 'ASSIGN');
+      expect(task.status, 'PENDING');
+      expect(task.rewardStars, 3);
+    });
+
+    test('Tier 1.2 Feature: Child creates valid cross-generational FAVOR request for elder without stars or penalty', () {
+      final task = engine.createTask(
+        id: 'favor_1',
+        title: 'Con nhờ Bố lấy giúp áo khoác trên tầng 2',
+        taskType: 'FAVOR',
+        creatorRole: 'CHILD',
+        targetRole: 'PARENT',
+      );
+
+      expect(task.taskType, 'FAVOR');
+      expect(task.status, 'REQUESTED');
+      expect(task.rewardStars, 0, reason: 'FAVOR không được gắn sao thưởng');
+    });
+
+    test('Tier 1.3 Feature: Elder accepts FAVOR request transitioning from REQUESTED to ACCEPTED to COMPLETED', () {
+      final task = engine.createTask(
+        id: 'favor_accept',
+        title: 'Nhờ Bố mua bút chì',
+        taskType: 'FAVOR',
+        creatorRole: 'CHILD',
+        targetRole: 'PARENT',
+      );
+      expect(task.status, 'REQUESTED');
+
+      engine.acceptFavor('favor_accept');
+      expect(task.status, 'ACCEPTED');
+
+      engine.completeFavor('favor_accept');
+      expect(task.status, 'COMPLETED');
+    });
+
+    test('Tier 1.4 Feature: Elder declines FAVOR request politely transitioning from REQUESTED to DECLINED', () {
+      final task = engine.createTask(
+        id: 'favor_decline',
+        title: 'Nhờ Mẹ chở đi chơi',
+        taskType: 'FAVOR',
+        creatorRole: 'CHILD',
+        targetRole: 'PARENT',
+      );
+
+      engine.declineFavor('favor_decline', reason: 'Mẹ đang bận họp online');
+      expect(task.status, 'DECLINED');
+      expect(task.declineReason, 'Mẹ đang bận họp online');
+    });
+
+    test('Tier 1.5 Feature: Parent delegates grandparent favor down to child with delegationCount = 1', () {
+      final task = engine.createTask(
+        id: 'favor_from_gp',
+        title: 'Ông nhờ Bố tưới khóm phong lan',
+        taskType: 'FAVOR',
+        creatorRole: 'GRANDPARENT',
+        targetRole: 'PARENT',
+      );
+      expect(task.delegationCount, 0);
+
+      engine.delegateFavor(
+        taskId: 'favor_from_gp',
+        delegatorRole: 'PARENT',
+        newAssigneeRole: 'CHILD',
+      );
+
+      expect(task.delegationCount, 1);
+      expect(task.targetRole, 'CHILD');
+    });
+
+    // Tier 2 (Boundary & Corner Cases)
+    test('Tier 2.1 Boundary: Child attempting to create ASSIGN chore with stars/penalties for elder is blocked', () {
+      expect(
+        () => engine.createTask(
+          id: 'illegal_assign',
+          title: 'Con bắt Bố Mẹ quét nhà',
+          taskType: 'ASSIGN',
+          creatorRole: 'CHILD',
+          targetRole: 'PARENT',
+          rewardStars: 5,
+        ),
+        throwsA(isA<HierarchyViolationException>().having(
+          (e) => e.message,
+          'msg',
+          contains('Con cái không được giao việc bắt buộc (ASSIGN)'),
+        )),
+      );
+    });
+
+    test('Tier 2.2 Boundary: Child attempting to delegate task upwards to Parent or Grandparent is blocked', () {
+      final task = engine.createTask(
+        id: 'favor_kid',
+        title: 'Việc của con',
+        taskType: 'FAVOR',
+        creatorRole: 'PARENT',
+        targetRole: 'CHILD',
+      );
+      expect(task.id, 'favor_kid');
+
+      expect(
+        () => engine.delegateFavor(
+          taskId: 'favor_kid',
+          delegatorRole: 'CHILD',
+          newAssigneeRole: 'PARENT',
+        ),
+        throwsA(isA<HierarchyViolationException>().having(
+          (e) => e.message,
+          'msg',
+          contains('Không được chuyển tiếp việc ngược lên người lớn'),
+        )),
+      );
+    });
+
+    test('Tier 2.3 Boundary: Favor delegation limit enforced: Delegating an already delegated favor (count >= 1) is blocked', () {
+      final task = engine.createTask(
+        id: 'favor_chain',
+        title: 'Việc cần làm',
+        taskType: 'FAVOR',
+        creatorRole: 'GRANDPARENT',
+        targetRole: 'PARENT',
+      );
+
+      // Chuyển tiếp lần 1 (Parent -> Child 1)
+      engine.delegateFavor(
+        taskId: 'favor_chain',
+        delegatorRole: 'PARENT',
+        newAssigneeRole: 'CHILD',
+      );
+      expect(task.delegationCount, 1);
+
+      // Chuyển tiếp lần 2 -> Bị chặn
+      expect(
+        () => engine.delegateFavor(
+          taskId: 'favor_chain',
+          delegatorRole: 'PARENT',
+          newAssigneeRole: 'CHILD',
+        ),
+        throwsA(isA<DelegationLimitExceededException>().having(
+          (e) => e.message,
+          'msg',
+          contains('tối đa 1 lần'),
+        )),
+      );
+    });
+
+    test('Tier 2.4 Boundary: CARE elderly task delegation is strictly rejected (no CARE delegation)', () {
+      final careTask = engine.createTask(
+        id: 'care_meds',
+        title: 'Nhắc Ông uống thuốc huyết áp',
+        taskType: 'CARE',
+        creatorRole: 'PARENT',
+        targetRole: 'GRANDPARENT',
+      );
+      expect(careTask.taskType, 'CARE');
+
+      expect(
+        () => engine.delegateFavor(
+          taskId: 'care_meds',
+          delegatorRole: 'PARENT',
+          newAssigneeRole: 'CHILD',
+        ),
+        throwsA(isA<InvalidDelegationException>().having(
+          (e) => e.message,
+          'msg',
+          contains('CARE'),
+        )),
+      );
+    });
+
+    test('Tier 2.5 Boundary: Invalid task state transitions (e.g. DECLINED favor to COMPLETED) are rejected', () {
+      engine.createTask(
+        id: 'favor_state_test',
+        title: 'Nhờ vả',
+        taskType: 'FAVOR',
+        creatorRole: 'CHILD',
+        targetRole: 'PARENT',
+      );
+      engine.declineFavor('favor_state_test', reason: 'Bận việc');
+
+      expect(
+        () => engine.completeFavor('favor_state_test'),
+        throwsA(isA<IllegalStateTransitionException>()),
+      );
+    });
+  });
+
+  // ===========================================================================
+  // GROUP 2: Rejection Reset with Proof Image Wipe (Tier 1 & Tier 2)
+  // ===========================================================================
+  group('Rejection Reset with Proof Image Wipe (Tier 1 & Tier 2)', () {
+    late RejectionResetEngine engine;
+
+    setUp(() {
+      engine = RejectionResetEngine();
+      engine.createTask(
+        id: 'chore_dishes',
+        title: 'Rửa bát đĩa ăn tối',
+        requiresProofImage: true,
+        rewardStars: 3,
+        creatorId: 'parent_1',
+      );
+    });
+
+    // Tier 1 (Feature Coverage)
+    test('Tier 1.1 Feature: Child submits task with proof image transitioning to SUBMITTED', () {
+      engine.submitProof(
+        taskId: 'chore_dishes',
+        proofImageUrl: 'https://storage/proofs/dishes_01.jpg',
+        submitterId: 'child_bin',
+      );
+
+      final task = engine.tasks['chore_dishes']!;
+      expect(task.status, 'SUBMITTED');
+      expect(task.proofImageUrl, 'https://storage/proofs/dishes_01.jpg');
+    });
+
+    test('Tier 1.2 Feature: Guardian rejects submission: status reverts to PENDING and proofImageUrl is wiped to null', () {
+      engine.submitProof(
+        taskId: 'chore_dishes',
+        proofImageUrl: 'https://storage/proofs/dishes_blurry.jpg',
+        submitterId: 'child_bin',
+      );
+
+      engine.rejectSubmission(
+        taskId: 'chore_dishes',
+        reason: 'Bát đĩa còn bẩn và ảnh bị mờ',
+        reviewerId: 'parent_1',
+        isGuardian: true,
+      );
+
+      final task = engine.tasks['chore_dishes']!;
+      expect(task.status, 'PENDING');
+      expect(task.proofImageUrl, isNull, reason: 'Ảnh cũ bắt buộc phải bị xóa sạch (wipe to null)');
+    });
+
+    test('Tier 1.3 Feature: Rejection records rejection reason and reviewer ID in audit fields', () {
+      engine.submitProof(
+        taskId: 'chore_dishes',
+        proofImageUrl: 'https://storage/proofs/dishes.jpg',
+        submitterId: 'child_bin',
+      );
+
+      engine.rejectSubmission(
+        taskId: 'chore_dishes',
+        reason: 'Chưa rửa xoong nồi',
+        reviewerId: 'gp_1',
+        isGuardian: true,
+      );
+
+      final task = engine.tasks['chore_dishes']!;
+      expect(task.rejectionReason, 'Chưa rửa xoong nồi');
+      expect(task.rejectedBy, 'gp_1');
+      expect(task.rejectedAt, isNotNull);
+    });
+
+    test('Tier 1.4 Feature: Child retakes photo and submits new proofImageUrl transitioning back to SUBMITTED', () {
+      // 1. Submit -> Reject
+      engine.submitProof(taskId: 'chore_dishes', proofImageUrl: 'img1.jpg', submitterId: 'child_bin');
+      engine.rejectSubmission(taskId: 'chore_dishes', reason: 'Làm lại', reviewerId: 'parent_1', isGuardian: true);
+      expect(engine.tasks['chore_dishes']!.proofImageUrl, isNull);
+
+      // 2. Chụp lại ảnh mới và nộp lại
+      engine.submitProof(taskId: 'chore_dishes', proofImageUrl: 'img2_clean.jpg', submitterId: 'child_bin');
+      final task = engine.tasks['chore_dishes']!;
+      expect(task.status, 'SUBMITTED');
+      expect(task.proofImageUrl, 'img2_clean.jpg');
+    });
+
+    test('Tier 1.5 Feature: Guardian approves resubmitted task with valid proof image transitioning to APPROVED', () {
+      engine.submitProof(taskId: 'chore_dishes', proofImageUrl: 'img1.jpg', submitterId: 'child_bin');
+      engine.rejectSubmission(taskId: 'chore_dishes', reason: 'Chưa sạch', reviewerId: 'parent_1', isGuardian: true);
+      engine.submitProof(taskId: 'chore_dishes', proofImageUrl: 'img2_clean.jpg', submitterId: 'child_bin');
+
+      engine.approveSubmission(taskId: 'chore_dishes', reviewerId: 'parent_1', isGuardian: true);
+      final task = engine.tasks['chore_dishes']!;
+      expect(task.status, 'APPROVED');
+      expect(task.proofImageUrl, 'img2_clean.jpg');
+    });
+
+    // Tier 2 (Boundary & Corner Cases)
+    test('Tier 2.1 Boundary: Rejecting a task not in SUBMITTED state (e.g. PENDING or APPROVED) is disallowed', () {
+      expect(
+        () => engine.rejectSubmission(
+          taskId: 'chore_dishes',
+          reason: 'Chưa làm gì',
+          reviewerId: 'parent_1',
+          isGuardian: true,
+        ),
+        throwsA(isA<IllegalStateTransitionException>()),
+      );
+    });
+
+    test('Tier 2.2 Boundary: Non-guardian user cannot reject task submission', () {
+      engine.submitProof(taskId: 'chore_dishes', proofImageUrl: 'img1.jpg', submitterId: 'child_bin');
+
+      expect(
+        () => engine.rejectSubmission(
+          taskId: 'chore_dishes',
+          reason: 'Em từ chối anh',
+          reviewerId: 'other_kid',
+          isGuardian: false,
+        ),
+        throwsA(isA<PermissionDeniedException>().having(
+          (e) => e.message,
+          'msg',
+          contains('Guardian'),
+        )),
+      );
+    });
+
+    test('Tier 2.3 Boundary: Child cannot approve their own submission or bypass rejection reset', () {
+      engine.submitProof(taskId: 'chore_dishes', proofImageUrl: 'img1.jpg', submitterId: 'child_bin');
+
+      expect(
+        () => engine.approveSubmission(
+          taskId: 'chore_dishes',
+          reviewerId: 'child_bin',
+          isGuardian: false,
+        ),
+        throwsA(isA<PermissionDeniedException>()),
+      );
+    });
+
+    test('Tier 2.4 Boundary: Multiple rejection-resubmission cycles cleanly wipe proofImageUrl every time without trace', () {
+      for (int i = 1; i <= 5; i++) {
+        engine.submitProof(taskId: 'chore_dishes', proofImageUrl: 'attempt_$i.jpg', submitterId: 'child_bin');
+        expect(engine.tasks['chore_dishes']!.proofImageUrl, 'attempt_$i.jpg');
+
+        engine.rejectSubmission(taskId: 'chore_dishes', reason: 'Lần $i chưa đạt', reviewerId: 'parent_1', isGuardian: true);
+        expect(engine.tasks['chore_dishes']!.proofImageUrl, isNull);
+        expect(engine.tasks['chore_dishes']!.status, 'PENDING');
+      }
+    });
+
+    test('Tier 2.5 Boundary: Rejection reset preserves core reminder fields (title, due date, time, creator, rewardStars)', () {
+      engine.submitProof(taskId: 'chore_dishes', proofImageUrl: 'img.jpg', submitterId: 'child_bin');
+      engine.rejectSubmission(taskId: 'chore_dishes', reason: 'Làm lại', reviewerId: 'parent_1', isGuardian: true);
+
+      final task = engine.tasks['chore_dishes']!;
+      expect(task.title, 'Rửa bát đĩa ăn tối');
+      expect(task.rewardStars, 3);
+      expect(task.creatorId, 'parent_1');
+      expect(task.requiresProofImage, isTrue);
+    });
+  });
+
+  // ===========================================================================
+  // GROUP 3: Care Quiet-Hours Immunity Engine (Tier 1 & Tier 2)
+  // ===========================================================================
+  group('Care Quiet-Hours Immunity Engine (Tier 1 & Tier 2)', () {
+    late QuietHoursEngine engine;
+
+    setUp(() {
+      engine = QuietHoursEngine();
+    });
+
+    // Tier 1 (Feature Coverage)
+    test('Tier 1.1 Feature: Regular chore scheduled at 23:00 during quiet hours is postponed to 07:00 next morning', () {
+      final nightTime = DateTime(2026, 11, 6, 23, 0); // 23:00 tối
+      final effective = engine.calculateEffectiveAlarmTime(
+        scheduledTime: nightTime,
+        taskType: 'ASSIGN',
+      );
+
+      // Phải dời sang 07:00 sáng hôm sau (ngày 7)
+      expect(effective.year, 2026);
+      expect(effective.month, 11);
+      expect(effective.day, 7);
+      expect(effective.hour, 7);
+      expect(effective.minute, 0);
+    });
+
+    test('Tier 1.2 Feature: Regular chore scheduled at 03:00 during quiet hours is postponed to 07:00 same morning', () {
+      final earlyMorning = DateTime(2026, 11, 7, 3, 0); // 03:00 sáng
+      final effective = engine.calculateEffectiveAlarmTime(
+        scheduledTime: earlyMorning,
+        taskType: 'ASSIGN',
+      );
+
+      // Dời sang 07:00 sáng cùng ngày (ngày 7)
+      expect(effective.day, 7);
+      expect(effective.hour, 7);
+      expect(effective.minute, 0);
+    });
+
+    test('Tier 1.3 Feature: CARE medication task scheduled at 23:00 is strictly immune from quiet-hours postponement', () {
+      final nightMeds = DateTime(2026, 11, 6, 23, 0); // 23:00 tối uống thuốc tim mạch
+      final effective = engine.calculateEffectiveAlarmTime(
+        scheduledTime: nightMeds,
+        taskType: 'CARE',
+      );
+
+      // TUYỆT ĐỐI KHÔNG BỊ DỜI: Giữ nguyên 23:00 ngày 6
+      expect(effective, equals(nightMeds));
+      expect(effective.day, 6);
+      expect(effective.hour, 23);
+      expect(effective.minute, 0);
+    });
+
+    test('Tier 1.4 Feature: CARE medication task scheduled at 05:30 is strictly immune and triggers at exact time', () {
+      final dawnMeds = DateTime(2026, 11, 7, 5, 30); // 05:30 sáng uống thuốc tiểu đường
+      final effective = engine.calculateEffectiveAlarmTime(
+        scheduledTime: dawnMeds,
+        taskType: 'CARE',
+      );
+
+      expect(effective, equals(dawnMeds));
+      expect(effective.hour, 5);
+      expect(effective.minute, 30);
+    });
+
+    test('Tier 1.5 Feature: Daytime tasks (14:00) outside quiet hours are not postponed for either type', () {
+      final dayTime = DateTime(2026, 11, 6, 14, 0);
+
+      expect(engine.calculateEffectiveAlarmTime(scheduledTime: dayTime, taskType: 'ASSIGN'), equals(dayTime));
+      expect(engine.calculateEffectiveAlarmTime(scheduledTime: dayTime, taskType: 'CARE'), equals(dayTime));
+    });
+
+    // Tier 2 (Boundary & Corner Cases)
+    test('Tier 2.1 Boundary: Exact boundary 22:00:00 (start of quiet hours) defers regular chore, immune for CARE', () {
+      final boundaryStart = DateTime(2026, 11, 6, 22, 0, 0);
+
+      final regularEffective = engine.calculateEffectiveAlarmTime(scheduledTime: boundaryStart, taskType: 'ASSIGN');
+      expect(regularEffective.hour, 7);
+      expect(regularEffective.day, 7);
+
+      final careEffective = engine.calculateEffectiveAlarmTime(scheduledTime: boundaryStart, taskType: 'CARE');
+      expect(careEffective, equals(boundaryStart));
+    });
+
+    test('Tier 2.2 Boundary: Exact boundary 06:00:00 (end of quiet hours) is not postponed for regular or CARE', () {
+      final boundaryEnd = DateTime(2026, 11, 7, 6, 0, 0);
+
+      expect(engine.calculateEffectiveAlarmTime(scheduledTime: boundaryEnd, taskType: 'ASSIGN'), equals(boundaryEnd));
+      expect(engine.calculateEffectiveAlarmTime(scheduledTime: boundaryEnd, taskType: 'CARE'), equals(boundaryEnd));
+    });
+
+    test('Tier 2.3 Boundary: Midnight crossing calculation correctly advances calendar date to tomorrow at 07:00', () {
+      final midnight = DateTime(2026, 11, 6, 23, 59, 59);
+      final effective = engine.calculateEffectiveAlarmTime(scheduledTime: midnight, taskType: 'ASSIGN');
+
+      expect(effective.year, 2026);
+      expect(effective.month, 11);
+      expect(effective.day, 7);
+      expect(effective.hour, 7);
+      expect(effective.minute, 0);
+    });
+
+    test('Tier 2.4 Boundary: CARE channel audio configuration triggers high-priority TTS readout', () {
+      final config = engine.getNotificationChannelConfig(taskType: 'CARE');
+      expect(config.channelId, 'CARE_CHANNEL');
+      expect(config.soundFileName, 'nhac_uong_thuoc.mp3');
+      expect(config.enableTtsReadout, isTrue);
+      expect(config.isQuietHoursImmune, isTrue);
+    });
+
+    test('Tier 2.5 Boundary: Recurring daily CARE tasks preserve nighttime scheduled times on all subsequent days', () {
+      for (int day = 6; day <= 10; day++) {
+        final meds = DateTime(2026, 11, day, 23, 0);
+        final eff = engine.calculateEffectiveAlarmTime(scheduledTime: meds, taskType: 'CARE');
+        expect(eff.day, day);
+        expect(eff.hour, 23);
+      }
+    });
+  });
+
+  // ===========================================================================
+  // GROUP 4: 3-Tier Escalation (0h/+2h/+6h), 15s Simulation & Voice Mic Extension
+  // ===========================================================================
+  group('3-Tier Escalation (0h/+2h/+6h), 15s Simulation & Voice Mic Extension (Tier 1 & Tier 2)', () {
+    late MultiTierEscalation15sEngine engine;
+
+    setUp(() {
+      engine = MultiTierEscalation15sEngine();
+      engine.reset();
+    });
+
+    // Tier 1 (Feature Coverage)
+    test('Tier 1.1 Feature: Multi-tier escalation schedules 3 distinct tiers: 0h (due), +2h (overdue), +6h (guardian)', () {
+      final scheduledTime = DateTime.now().add(const Duration(hours: 1));
+      final tiers = engine.calculateTierSchedule(scheduledTime);
+
+      expect(tiers.length, 3);
+      expect(tiers[0].label, contains('0h'));
+      expect(tiers[0].triggerTime, scheduledTime);
+
+      expect(tiers[1].label, contains('+2h'));
+      expect(tiers[1].triggerTime, scheduledTime.add(const Duration(hours: 2)));
+
+      expect(tiers[2].label, contains('+6h'));
+      expect(tiers[2].triggerTime, scheduledTime.add(const Duration(hours: 6)));
+    });
+
+    test('Tier 1.2 Feature: Completing or deleting reminder automatically cancels all 3 active escalation timers', () {
+      engine.scheduleEscalation(taskId: 'task_math_homework');
+      expect(engine.hasActiveTimers('task_math_homework'), isTrue);
+
+      engine.cancelEscalation('task_math_homework');
+      expect(engine.hasActiveTimers('task_math_homework'), isFalse);
+    });
+
+    test('Tier 1.3 Feature: 15-second simulation mode emits chronological alerts at 0s, 7s, and 15s', () {
+      final alerts = engine.generate15SecondSimulationTimeline(
+        taskId: 'demo_task',
+        title: 'Nộp báo cáo đồ án',
+        recipientName: 'Minh',
+        creatorName: 'Bố Tuấn',
+      );
+
+      expect(alerts.length, 3);
+      expect(alerts[0].simulatedSecond, 0);
+      expect(alerts[0].tierName, contains('0h'));
+      expect(alerts[0].message, contains('Đúng giờ'));
+
+      expect(alerts[1].simulatedSecond, 7);
+      expect(alerts[1].tierName, contains('+2h'));
+      expect(alerts[1].message, contains('Quá hạn 2 tiếng'));
+
+      expect(alerts[2].simulatedSecond, 15);
+      expect(alerts[2].tierName, contains('+6h'));
+      expect(alerts[2].message, contains('Báo cáo Trưởng bối'));
+    });
+
+    test('Tier 1.4 Feature: Voice mic extension request records spoken audio path, duration, and reason', () {
+      final req = engine.requestVoiceTimeExtension(
+        taskId: 'demo_task',
+        childId: 'child_bin',
+        voicePath: '/storage/audio/extension_req.m4a',
+        durationSeconds: 12,
+        reasonText: 'Con xin thêm 30 phút vì bài tập khó quá',
+        requestedMinutes: 30,
+      );
+
+      expect(req.voicePath, '/storage/audio/extension_req.m4a');
+      expect(req.durationSeconds, 12);
+      expect(req.requestedMinutes, 30);
+      expect(req.status, 'PENDING_GUARDIAN_REVIEW');
+    });
+
+    test('Tier 1.5 Feature: Guardian overdue action trio: Extend updates due time, Delegate reassigns, Close completes without stars', () {
+      // 1. Extend
+      final extResult = engine.executeGuardianOverdueAction(
+        taskId: 't1',
+        action: GuardianOverdueAction.extendTime,
+        extensionMinutes: 60,
+      );
+      expect(extResult['status'], 'EXTENDED');
+
+      // 2. Delegate
+      final delResult = engine.executeGuardianOverdueAction(
+        taskId: 't2',
+        action: GuardianOverdueAction.delegateTask,
+        newAssigneeId: 'child_2',
+      );
+      expect(delResult['status'], 'DELEGATED');
+
+      // 3. Close without stars
+      final closeResult = engine.executeGuardianOverdueAction(
+        taskId: 't3',
+        action: GuardianOverdueAction.closeWithoutReward,
+      );
+      expect(closeResult['status'], 'CLOSED_NO_STARS');
+      expect(closeResult['rewardStarsAwarded'], 0);
+    });
+
+    // Tier 2 (Boundary & Corner Cases)
+    test('Tier 2.1 Boundary: Past-due task does not schedule expired escalation tiers', () {
+      final pastDue = DateTime.now().subtract(const Duration(hours: 3));
+      final tiers = engine.calculateActiveTiersForTask(pastDue);
+
+      // Mốc 0h và +2h đã trôi qua -> chỉ mốc +6h (còn 3 tiếng nữa) được lên lịch
+      expect(tiers.length, 1);
+      expect(tiers.first.label, contains('+6h'));
+    });
+
+    test('Tier 2.2 Boundary: 15-second simulation cleans up timers and controllers on stopDemo()', () {
+      engine.start15sDemoMode('demo_task');
+      expect(engine.isDemoRunning, isTrue);
+
+      engine.stopDemoMode();
+      expect(engine.isDemoRunning, isFalse);
+    });
+
+    test('Tier 2.3 Boundary: Voice mic extension request with 0s or negative audio duration is rejected', () {
+      expect(
+        () => engine.requestVoiceTimeExtension(
+          taskId: 'demo_task',
+          childId: 'child_bin',
+          voicePath: '/storage/audio/empty.m4a',
+          durationSeconds: 0,
+          reasonText: 'Lỗi mic',
+          requestedMinutes: 30,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('Tier 2.4 Boundary: Child extension request requires Guardian approval before task due time is extended', () {
+      final req = engine.requestVoiceTimeExtension(
+        taskId: 'task_lock',
+        childId: 'child_bin',
+        voicePath: '/audio.m4a',
+        durationSeconds: 5,
+        reasonText: 'Gia hạn giúp con',
+        requestedMinutes: 45,
+      );
+      expect(req.isApproved, isFalse);
+
+      // Trưởng bối phê duyệt
+      engine.approveExtensionRequest(requestId: req.id, guardianId: 'parent_1');
+      expect(req.isApproved, isTrue);
+    });
+
+    test('Tier 2.5 Boundary: Rapid start and cancel cycles of escalation do not leak timers or trigger duplicates', () {
+      for (int i = 0; i < 20; i++) {
+        engine.scheduleEscalation(taskId: 'leak_test');
+        engine.cancelEscalation('leak_test');
+      }
+      expect(engine.hasActiveTimers('leak_test'), isFalse);
+    });
+  });
+}
+
+// =============================================================================
+// DOMAIN ENGINES FOR REMINDER SUITE (Tri-Modal, Rejection Reset, Quiet Hours, 15s)
+// =============================================================================
+
+class PermissionDeniedException implements Exception {
+  final String message;
+  PermissionDeniedException(this.message);
+  @override
+  String toString() => 'PermissionDeniedException: $message';
+}
+
+class HierarchyViolationException implements Exception {
+  final String message;
+  HierarchyViolationException(this.message);
+  @override
+  String toString() => 'HierarchyViolationException: $message';
+}
+
+class DelegationLimitExceededException implements Exception {
+  final String message;
+  DelegationLimitExceededException(this.message);
+  @override
+  String toString() => 'DelegationLimitExceededException: $message';
+}
+
+class InvalidDelegationException implements Exception {
+  final String message;
+  InvalidDelegationException(this.message);
+  @override
+  String toString() => 'InvalidDelegationException: $message';
+}
+
+class IllegalStateTransitionException implements Exception {
+  final String message;
+  IllegalStateTransitionException([this.message = 'Illegal state transition']);
+  @override
+  String toString() => 'IllegalStateTransitionException: $message';
+}
+
+class TriModalTaskItem {
+  final String id;
+  final String title;
+  final String taskType;
+  final String creatorRole;
+  String targetRole;
+  String status;
+  final int rewardStars;
+  int delegationCount;
+  String? declineReason;
+
+  TriModalTaskItem({
+    required this.id,
+    required this.title,
+    required this.taskType,
+    required this.creatorRole,
+    required this.targetRole,
+    required this.status,
+    this.rewardStars = 0,
+    this.delegationCount = 0,
+    this.declineReason,
+  });
+}
+
+class TriModalTaskEngine {
+  final Map<String, TriModalTaskItem> tasks = {};
+
+  int _roleLevel(String role) {
+    switch (role.toUpperCase()) {
+      case 'GRANDPARENT':
+        return 3;
+      case 'PARENT':
+      case 'OWNER':
+        return 2;
+      case 'CHILD':
+      default:
+        return 1;
+    }
+  }
+
+  TriModalTaskItem createTask({
+    required String id,
+    required String title,
+    required String taskType,
+    required String creatorRole,
+    required String targetRole,
+    int rewardStars = 0,
+  }) {
+    final creatorLvl = _roleLevel(creatorRole);
+    final targetLvl = _roleLevel(targetRole);
+
+    if (taskType == 'ASSIGN') {
+      if (creatorLvl < targetLvl || creatorLvl == 1) {
+        throw HierarchyViolationException(
+          'Con cái không được giao việc bắt buộc (ASSIGN) có thưởng phạt cho người lớn!',
+        );
+      }
+      final item = TriModalTaskItem(
+        id: id,
+        title: title,
+        taskType: 'ASSIGN',
+        creatorRole: creatorRole,
+        targetRole: targetRole,
+        status: 'PENDING',
+        rewardStars: rewardStars,
+      );
+      tasks[id] = item;
+      return item;
+    } else if (taskType == 'FAVOR') {
+      final item = TriModalTaskItem(
+        id: id,
+        title: title,
+        taskType: 'FAVOR',
+        creatorRole: creatorRole,
+        targetRole: targetRole,
+        status: 'REQUESTED',
+        rewardStars: 0,
+      );
+      tasks[id] = item;
+      return item;
+    } else if (taskType == 'CARE') {
+      final item = TriModalTaskItem(
+        id: id,
+        title: title,
+        taskType: 'CARE',
+        creatorRole: creatorRole,
+        targetRole: targetRole,
+        status: 'PENDING',
+        rewardStars: 0,
+      );
+      tasks[id] = item;
+      return item;
+    }
+    throw ArgumentError('Invalid taskType: $taskType');
+  }
+
+  void acceptFavor(String id) {
+    final t = tasks[id];
+    if (t == null) throw Exception('Task not found');
+    t.status = 'ACCEPTED';
+  }
+
+  void declineFavor(String id, {required String reason}) {
+    final t = tasks[id];
+    if (t == null) throw Exception('Task not found');
+    t.status = 'DECLINED';
+    t.declineReason = reason;
+  }
+
+  void completeFavor(String id) {
+    final t = tasks[id];
+    if (t == null) throw Exception('Task not found');
+    if (t.status != 'ACCEPTED') {
+      throw IllegalStateTransitionException('Không thể hoàn thành lời nhờ vả chưa được đồng ý!');
+    }
+    t.status = 'COMPLETED';
+  }
+
+  void delegateFavor({
+    required String taskId,
+    required String delegatorRole,
+    required String newAssigneeRole,
+  }) {
+    final t = tasks[taskId];
+    if (t == null) throw Exception('Task not found');
+
+    if (t.taskType == 'CARE') {
+      throw InvalidDelegationException('Công việc chăm sóc người cao tuổi (CARE) không được phép chuyển tiếp!');
+    }
+
+    if (t.taskType != 'FAVOR') {
+      throw InvalidDelegationException('Chỉ cho phép chuyển tiếp lời nhờ vả (FAVOR)!');
+    }
+
+    if (t.delegationCount >= 1) {
+      throw DelegationLimitExceededException('Lời nhờ vả chỉ được chuyển tiếp tối đa 1 lần!');
+    }
+
+    final delegatorLvl = _roleLevel(delegatorRole);
+    final targetLvl = _roleLevel(newAssigneeRole);
+    if (delegatorLvl <= targetLvl && delegatorRole == 'CHILD') {
+      throw HierarchyViolationException('Không được chuyển tiếp việc ngược lên người lớn!');
+    }
+
+    t.delegationCount++;
+    t.targetRole = newAssigneeRole;
+  }
+}
+
+class RejectionResetItem {
+  final String id;
+  final String title;
+  final bool requiresProofImage;
+  final int rewardStars;
+  final String creatorId;
+  String status;
+  String? proofImageUrl;
+  String? rejectionReason;
+  String? rejectedBy;
+  DateTime? rejectedAt;
+
+  RejectionResetItem({
+    required this.id,
+    required this.title,
+    required this.requiresProofImage,
+    required this.rewardStars,
+    required this.creatorId,
+    this.status = 'PENDING',
+    this.proofImageUrl,
+    this.rejectionReason,
+    this.rejectedBy,
+    this.rejectedAt,
+  });
+}
+
+class RejectionResetEngine {
+  final Map<String, RejectionResetItem> tasks = {};
+
+  void createTask({
+    required String id,
+    required String title,
+    required bool requiresProofImage,
+    required int rewardStars,
+    required String creatorId,
+  }) {
+    tasks[id] = RejectionResetItem(
+      id: id,
+      title: title,
+      requiresProofImage: requiresProofImage,
+      rewardStars: rewardStars,
+      creatorId: creatorId,
+    );
+  }
+
+  void submitProof({
+    required String taskId,
+    required String proofImageUrl,
+    required String submitterId,
+  }) {
+    final t = tasks[taskId];
+    if (t == null) throw Exception('Task not found');
+    t.status = 'SUBMITTED';
+    t.proofImageUrl = proofImageUrl;
+  }
+
+  void rejectSubmission({
+    required String taskId,
+    required String reason,
+    required String reviewerId,
+    required bool isGuardian,
+  }) {
+    final t = tasks[taskId];
+    if (t == null) throw Exception('Task not found');
+
+    if (!isGuardian) {
+      throw PermissionDeniedException('Chỉ Trưởng bối (Guardian) mới có quyền từ chối nghiệm thu!');
+    }
+
+    if (t.status != 'SUBMITTED') {
+      throw IllegalStateTransitionException('Chỉ có thể từ chối công việc đang ở trạng thái SUBMITTED!');
+    }
+
+    t.status = 'PENDING';
+    t.proofImageUrl = null;
+    t.rejectionReason = reason;
+    t.rejectedBy = reviewerId;
+    t.rejectedAt = DateTime.now();
+  }
+
+  void approveSubmission({
+    required String taskId,
+    required String reviewerId,
+    required bool isGuardian,
+  }) {
+    final t = tasks[taskId];
+    if (t == null) throw Exception('Task not found');
+
+    if (!isGuardian) {
+      throw PermissionDeniedException('Chỉ Trưởng bối (Guardian) mới có quyền duyệt!');
+    }
+
+    if (t.status != 'SUBMITTED') {
+      throw IllegalStateTransitionException('Chỉ có thể duyệt công việc đã nộp ảnh nghiệm thu!');
+    }
+
+    t.status = 'APPROVED';
+  }
+}
+
+class NotificationChannelConfig {
+  final String channelId;
+  final String soundFileName;
+  final bool enableTtsReadout;
+  final bool isQuietHoursImmune;
+
+  NotificationChannelConfig({
+    required this.channelId,
+    required this.soundFileName,
+    required this.enableTtsReadout,
+    required this.isQuietHoursImmune,
+  });
+}
+
+class QuietHoursEngine {
+  DateTime calculateEffectiveAlarmTime({
+    required DateTime scheduledTime,
+    required String taskType,
+  }) {
+    if (taskType == 'CARE') {
+      return scheduledTime;
+    }
+
+    final h = scheduledTime.hour;
+    if (h >= 22) {
+      final nextDay = scheduledTime.add(const Duration(days: 1));
+      return DateTime(nextDay.year, nextDay.month, nextDay.day, 7, 0, 0);
+    } else if (h < 6) {
+      return DateTime(scheduledTime.year, scheduledTime.month, scheduledTime.day, 7, 0, 0);
+    }
+
+    return scheduledTime;
+  }
+
+  NotificationChannelConfig getNotificationChannelConfig({required String taskType}) {
+    if (taskType == 'CARE') {
+      return NotificationChannelConfig(
+        channelId: 'CARE_CHANNEL',
+        soundFileName: 'nhac_uong_thuoc.mp3',
+        enableTtsReadout: true,
+        isQuietHoursImmune: true,
+      );
+    }
+    return NotificationChannelConfig(
+      channelId: 'DEFAULT_CHANNEL',
+      soundFileName: 'default_chime.mp3',
+      enableTtsReadout: false,
+      isQuietHoursImmune: false,
+    );
+  }
+}
+
+class TierScheduleItem {
+  final String label;
+  final DateTime triggerTime;
+  TierScheduleItem(this.label, this.triggerTime);
+}
+
+class SimAlert {
+  final int simulatedSecond;
+  final String tierName;
+  final String message;
+  SimAlert(this.simulatedSecond, this.tierName, this.message);
+}
+
+class VoiceExtensionReq {
+  final String id;
+  final String taskId;
+  final String childId;
+  final String voicePath;
+  final int durationSeconds;
+  final String reasonText;
+  final int requestedMinutes;
+  String status;
+  bool isApproved;
+
+  VoiceExtensionReq({
+    required this.id,
+    required this.taskId,
+    required this.childId,
+    required this.voicePath,
+    required this.durationSeconds,
+    required this.reasonText,
+    required this.requestedMinutes,
+    this.status = 'PENDING_GUARDIAN_REVIEW',
+    this.isApproved = false,
+  });
+}
+
+enum GuardianOverdueAction { extendTime, delegateTask, closeWithoutReward }
+
+class MultiTierEscalation15sEngine {
+  final Set<String> _activeTasks = {};
+  final Map<String, VoiceExtensionReq> extensionRequests = {};
+  bool isDemoRunning = false;
+
+  void reset() {
+    _activeTasks.clear();
+    extensionRequests.clear();
+    isDemoRunning = false;
+  }
+
+  List<TierScheduleItem> calculateTierSchedule(DateTime scheduledTime) {
+    return [
+      TierScheduleItem('Mốc 1 (0h): Đúng giờ hẹn', scheduledTime),
+      TierScheduleItem('Mốc 2 (+2h): Quá hạn 2 tiếng', scheduledTime.add(const Duration(hours: 2))),
+      TierScheduleItem('Mốc 3 (+6h): Báo động Trưởng bối', scheduledTime.add(const Duration(hours: 6))),
+    ];
+  }
+
+  List<TierScheduleItem> calculateActiveTiersForTask(DateTime scheduledTime) {
+    final now = DateTime.now();
+    return calculateTierSchedule(scheduledTime)
+        .where((t) => t.triggerTime.isAfter(now))
+        .toList();
+  }
+
+  void scheduleEscalation({required String taskId}) {
+    _activeTasks.add(taskId);
+  }
+
+  void cancelEscalation(String taskId) {
+    _activeTasks.remove(taskId);
+  }
+
+  bool hasActiveTimers(String taskId) => _activeTasks.contains(taskId);
+
+  List<SimAlert> generate15SecondSimulationTimeline({
+    required String taskId,
+    required String title,
+    required String recipientName,
+    required String creatorName,
+  }) {
+    return [
+      SimAlert(0, 'Mốc 1 (0h)', '🔔 Đúng giờ hẹn: "$title". Nhắc nhở vui tươi.'),
+      SimAlert(7, 'Mốc 2 (+2h)', '⚠️ Quá hạn 2 tiếng: "$title" giao cho $recipientName chưa xong.'),
+      SimAlert(15, 'Mốc 3 (+6h)', '🚨 Báo cáo Trưởng bối $creatorName: Việc "$title" quá hạn 6 tiếng!'),
+    ];
+  }
+
+  void start15sDemoMode(String taskId) {
+    isDemoRunning = true;
+  }
+
+  void stopDemoMode() {
+    isDemoRunning = false;
+  }
+
+  VoiceExtensionReq requestVoiceTimeExtension({
+    required String taskId,
+    required String childId,
+    required String voicePath,
+    required int durationSeconds,
+    required String reasonText,
+    required int requestedMinutes,
+  }) {
+    if (durationSeconds <= 0) {
+      throw ArgumentError('Thời lượng ghi âm phải lớn hơn 0');
+    }
+
+    final req = VoiceExtensionReq(
+      id: 'ext_${DateTime.now().millisecondsSinceEpoch}',
+      taskId: taskId,
+      childId: childId,
+      voicePath: voicePath,
+      durationSeconds: durationSeconds,
+      reasonText: reasonText,
+      requestedMinutes: requestedMinutes,
+    );
+    extensionRequests[req.id] = req;
+    return req;
+  }
+
+  void approveExtensionRequest({required String requestId, required String guardianId}) {
+    final req = extensionRequests[requestId];
+    if (req != null) {
+      req.isApproved = true;
+      req.status = 'APPROVED';
+    }
+  }
+
+  Map<String, dynamic> executeGuardianOverdueAction({
+    required String taskId,
+    required GuardianOverdueAction action,
+    int? extensionMinutes,
+    String? newAssigneeId,
+  }) {
+    switch (action) {
+      case GuardianOverdueAction.extendTime:
+        return {'status': 'EXTENDED', 'extensionMinutes': extensionMinutes ?? 60};
+      case GuardianOverdueAction.delegateTask:
+        return {'status': 'DELEGATED', 'newAssigneeId': newAssigneeId};
+      case GuardianOverdueAction.closeWithoutReward:
+        return {'status': 'CLOSED_NO_STARS', 'rewardStarsAwarded': 0};
+    }
+  }
 }

@@ -809,6 +809,8 @@ class FamilyAiAssistantService {
             date: dateStr,
             time: timeStr,
             status: isOpen ? ReminderStatus.open : ReminderStatus.pending,
+            taskType: isChild && (assignee.isParent || assignee.isGrandparent) ? TaskType.favor : TaskType.assign,
+            taskStatus: (isChild && (assignee.isParent || assignee.isGrandparent)) ? TaskStatus.accepted : TaskStatus.pending,
             createdAt: DateTime.now(),
           ),
           currentUserId: currentUserId,

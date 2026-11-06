@@ -13,6 +13,322 @@ import 'jackpot_algorithm.dart';
 import 'notification_service.dart';
 import 'payment_service.dart';
 
+/// Trạng thái vòng đời giải thưởng tiền mặt lì xì: WAITING_TRANSFER -> PAID -> RECEIVED
+enum CashPrizeStatus {
+  waitingTransfer,
+  paid,
+  received,
+  cancelled;
+
+  String get code {
+    switch (this) {
+      case CashPrizeStatus.waitingTransfer:
+        return 'WAITING_TRANSFER';
+      case CashPrizeStatus.paid:
+        return 'PAID';
+      case CashPrizeStatus.received:
+        return 'RECEIVED';
+      case CashPrizeStatus.cancelled:
+        return 'CANCELLED';
+    }
+  }
+}
+
+/// Mô hình giải thưởng tiền mặt thật được trao từ Trưởng bối tới con cháu
+class CashPrizeModel {
+  final String id;
+  final String childId;
+  final String childName;
+  final int amount;
+  CashPrizeStatus status;
+  String? paymentMethod; // 'CASH' or 'VIETQR'
+  String? paidBy;
+  String? paidByName;
+  String? bankRef;
+  DateTime? paidAt;
+  DateTime? receivedAt;
+  String? familyId;
+
+  CashPrizeModel({
+    required this.id,
+    required this.childId,
+    required this.childName,
+    required this.amount,
+    this.status = CashPrizeStatus.waitingTransfer,
+    this.paymentMethod,
+    this.paidBy,
+    this.paidByName,
+    this.bankRef,
+    this.paidAt,
+    this.receivedAt,
+    this.familyId,
+  });
+
+  String get statusString => status.code;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'childId': childId,
+      'childName': childName,
+      'amount': amount,
+      'status': status.name,
+      'statusCode': status.code,
+      'paymentMethod': paymentMethod,
+      'paidBy': paidBy,
+      'paidByName': paidByName,
+      'bankRef': bankRef,
+      'paidAt': paidAt != null ? Timestamp.fromDate(paidAt!) : null,
+      'receivedAt': receivedAt != null ? Timestamp.fromDate(receivedAt!) : null,
+      'familyId': familyId,
+    };
+  }
+
+  factory CashPrizeModel.fromMap(String id, Map<String, dynamic> data) {
+    CashPrizeStatus parseStatus(String? val) {
+      final upper = val?.toUpperCase();
+      switch (upper) {
+        case 'PAID':
+          return CashPrizeStatus.paid;
+        case 'RECEIVED':
+          return CashPrizeStatus.received;
+        case 'CANCELLED':
+          return CashPrizeStatus.cancelled;
+        case 'WAITING_TRANSFER':
+        case 'WAITINGTRANSFER':
+        default:
+          return CashPrizeStatus.waitingTransfer;
+      }
+    }
+
+    DateTime? parseDate(dynamic val) {
+      if (val is Timestamp) return val.toDate();
+      if (val is String) return DateTime.tryParse(val);
+      if (val is DateTime) return val;
+      return null;
+    }
+
+    return CashPrizeModel(
+      id: id,
+      childId: data['childId'] as String? ?? '',
+      childName: data['childName'] as String? ?? '',
+      amount: (data['amount'] as num?)?.toInt() ?? 0,
+      status: parseStatus(data['status'] as String? ?? data['statusCode'] as String?),
+      paymentMethod: data['paymentMethod'] as String?,
+      paidBy: data['paidBy'] as String?,
+      paidByName: data['paidByName'] as String?,
+      bankRef: data['bankRef'] as String?,
+      paidAt: parseDate(data['paidAt']),
+      receivedAt: parseDate(data['receivedAt']),
+      familyId: data['familyId'] as String?,
+    );
+  }
+
+  CashPrizeModel copyWith({
+    String? id,
+    String? childId,
+    String? childName,
+    int? amount,
+    CashPrizeStatus? status,
+    String? paymentMethod,
+    String? paidBy,
+    String? paidByName,
+    String? bankRef,
+    DateTime? paidAt,
+    DateTime? receivedAt,
+    String? familyId,
+  }) {
+    return CashPrizeModel(
+      id: id ?? this.id,
+      childId: childId ?? this.childId,
+      childName: childName ?? this.childName,
+      amount: amount ?? this.amount,
+      status: status ?? this.status,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paidBy: paidBy ?? this.paidBy,
+      paidByName: paidByName ?? this.paidByName,
+      bankRef: bankRef ?? this.bankRef,
+      paidAt: paidAt ?? this.paidAt,
+      receivedAt: receivedAt ?? this.receivedAt,
+      familyId: familyId ?? this.familyId,
+    );
+  }
+}
+
+/// Cơ chế Lì xì Thực tế 2-Way Handshake: WAITING_TRANSFER -> PAID -> RECEIVED
+class CashGiftHandshakeEngine {
+  final Map<String, CashPrizeModel> prizes = {};
+
+  CashPrizeModel createPrize({
+    required String prizeId,
+    required String childId,
+    required String childName,
+    required int amount,
+    String? familyId,
+  }) {
+    final prize = CashPrizeModel(
+      id: prizeId,
+      childId: childId,
+      childName: childName,
+      amount: amount,
+      familyId: familyId,
+    );
+    prizes[prizeId] = prize;
+    return prize;
+  }
+
+  void recordGuardianPayout({
+    required String prizeId,
+    required String guardianId,
+    required String guardianName,
+    String? bankRef,
+    String? paymentMethod,
+    bool isGuardian = true,
+  }) {
+    if (!isGuardian) {
+      throw StateError('Chỉ Trưởng bối (Guardian) mới có quyền xác nhận trao tiền mặt!');
+    }
+    final prize = prizes[prizeId];
+    if (prize == null) throw Exception('Giải thưởng không tồn tại');
+    if (prize.status == CashPrizeStatus.cancelled) {
+      throw StateError('Giải thưởng đã bị hủy bỏ');
+    }
+
+    prize.status = CashPrizeStatus.paid;
+    prize.paymentMethod = paymentMethod ?? (bankRef != null ? 'VIETQR' : 'CASH');
+    prize.paidBy = guardianId;
+    prize.paidByName = guardianName;
+    if (bankRef != null) prize.bankRef = bankRef;
+    prize.paidAt = DateTime.now();
+  }
+
+  void guardianConfirmCashPayment({
+    required String prizeId,
+    required String guardianId,
+    required String guardianName,
+    required bool isGuardian,
+  }) {
+    recordGuardianPayout(
+      prizeId: prizeId,
+      guardianId: guardianId,
+      guardianName: guardianName,
+      paymentMethod: 'CASH',
+      isGuardian: isGuardian,
+    );
+  }
+
+  void guardianConfirmVietQrTransfer({
+    required String prizeId,
+    required String guardianId,
+    required String guardianName,
+    required String bankRef,
+    required bool isGuardian,
+  }) {
+    recordGuardianPayout(
+      prizeId: prizeId,
+      guardianId: guardianId,
+      guardianName: guardianName,
+      bankRef: bankRef,
+      paymentMethod: 'VIETQR',
+      isGuardian: isGuardian,
+    );
+  }
+
+  void confirmChildReceipt({
+    required String prizeId,
+    required String childId,
+  }) {
+    final prize = prizes[prizeId];
+    if (prize == null) throw Exception('Giải thưởng không tồn tại');
+
+    if (prize.childId != childId) {
+      throw StateError('Chỉ người nhận giải thưởng mới có quyền bấm xác nhận nhận tiền!');
+    }
+
+    if (prize.status == CashPrizeStatus.waitingTransfer) {
+      throw StateError('Không thể xác nhận nhận tiền khi Trưởng bối chưa thực hiện thanh toán!');
+    }
+
+    if (prize.status == CashPrizeStatus.received) {
+      return;
+    }
+
+    prize.status = CashPrizeStatus.received;
+    prize.receivedAt = DateTime.now();
+  }
+
+  void childConfirmReceipt({
+    required String prizeId,
+    required String childId,
+  }) {
+    confirmChildReceipt(prizeId: prizeId, childId: childId);
+  }
+
+  void reset() {
+    prizes.clear();
+  }
+}
+
+/// Accelerometer Sensor Debounce Engine with 3.0s cooldown & mutex lock
+class AccelerometerShakeEngine {
+  static const double minG = 15.0;
+  static const double minDeltaG = 4.5;
+  static const Duration cooldown = Duration(milliseconds: 3000);
+
+  int shakeCount = 0;
+  DateTime? lastShakeTime;
+  bool _isProcessingShake = false;
+  bool isShakingPhase = true;
+
+  bool get isProcessingShake => _isProcessingShake;
+
+  void reset() {
+    shakeCount = 0;
+    lastShakeTime = null;
+    _isProcessingShake = false;
+    isShakingPhase = true;
+  }
+
+  Future<bool> handleSensorEvent({
+    required double x,
+    required double y,
+    required double z,
+    DateTime? eventTime,
+  }) async {
+    if (!isShakingPhase) return false;
+
+    final g = sqrt(x * x + y * y + z * z);
+    final deltaG = (g - 9.81).abs();
+
+    // Ngưỡng phát hiện gia tốc: g > 15.0 và deltaG > 4.5
+    if (g <= minG || deltaG <= minDeltaG) {
+      return false;
+    }
+
+    final now = eventTime ?? DateTime.now();
+
+    // Kiểm tra cooldown 3.0 giây
+    if (lastShakeTime != null && now.difference(lastShakeTime!) < cooldown) {
+      return false;
+    }
+
+    // Mutex lock
+    if (_isProcessingShake) {
+      return false;
+    }
+
+    _isProcessingShake = true;
+    try {
+      lastShakeTime = now;
+      shakeCount++;
+      await Future.delayed(const Duration(milliseconds: 10));
+      return true;
+    } finally {
+      _isProcessingShake = false;
+    }
+  }
+}
+
 /// Dịch vụ quản lý Hũ Niềm Vui Gia Đình (Realtime Jackpot & Shake)
 /// Hỗ trợ cảm biến gia tốc ngoại vi (lắc điện thoại thật) + Realtime Firestore
 class FamilyJackpotService extends ChangeNotifier {
@@ -35,7 +351,6 @@ class FamilyJackpotService extends ChangeNotifier {
   StreamSubscription<AccelerometerEvent>? _sensorSub;
   Timer? _countdownTimer;
 
-  DateTime? _lastShakeTime;
   String? _currentFamilyId;
   int _localMyShakeCount = 0;
   bool _isTransitioningPhase = false;
@@ -54,6 +369,18 @@ class FamilyJackpotService extends ChangeNotifier {
     memberWallets: {},
     memberBanks: {},
   );
+
+  final AccelerometerShakeEngine shakeEngine = AccelerometerShakeEngine();
+  final CashGiftHandshakeEngine handshakeEngine = CashGiftHandshakeEngine();
+
+  bool get isProcessingShake => shakeEngine.isProcessingShake;
+  int get shakeCount => shakeEngine.shakeCount;
+  DateTime? get lastShakeTime => shakeEngine.lastShakeTime;
+  bool get isShakingPhase => shakeEngine.isShakingPhase;
+  set isShakingPhase(bool val) => shakeEngine.isShakingPhase = val;
+  AccelerometerShakeEngine get accelerometerEngine => shakeEngine;
+  CashGiftHandshakeEngine get cashGiftEngine => handshakeEngine;
+  Map<String, CashPrizeModel> get cashPrizes => handshakeEngine.prizes;
 
   FamilyJackpotModel get jackpot => _jackpot;
   int get myShakeCount => _localMyShakeCount;
@@ -347,18 +674,16 @@ class FamilyJackpotService extends ChangeNotifier {
   void _startSensorListener() {
     _sensorSub?.cancel();
     try {
-      _sensorSub = accelerometerEventStream().listen((event) {
+      _sensorSub = accelerometerEventStream().listen((event) async {
         if (!_jackpot.isShaking) return;
-        // Tính độ lớn gia tốc tổng hợp (Magnitude) và độ lệch so với trọng lực Trái Đất (9.81 m/s2)
-        final g = sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
-        final deltaG = (g - 9.81).abs();
-        // Ngưỡng nhạy vừa tầm lắc cổ tay trên điện thoại thật: deltaG > 3.2 m/s2 hoặc g > 13.0 m/s2
-        if (deltaG > 3.2 || g > 13.0) {
-          final now = DateTime.now();
-          if (_lastShakeTime == null || now.difference(_lastShakeTime!).inMilliseconds > 220) {
-            _lastShakeTime = now;
-            recordShake();
-          }
+        shakeEngine.isShakingPhase = _jackpot.isShaking;
+        final accepted = await shakeEngine.handleSensorEvent(
+          x: event.x,
+          y: event.y,
+          z: event.z,
+        );
+        if (accepted) {
+          recordShake();
         }
       }, onError: (e) {
         debugPrint('Accelerometer not available on this platform: $e');
@@ -366,6 +691,25 @@ class FamilyJackpotService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Sensor init skipped: $e');
     }
+  }
+
+  /// Xử lý sự kiện cảm biến gia tốc với debounce 3.0s, physics thresholds (g > 15.0 & deltaG > 4.5) và mutex lock
+  Future<bool> handleSensorEvent({
+    required double x,
+    required double y,
+    required double z,
+    DateTime? eventTime,
+  }) async {
+    final accepted = await shakeEngine.handleSensorEvent(
+      x: x,
+      y: y,
+      z: z,
+      eventTime: eventTime,
+    );
+    if (accepted && canUseJackpot && _jackpot.isShaking) {
+      recordShake();
+    }
+    return accepted;
   }
 
   /// Ghi nhận 1 lần lắc (từ cảm biến hoặc từ nút bấm Lắc Ngay trên màn hình)
@@ -622,6 +966,8 @@ class FamilyJackpotService extends ChangeNotifier {
 
     _localMyShakeCount = 0;
     _isTransitioningPhase = false;
+    shakeEngine.reset();
+    shakeEngine.isShakingPhase = true;
     final startTime = DateTime.now();
 
     final updatedNames = <String, String>{
@@ -1071,6 +1417,7 @@ class FamilyJackpotService extends ChangeNotifier {
     _localMyShakeCount = 0;
     _isTransitioningPhase = false;
     _stopCountdownTimer();
+    shakeEngine.reset();
 
     _jackpot = _jackpot.copyWith(
       totalPoolAmount: 0,
@@ -1129,6 +1476,144 @@ class FamilyJackpotService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Save jackpot error: $e');
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // REAL-WORLD CASH GIFT TWO-WAY HANDSHAKE (Lì xì thực tế ngoài đời)
+  // ---------------------------------------------------------------------------
+
+  /// Tạo bản ghi giải thưởng tiền mặt chờ trao: WAITING_TRANSFER
+  CashPrizeModel createCashPrize({
+    required String prizeId,
+    required String childId,
+    required String childName,
+    required int amount,
+    String? familyId,
+  }) {
+    final targetFamilyId = familyId ?? _currentFamilyId ?? 'f1';
+    final prize = handshakeEngine.createPrize(
+      prizeId: prizeId,
+      childId: childId,
+      childName: childName,
+      amount: amount,
+      familyId: targetFamilyId,
+    );
+    if (_firestore != null) {
+      try {
+        _firestore!
+            .collection('families')
+            .doc(targetFamilyId)
+            .collection('cash_prizes')
+            .doc(prizeId)
+            .set(prize.toMap());
+      } catch (e) {
+        debugPrint('Create cash prize error: $e');
+      }
+    }
+    notifyListeners();
+    return prize;
+  }
+
+  /// Trưởng bối xác nhận đã trao lì xì tiền mặt tận tay hoặc chuyển khoản VietQR: -> PAID
+  void recordGuardianPayout({
+    required String prizeId,
+    required String guardianId,
+    required String guardianName,
+    String? bankRef,
+    String? paymentMethod,
+    bool isGuardian = true,
+  }) {
+    handshakeEngine.recordGuardianPayout(
+      prizeId: prizeId,
+      guardianId: guardianId,
+      guardianName: guardianName,
+      bankRef: bankRef,
+      paymentMethod: paymentMethod,
+      isGuardian: isGuardian,
+    );
+    final prize = handshakeEngine.prizes[prizeId];
+    final targetFamilyId = prize?.familyId ?? _currentFamilyId ?? 'f1';
+    if (_firestore != null && prize != null) {
+      try {
+        _firestore!
+            .collection('families')
+            .doc(targetFamilyId)
+            .collection('cash_prizes')
+            .doc(prizeId)
+            .set(prize.toMap(), SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Guardian payout error: $e');
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Trưởng bối đưa tiền mặt tận tay
+  void guardianConfirmCashPayment({
+    required String prizeId,
+    required String guardianId,
+    required String guardianName,
+    required bool isGuardian,
+  }) {
+    recordGuardianPayout(
+      prizeId: prizeId,
+      guardianId: guardianId,
+      guardianName: guardianName,
+      paymentMethod: 'CASH',
+      isGuardian: isGuardian,
+    );
+  }
+
+  /// Trưởng bối chuyển khoản qua VietQR
+  void guardianConfirmVietQrTransfer({
+    required String prizeId,
+    required String guardianId,
+    required String guardianName,
+    required String bankRef,
+    required bool isGuardian,
+  }) {
+    recordGuardianPayout(
+      prizeId: prizeId,
+      guardianId: guardianId,
+      guardianName: guardianName,
+      bankRef: bankRef,
+      paymentMethod: 'VIETQR',
+      isGuardian: isGuardian,
+    );
+  }
+
+  /// Cháu bấm [Đã nhận tiền] xác nhận đã nhận lì xì: -> RECEIVED (Idempotent)
+  void confirmChildReceipt({
+    required String prizeId,
+    required String childId,
+  }) {
+    handshakeEngine.confirmChildReceipt(
+      prizeId: prizeId,
+      childId: childId,
+    );
+    final prize = handshakeEngine.prizes[prizeId];
+    final targetFamilyId = prize?.familyId ?? _currentFamilyId ?? 'f1';
+    if (_firestore != null && prize != null) {
+      try {
+        _firestore!
+            .collection('families')
+            .doc(targetFamilyId)
+            .collection('cash_prizes')
+            .doc(prizeId)
+            .set(prize.toMap(), SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Child confirm receipt error: $e');
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Alias tương thích childConfirmReceipt
+  void childConfirmReceipt({
+    required String prizeId,
+    required String childId,
+  }) {
+    confirmChildReceipt(prizeId: prizeId, childId: childId);
   }
 
   @override

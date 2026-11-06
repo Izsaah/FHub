@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/reminder_model.dart';
+import '../services/ai_speech_service.dart';
 import '../services/member_color_helper.dart';
 import 'voice_reminder_player.dart';
 
@@ -30,6 +31,158 @@ class ReminderCard extends StatelessWidget {
     this.onClaim,
     this.onClaimAndComplete,
   });
+
+  Widget _buildTaskTypeBadge(ReminderModel reminder) {
+    final type = reminder.taskType;
+    if (type == TaskType.care) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3E0),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFFFB74D)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.favorite_rounded, size: 12, color: Color(0xFFE65100)),
+            SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                '👵 Chăm sóc Ông Bà',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFE65100),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (type == TaskType.favor) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE1F5FE),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF81D4FA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.volunteer_activism_rounded,
+                size: 12, color: Color(0xFF0277BD)),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                reminder.delegationCount > 0
+                    ? '🤝 Lời nhờ (Chuyển tiếp)'
+                    : '🤝 Việc nhờ vả',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0277BD),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // ASSIGN
+      final stars = reminder.rewardStars;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF8E1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFFFD54F)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.stars_rounded, size: 13, color: Color(0xFFF57F17)),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                stars > 0 ? '⭐ Giao việc (+$stars sao)' : '🎯 Giao việc',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFE65100),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Widget? _buildStatusBadge(ReminderModel reminder) {
+    if (reminder.isSubmitted) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEDE7F6),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFB39DDB)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                '📸 Chờ duyệt ảnh',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF5E35B1),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (reminder.isRejected) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFEBEE),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFFFCDD2)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                '❌ Cần làm lại',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFBA1A1A),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return null;
+  }
 
   IconData _getIconForTitle(String title) {
     if (reminder.hasVoiceNote) {
@@ -96,6 +249,7 @@ class ReminderCard extends StatelessWidget {
         final isLockedCompletion =
             !isCompleted && isAssignedToMe && isFuture;
         final canDelete = onDelete != null;
+        final isCare = reminder.isCare;
 
         const primaryColor = Color(0xFF0D7A68);
         const textPrimary = Color(0xFF151D1B);
@@ -104,22 +258,33 @@ class ReminderCard extends StatelessWidget {
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isCare ? const Color(0xFFFFFDF7) : Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isCompleted
-                  ? const Color(0xFFE2EAE7)
-                  : (reminder.isOverdue
-                      ? const Color(0xFFFFCDD2)
-                      : const Color(0x80BDC9C4)),
+              color: isCare
+                  ? const Color(0xFFE65100)
+                  : (isCompleted
+                      ? const Color(0xFFE2EAE7)
+                      : (reminder.isOverdue
+                          ? const Color(0xFFFFCDD2)
+                          : const Color(0x80BDC9C4))),
+              width: isCare ? 2.0 : 1.0,
             ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x0A0D7A68),
-                blurRadius: 10,
-                offset: Offset(0, 4),
-              ),
-            ],
+            boxShadow: isCare
+                ? const [
+                    BoxShadow(
+                      color: Color(0x1AE65100),
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
+                    ),
+                  ]
+                : const [
+                    BoxShadow(
+                      color: Color(0x0A0D7A68),
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
           ),
           child: Material(
             color: Colors.transparent,
@@ -136,24 +301,31 @@ class ReminderCard extends StatelessWidget {
                       children: [
                         // Icon avatar
                         Container(
-                          width: 44,
-                          height: 44,
+                          width: isCare ? 50 : 44,
+                          height: isCare ? 50 : 44,
                           decoration: BoxDecoration(
-                            color: isCompleted
-                                ? const Color(0xFFE7F0EC)
-                                : (reminder.requiresProofImage
-                                    ? const Color(0xFFE6F4F1)
-                                    : const Color(0xFFF3FBF8)),
-                            borderRadius: BorderRadius.circular(12),
+                            color: isCare
+                                ? const Color(0xFFFFE0B2)
+                                : (isCompleted
+                                    ? const Color(0xFFE7F0EC)
+                                    : (reminder.requiresProofImage
+                                        ? const Color(0xFFE6F4F1)
+                                        : const Color(0xFFF3FBF8))),
+                            borderRadius:
+                                BorderRadius.circular(isCare ? 16 : 12),
                           ),
                           child: Icon(
                             isCompleted
                                 ? Icons.check_circle
-                                : _getIconForTitle(reminder.title),
-                            color: isCompleted
-                                ? primaryColor
-                                : const Color(0xFF005F50),
-                            size: 24,
+                                : (isCare
+                                    ? Icons.health_and_safety_rounded
+                                    : _getIconForTitle(reminder.title)),
+                            color: isCare
+                                ? const Color(0xFFBF360C)
+                                : (isCompleted
+                                    ? primaryColor
+                                    : const Color(0xFF005F50)),
+                            size: isCare ? 28 : 24,
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -169,11 +341,16 @@ class ReminderCard extends StatelessWidget {
                                     child: Text(
                                       reminder.title,
                                       style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
+                                        fontSize: isCare ? 19 : 16,
+                                        fontWeight: isCare
+                                            ? FontWeight.w800
+                                            : FontWeight.w600,
                                         color: isCompleted
                                             ? textMuted
-                                            : textPrimary,
+                                            : (isCare
+                                                ? const Color(0xFF2E1500)
+                                                : textPrimary),
+                                        height: isCare ? 1.3 : null,
                                         decoration: isCompleted
                                             ? TextDecoration.lineThrough
                                             : null,
@@ -216,6 +393,9 @@ class ReminderCard extends StatelessWidget {
                                 runSpacing: 4,
                                 crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
+                                  _buildTaskTypeBadge(reminder),
+                                  if (_buildStatusBadge(reminder) != null)
+                                    _buildStatusBadge(reminder)!,
                                   if (showFamilyBadge)
                                     Builder(
                                       builder: (context) {
@@ -451,6 +631,25 @@ class ReminderCard extends StatelessWidget {
                         ),
 
                         // Action buttons
+                        if (isCare) ...[
+                          IconButton(
+                            icon: const Icon(
+                              Icons.volume_up_rounded,
+                              color: Color(0xFFE65100),
+                              size: 28,
+                            ),
+                            tooltip: AppLanguage.text(
+                              'Đọc to lời nhắc cho Ông Bà',
+                              'Speak reminder aloud for Grandparent',
+                            ),
+                            onPressed: () {
+                              AiSpeechPlatform.instance.speak(
+                                "Kính mời Ông Bà: ${reminder.title}",
+                                isEnglish: false,
+                              );
+                            },
+                          ),
+                        ],
                         if (canComplete && onComplete != null)
                           IconButton(
                             icon: Icon(

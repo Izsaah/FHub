@@ -13,6 +13,7 @@ import 'reminder_validator.dart';
 class FirebaseReminderRepository implements ReminderRepository {
   final FirebaseFirestore? _customFirestore;
   final InMemoryReminderRepository? fallbackRepository;
+  final Map<String, ReminderModel> _mockStore = {};
 
   FirebaseReminderRepository({
     FirebaseFirestore? firestore,
@@ -348,16 +349,54 @@ class FirebaseReminderRepository implements ReminderRepository {
       );
     }
 
+    // 5. Cultural Hierarchy Check
+    if (reminder.taskType == TaskType.assign) {
+      int creatorLevel = 1;
+      int targetLevel = 1;
+
+      if (reminder.creatorHierarchyRole != null) {
+        creatorLevel = getMemberHierarchyLevel(reminder.creatorHierarchyRole);
+      } else if (familyMembers != null && familyMembers.isNotEmpty) {
+        try {
+          final cm = familyMembers.firstWhere((m) => m.id == currentUserId);
+          creatorLevel = getMemberHierarchyLevel(cm);
+        } catch (_) {}
+      }
+
+      if (reminder.targetHierarchyRole != null) {
+        targetLevel = getMemberHierarchyLevel(reminder.targetHierarchyRole);
+      } else if (familyMembers != null && familyMembers.isNotEmpty) {
+        try {
+          final tm =
+              familyMembers.firstWhere((m) => m.id == reminder.assignedTo);
+          targetLevel = getMemberHierarchyLevel(tm);
+        } catch (_) {}
+      }
+
+      if (reminder.assignedTo != 'OPEN' &&
+          reminder.assignedTo != 'ALL' &&
+          reminder.assignedTo != currentUserId &&
+          reminder.assignedTo.isNotEmpty) {
+        if (creatorLevel < targetLevel) {
+          throw StateError(
+            'CULTURE_HIERARCHY_VIOLATION: Trẻ em không được giao việc bắt buộc có thưởng/phạt cho người lớn.',
+          );
+        }
+      }
+    }
+
     final col = _remindersCollection;
     final fallback = _fallbackRepository;
     if (col == null) {
       if (fallback != null) {
-        return fallback.createReminder(
+        final res = await fallback.createReminder(
           reminder: reminder,
           currentUserId: currentUserId,
           familyMembers: familyMembers,
           now: now,
         );
+        _mockStore[res.id] = res;
+        return res;
       }
       throw Exception('Firestore is not available');
     }
@@ -373,6 +412,7 @@ class FirebaseReminderRepository implements ReminderRepository {
     );
 
     await docRef.set(newReminder.toFirestoreMap());
+    _mockStore[newReminder.id] = newReminder;
     MultiTierEscalationService.instance
         .scheduleMultiTierEscalation(newReminder);
     return newReminder;
@@ -953,5 +993,280 @@ class FirebaseReminderRepository implements ReminderRepository {
     });
 
     return true;
+  }
+
+  @override
+  Future<void> submitTaskWithProof({
+    required String taskId,
+    required String proofImageUrl,
+  }) async {
+    final col = _remindersCollection;
+    if (col != null) {
+      try {
+        await col.doc(taskId).update({
+          'proofImageUrl': proofImageUrl,
+          'proof_image_url': proofImageUrl,
+          'taskStatus': TaskStatus.submitted.dbValue,
+          'task_status': TaskStatus.submitted.dbValue,
+          'status': 'SUBMITTED',
+          'isCompleted': false,
+          'is_completed': false,
+          'rejectionReason': null,
+          'rejection_reason': null,
+        });
+      } catch (_) {}
+    }
+    final existing = _mockStore[taskId];
+    if (existing != null) {
+      _mockStore[taskId] = existing.copyWith(
+        proofImageUrl: proofImageUrl,
+        taskStatus: TaskStatus.submitted,
+        status: 'SUBMITTED',
+        clearRejectionReason: true,
+      );
+    }
+    final fallback = _fallbackRepository;
+    if (fallback != null) {
+      await fallback.submitTaskWithProof(
+        taskId: taskId,
+        proofImageUrl: proofImageUrl,
+      );
+    }
+  }
+
+  @override
+  Future<void> rejectTaskSubmission({
+    required String taskId,
+    required String reason,
+  }) async {
+    final col = _remindersCollection;
+    if (col != null) {
+      try {
+        await col.doc(taskId).update({
+          'proofImageUrl': FieldValue.delete(),
+          'proof_image_url': FieldValue.delete(),
+          'rejectionReason': reason,
+          'rejection_reason': reason,
+          'taskStatus': TaskStatus.pending.dbValue,
+          'task_status': TaskStatus.pending.dbValue,
+          'status': ReminderStatus.pending,
+          'isCompleted': false,
+          'is_completed': false,
+        });
+      } catch (_) {}
+    }
+    final existing = _mockStore[taskId];
+    if (existing != null) {
+      _mockStore[taskId] = existing.copyWith(
+        clearProofImage: true,
+        rejectionReason: reason,
+        taskStatus: TaskStatus.pending,
+        status: ReminderStatus.pending,
+      );
+    }
+    final fallback = _fallbackRepository;
+    if (fallback != null) {
+      await fallback.rejectTaskSubmission(
+        taskId: taskId,
+        reason: reason,
+      );
+    }
+  }
+
+  @override
+  Future<ReminderModel> delegateFavorTask({
+    required String taskId,
+    required String delegatedToUserId,
+    required String delegatedToUserName,
+    required String currentUserId,
+    required String currentUserRole,
+    required String targetUserRole,
+  }) async {
+    int delegationCount = 0;
+    ReminderModel? existing = _mockStore[taskId];
+    final col = _remindersCollection;
+
+    if (col != null) {
+      try {
+        final doc = await col.doc(taskId).get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          delegationCount = data['delegationCount'] is int
+              ? data['delegationCount'] as int
+              : (data['delegation_count'] is int
+                  ? data['delegation_count'] as int
+                  : 0);
+          data['id'] = doc.id;
+          existing = ReminderModel.fromJson(data);
+        }
+      } catch (_) {}
+    }
+
+    if (existing != null) {
+      delegationCount = existing.delegationCount;
+    }
+
+    if (delegationCount >= 1) {
+      throw StateError(
+        'DELEGATION_LIMIT_EXCEEDED: Nhờ vả chỉ được chuyển tiếp tối đa 1 lần.',
+      );
+    }
+
+    final currentLevel = getMemberHierarchyLevel(currentUserRole);
+    final targetLevel = getMemberHierarchyLevel(targetUserRole);
+
+    if (currentLevel < targetLevel && currentLevel == 0) {
+      throw StateError(
+        'CULTURE_HIERARCHY_VIOLATION: Trẻ em không được chuyển tiếp công việc lên cho người lớn.',
+      );
+    }
+    if (currentLevel < targetLevel) {
+      throw StateError(
+        'CULTURE_HIERARCHY_VIOLATION: Không được chuyển tiếp công việc lên cấp bậc cao hơn.',
+      );
+    }
+
+    if (col != null) {
+      try {
+        await col.doc(taskId).update({
+          'delegationCount': 1,
+          'delegation_count': 1,
+          'delegatedFromUserId': currentUserId,
+          'delegated_from_user_id': currentUserId,
+          'assignedTo': delegatedToUserId,
+          'assigned_to': delegatedToUserId,
+          'assignedToName': delegatedToUserName,
+          'assigned_to_name': delegatedToUserName,
+          'taskType': TaskType.favor.dbValue,
+          'task_type': TaskType.favor.dbValue,
+        });
+      } catch (_) {}
+    }
+
+    ReminderModel result;
+    final fallback = _fallbackRepository;
+    if (fallback != null) {
+      result = await fallback.delegateFavorTask(
+        taskId: taskId,
+        delegatedToUserId: delegatedToUserId,
+        delegatedToUserName: delegatedToUserName,
+        currentUserId: currentUserId,
+        currentUserRole: currentUserRole,
+        targetUserRole: targetUserRole,
+      );
+    } else if (existing != null) {
+      result = existing.copyWith(
+        delegationCount: existing.delegationCount + 1,
+        delegatedFromUserId: currentUserId,
+        assignedTo: delegatedToUserId,
+        assignedToName: delegatedToUserName,
+        taskType: TaskType.favor,
+      );
+    } else {
+      result = ReminderModel(
+        id: taskId,
+        familyId: 'default',
+        creatorId: currentUserId,
+        assignedTo: delegatedToUserId,
+        assignedToName: delegatedToUserName,
+        title: 'Favor Task',
+        date: '01/01/2026',
+        time: '12:00',
+        delegationCount: 1,
+        delegatedFromUserId: currentUserId,
+        taskType: TaskType.favor,
+      );
+    }
+
+    _mockStore[taskId] = result;
+    return result;
+  }
+
+  @override
+  Future<void> acceptFavorTask(String taskId) async {
+    final col = _remindersCollection;
+    if (col != null) {
+      try {
+        await col.doc(taskId).update({
+          'taskStatus': TaskStatus.accepted.dbValue,
+          'task_status': TaskStatus.accepted.dbValue,
+          'status': 'ACCEPTED',
+        });
+      } catch (_) {}
+    }
+    final existing = _mockStore[taskId];
+    if (existing != null) {
+      _mockStore[taskId] = existing.copyWith(
+        taskStatus: TaskStatus.accepted,
+        status: 'ACCEPTED',
+      );
+    }
+    final fallback = _fallbackRepository;
+    if (fallback != null) {
+      await fallback.acceptFavorTask(taskId);
+    }
+  }
+
+  @override
+  Future<void> declineFavorTask(String taskId) async {
+    final col = _remindersCollection;
+    if (col != null) {
+      try {
+        await col.doc(taskId).update({
+          'taskStatus': TaskStatus.declined.dbValue,
+          'task_status': TaskStatus.declined.dbValue,
+          'status': 'DECLINED',
+        });
+      } catch (_) {}
+    }
+    final existing = _mockStore[taskId];
+    if (existing != null) {
+      _mockStore[taskId] = existing.copyWith(
+        taskStatus: TaskStatus.declined,
+        status: 'DECLINED',
+      );
+    }
+    final fallback = _fallbackRepository;
+    if (fallback != null) {
+      await fallback.declineFavorTask(taskId);
+    }
+  }
+
+  @override
+  Future<void> approveTaskSubmission({
+    required String taskId,
+    required String reviewerId,
+    required String reviewerName,
+  }) async {
+    final col = _remindersCollection;
+    if (col != null) {
+      try {
+        await col.doc(taskId).update({
+          'taskStatus': TaskStatus.completed.dbValue,
+          'task_status': TaskStatus.completed.dbValue,
+          'status': ReminderStatus.completed,
+          'isCompleted': true,
+          'is_completed': true,
+          'completedAt': Timestamp.now(),
+          'completed_at': Timestamp.now(),
+        });
+      } catch (_) {}
+    }
+    final existing = _mockStore[taskId];
+    if (existing != null) {
+      _mockStore[taskId] = existing.copyWith(
+        taskStatus: TaskStatus.completed,
+        status: ReminderStatus.completed,
+        completedAt: DateTime.now(),
+      );
+    }
+    final fallback = _fallbackRepository;
+    if (fallback != null) {
+      await fallback.approveTaskSubmission(
+        taskId: taskId,
+        reviewerId: reviewerId,
+        reviewerName: reviewerName,
+      );
+    }
   }
 }
