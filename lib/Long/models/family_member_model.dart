@@ -14,6 +14,8 @@ class FamilyMemberModel {
   DateTime? lastActiveAt;
   DateTime? lastCheckInAt;
   String? lastCheckInDate;
+  bool isKid;
+  int rewardStarsTotal;
 
   FamilyMemberModel({
     required this.familyId,
@@ -24,7 +26,9 @@ class FamilyMemberModel {
     this.lastActiveAt,
     this.lastCheckInAt,
     this.lastCheckInDate,
-  });
+    bool? isKid,
+    this.rewardStarsTotal = 0,
+  }) : isKid = isKid ?? (hierarchyRole == HierarchyRole.child);
 
   String get memberRole => hierarchyRole.code;
 
@@ -36,6 +40,9 @@ class FamilyMemberModel {
   bool get isGrandparent => hierarchyRole == HierarchyRole.grandparent;
   bool get isParent => hierarchyRole == HierarchyRole.parent;
   bool get isChild => hierarchyRole == HierarchyRole.child;
+
+  /// Guardian bao gồm: Chủ hộ (Owner), Bố Mẹ (Parent), và Ông Bà (Grandparent)
+  bool get isGuardian => isOwner || isParent || isGrandparent;
 
   bool get isCheckedInToday {
     if (!isActive) return false;
@@ -77,11 +84,28 @@ class FamilyMemberModel {
     final lastCheckInDateRaw =
         json['last_check_in_date'] ?? json['lastCheckInDate'];
 
+    final hierarchyRole = HierarchyRole.fromString(hierarchyRaw?.toString());
+
+    // isKid parsing with safe fallback to child role check
+    final rawIsKid = json['isKid'] ?? json['is_kid'];
+    final bool? parsedIsKid = rawIsKid != null
+        ? (rawIsKid == true || rawIsKid.toString().toLowerCase() == 'true')
+        : null;
+
+    // rewardStarsTotal parsing with default 0
+    final rawStars = json['rewardStarsTotal'] ??
+        json['reward_stars_total'] ??
+        json['stars'] ??
+        json['rewardStars'];
+    final int parsedStars = (rawStars is num)
+        ? rawStars.toInt()
+        : int.tryParse(rawStars?.toString() ?? '0') ?? 0;
+
     return FamilyMemberModel(
       familyId: (json['family_id'] ?? json['familyId'])?.toString() ?? '',
       user: UserModel.fromJson(json['user'] ?? {}),
       role: isOwner ? Role.owner : Role.member,
-      hierarchyRole: HierarchyRole.fromString(hierarchyRaw?.toString()),
+      hierarchyRole: hierarchyRole,
       status: MemberStatus.fromString(statusRaw),
       lastActiveAt: lastActiveRaw != null
           ? (lastActiveRaw is DateTime
@@ -94,17 +118,29 @@ class FamilyMemberModel {
               : DateTime.tryParse(lastCheckInRaw.toString()))
           : null,
       lastCheckInDate: lastCheckInDateRaw?.toString(),
+      isKid: parsedIsKid,
+      rewardStarsTotal: parsedStars,
     );
   }
+
+  factory FamilyMemberModel.fromMap(Map<String, dynamic> map) =>
+      FamilyMemberModel.fromJson(map);
 
   Map<String, dynamic> toJson() {
     return {
       'family_id': familyId,
+      'familyId': familyId,
       'user_id': user.id,
+      'userId': user.id,
       'role': role.name.toUpperCase(),
       'hierarchy_role': hierarchyRole.code,
+      'hierarchyRole': hierarchyRole.code,
       'member_role': hierarchyRole.code,
       'status': status.code,
+      'is_kid': isKid,
+      'isKid': isKid,
+      'reward_stars_total': rewardStarsTotal,
+      'rewardStarsTotal': rewardStarsTotal,
       'last_active_at': lastActiveAt?.toIso8601String(),
       'last_check_in_at': lastCheckInAt?.toIso8601String(),
       'last_check_in_date': lastCheckInDate ??
@@ -113,6 +149,8 @@ class FamilyMemberModel {
               : null),
     };
   }
+
+  Map<String, dynamic> toMap() => toJson();
 
   FamilyMemberModel copyWith({
     String? familyId,
@@ -123,6 +161,8 @@ class FamilyMemberModel {
     DateTime? lastActiveAt,
     DateTime? lastCheckInAt,
     String? lastCheckInDate,
+    bool? isKid,
+    int? rewardStarsTotal,
   }) {
     return FamilyMemberModel(
       familyId: familyId ?? this.familyId,
@@ -133,6 +173,8 @@ class FamilyMemberModel {
       lastActiveAt: lastActiveAt ?? this.lastActiveAt,
       lastCheckInAt: lastCheckInAt ?? this.lastCheckInAt,
       lastCheckInDate: lastCheckInDate ?? this.lastCheckInDate,
+      isKid: isKid ?? this.isKid,
+      rewardStarsTotal: rewardStarsTotal ?? this.rewardStarsTotal,
     );
   }
 }

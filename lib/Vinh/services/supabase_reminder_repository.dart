@@ -725,4 +725,130 @@ class SupabaseReminderRepository implements ReminderRepository {
       );
     }
   }
+
+  @override
+  Future<void> submitTaskWithProof({
+    required String taskId,
+    required String proofImageUrl,
+  }) async {
+    final client = _client;
+    if (client != null) {
+      try {
+        await client.from('reminders').update({
+          'proof_image_url': proofImageUrl,
+          'task_status': TaskStatus.submitted.dbValue,
+          'status': 'SUBMITTED',
+          'rejection_reason': null,
+        }).eq('id', taskId);
+      } catch (_) {}
+    }
+    await _fallbackRepository.submitTaskWithProof(
+      taskId: taskId,
+      proofImageUrl: proofImageUrl,
+    );
+  }
+
+  @override
+  Future<void> rejectTaskSubmission({
+    required String taskId,
+    required String reason,
+  }) async {
+    final client = _client;
+    if (client != null) {
+      try {
+        await client.from('reminders').update({
+          'proof_image_url': null,
+          'rejection_reason': reason,
+          'task_status': TaskStatus.pending.dbValue,
+          'status': ReminderStatus.pending,
+        }).eq('id', taskId);
+      } catch (_) {}
+    }
+    await _fallbackRepository.rejectTaskSubmission(
+      taskId: taskId,
+      reason: reason,
+    );
+  }
+
+  @override
+  Future<ReminderModel> delegateFavorTask({
+    required String taskId,
+    required String delegatedToUserId,
+    required String delegatedToUserName,
+    required String currentUserId,
+    required String currentUserRole,
+    required String targetUserRole,
+  }) async {
+    final client = _client;
+    if (client != null) {
+      try {
+        await client.from('reminders').update({
+          'assigned_to': delegatedToUserId,
+          'assigned_to_name': delegatedToUserName,
+          'delegation_count': 1,
+          'delegated_from_user_id': currentUserId,
+          'task_type': TaskType.favor.dbValue,
+        }).eq('id', taskId);
+      } catch (_) {}
+    }
+    return _fallbackRepository.delegateFavorTask(
+      taskId: taskId,
+      delegatedToUserId: delegatedToUserId,
+      delegatedToUserName: delegatedToUserName,
+      currentUserId: currentUserId,
+      currentUserRole: currentUserRole,
+      targetUserRole: targetUserRole,
+    );
+  }
+
+  @override
+  Future<void> acceptFavorTask(String taskId) async {
+    final client = _client;
+    if (client != null) {
+      try {
+        await client.from('reminders').update({
+          'task_status': TaskStatus.accepted.dbValue,
+          'status': 'ACCEPTED',
+        }).eq('id', taskId);
+      } catch (_) {}
+    }
+    await _fallbackRepository.acceptFavorTask(taskId);
+  }
+
+  @override
+  Future<void> declineFavorTask(String taskId) async {
+    final client = _client;
+    if (client != null) {
+      try {
+        await client.from('reminders').update({
+          'task_status': TaskStatus.declined.dbValue,
+          'status': 'DECLINED',
+        }).eq('id', taskId);
+      } catch (_) {}
+    }
+    await _fallbackRepository.declineFavorTask(taskId);
+  }
+
+  @override
+  Future<void> approveTaskSubmission({
+    required String taskId,
+    required String reviewerId,
+    required String reviewerName,
+  }) async {
+    final client = _client;
+    if (client != null) {
+      try {
+        await client.from('reminders').update({
+          'task_status': TaskStatus.completed.dbValue,
+          'status': ReminderStatus.completed,
+          'completed_at': DateTime.now().toIso8601String(),
+        }).eq('id', taskId);
+      } catch (_) {}
+    }
+    await _fallbackRepository.approveTaskSubmission(
+      taskId: taskId,
+      reviewerId: reviewerId,
+      reviewerName: reviewerName,
+    );
+  }
 }

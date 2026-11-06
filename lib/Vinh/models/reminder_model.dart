@@ -1,5 +1,134 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+enum TaskType {
+  assign,
+  favor,
+  care;
+
+  bool get isAssign => this == TaskType.assign;
+  bool get isFavor => this == TaskType.favor;
+  bool get isCare => this == TaskType.care;
+
+  String get displayName {
+    switch (this) {
+      case TaskType.assign:
+        return 'Giao việc';
+      case TaskType.favor:
+        return 'Nhờ vả';
+      case TaskType.care:
+        return 'Chăm sóc Ông Bà';
+    }
+  }
+
+  String get dbValue {
+    switch (this) {
+      case TaskType.assign:
+        return 'ASSIGN';
+      case TaskType.favor:
+        return 'FAVOR';
+      case TaskType.care:
+        return 'CARE';
+    }
+  }
+
+  static TaskType fromValue(dynamic value) {
+    if (value is TaskType) return value;
+    if (value == null) return TaskType.assign;
+    final str = value.toString().toUpperCase().trim();
+    if (str.contains('FAVOR')) return TaskType.favor;
+    if (str.contains('CARE')) return TaskType.care;
+    return TaskType.assign;
+  }
+}
+
+enum TaskStatus {
+  pending,
+  inProgress,
+  submitted,
+  accepted,
+  declined,
+  completed,
+  rejected;
+
+  bool get isCompleted => this == TaskStatus.completed;
+  bool get isPending => this == TaskStatus.pending;
+  bool get isSubmitted => this == TaskStatus.submitted;
+  bool get isRejected => this == TaskStatus.rejected;
+  bool get isDeclined => this == TaskStatus.declined;
+
+  String get displayName {
+    switch (this) {
+      case TaskStatus.pending:
+        return 'Chờ thực hiện';
+      case TaskStatus.inProgress:
+        return 'Đang thực hiện';
+      case TaskStatus.submitted:
+        return 'Chờ duyệt';
+      case TaskStatus.accepted:
+        return 'Đã nhận lời';
+      case TaskStatus.declined:
+        return 'Đã từ chối';
+      case TaskStatus.completed:
+        return 'Đã hoàn thành';
+      case TaskStatus.rejected:
+        return 'Yêu cầu làm lại';
+    }
+  }
+
+  String get dbValue {
+    switch (this) {
+      case TaskStatus.pending:
+        return 'PENDING';
+      case TaskStatus.inProgress:
+        return 'IN_PROGRESS';
+      case TaskStatus.submitted:
+        return 'SUBMITTED';
+      case TaskStatus.accepted:
+        return 'ACCEPTED';
+      case TaskStatus.declined:
+        return 'DECLINED';
+      case TaskStatus.completed:
+        return 'COMPLETED';
+      case TaskStatus.rejected:
+        return 'REJECTED';
+    }
+  }
+
+  static TaskStatus fromValue(dynamic value) {
+    if (value is TaskStatus) return value;
+    if (value == null) return TaskStatus.pending;
+    final str = value.toString().toUpperCase().trim();
+    if (str.contains('SUBMITTED')) return TaskStatus.submitted;
+    if (str.contains('ACCEPTED')) return TaskStatus.accepted;
+    if (str.contains('DECLINED')) return TaskStatus.declined;
+    if (str.contains('COMPLETED') || str.contains('APPROVED')) {
+      return TaskStatus.completed;
+    }
+    if (str.contains('REJECTED')) return TaskStatus.rejected;
+    if (str.contains('IN_PROGRESS')) return TaskStatus.inProgress;
+    return TaskStatus.pending;
+  }
+}
+
+enum ReminderCategory {
+  general,
+  chore,
+  favor,
+  care,
+  medication;
+
+  String get dbValue => name.toUpperCase();
+  static ReminderCategory fromValue(dynamic val) {
+    if (val is ReminderCategory) return val;
+    if (val == null) return ReminderCategory.general;
+    final s = val.toString().toLowerCase();
+    for (final c in ReminderCategory.values) {
+      if (s.contains(c.name)) return c;
+    }
+    return ReminderCategory.general;
+  }
+}
+
 class ReminderStatus {
   static const String open = 'OPEN';
   static const String pending = 'PENDING';
@@ -29,6 +158,14 @@ class ReminderModel {
   final String? voiceNoteDescription;
   final DateTime? completedAt;
   final DateTime? createdAt;
+  final TaskType taskType;
+  final TaskStatus taskStatus;
+  final String? rejectionReason;
+  final int delegationCount;
+  final String? delegatedFromUserId;
+  final String? originalTaskId;
+  final String? creatorHierarchyRole;
+  final String? targetHierarchyRole;
 
   const ReminderModel({
     required this.id,
@@ -51,6 +188,14 @@ class ReminderModel {
     this.voiceNoteDescription,
     this.completedAt,
     this.createdAt,
+    this.taskType = TaskType.assign,
+    this.taskStatus = TaskStatus.pending,
+    this.rejectionReason,
+    this.delegationCount = 0,
+    this.delegatedFromUserId,
+    this.originalTaskId,
+    this.creatorHierarchyRole,
+    this.targetHierarchyRole,
   });
 
   bool get hasVoiceNote => voiceNotePath != null && voiceNotePath!.isNotEmpty;
@@ -58,14 +203,38 @@ class ReminderModel {
   bool get hasRewardStars => rewardStars > 0;
 
   bool get isOpen => status == ReminderStatus.open;
-  bool get isPending => status == ReminderStatus.pending;
-  bool get isCompleted => status == ReminderStatus.completed;
+  bool get isPending =>
+      (status == ReminderStatus.pending || status == 'PENDING') &&
+      taskStatus.isPending;
+  bool get isCompleted =>
+      status == ReminderStatus.completed ||
+      status == 'COMPLETED' ||
+      status == 'APPROVED' ||
+      taskStatus.isCompleted;
   bool get isDeleted => status == ReminderStatus.deleted;
   bool get isRecurring => repeatRule != null && repeatRule != 'NONE';
+  bool get isSubmitted => status == 'SUBMITTED' || taskStatus.isSubmitted;
+  bool get isRejected => status == 'REJECTED' || taskStatus.isRejected;
+  bool get isDeclined => status == 'DECLINED' || taskStatus.isDeclined;
+  bool get isAccepted =>
+      status == 'ACCEPTED' || taskStatus == TaskStatus.accepted;
+
+  bool get isAssign => taskType.isAssign;
+  bool get isFavor => taskType.isFavor;
+  bool get isCare => taskType.isCare;
+  bool get canBeDelegated => isFavor && delegationCount < 1;
+  bool get isExemptFromQuietHours =>
+      isCare ||
+      title.toLowerCase().contains('thuốc') ||
+      title.toLowerCase().contains('medicine');
 
   String get statusDisplayName {
     if (isDeleted) return 'Đã xóa';
     if (isCompleted) return 'Đã xong';
+    if (isRejected) return 'Yêu cầu làm lại';
+    if (isSubmitted) return 'Chờ duyệt';
+    if (taskStatus == TaskStatus.accepted) return 'Đã nhận lời';
+    if (taskStatus == TaskStatus.declined) return 'Đã từ chối';
     if (isOverdue) return 'Quá hạn';
     if (isOpen) return 'Đang mở';
     return 'Chờ xử lý';
@@ -185,6 +354,7 @@ class ReminderModel {
     String? repeatRule,
     bool? requiresProofImage,
     String? proofImageUrl,
+    bool clearProofImage = false,
     int? rewardStars,
     String? voiceNotePath,
     int? voiceDurationSeconds,
@@ -192,7 +362,20 @@ class ReminderModel {
     bool clearVoiceNote = false,
     DateTime? completedAt,
     DateTime? createdAt,
+    TaskType? taskType,
+    TaskStatus? taskStatus,
+    String? rejectionReason,
+    bool clearRejectionReason = false,
+    int? delegationCount,
+    String? delegatedFromUserId,
+    String? originalTaskId,
+    String? creatorHierarchyRole,
+    String? targetHierarchyRole,
   }) {
+    final newStatus = status ?? this.status;
+    final newTaskStatus = taskStatus ??
+        (status != null ? TaskStatus.fromValue(status) : this.taskStatus);
+
     return ReminderModel(
       id: id ?? this.id,
       familyId: familyId ?? this.familyId,
@@ -204,10 +387,11 @@ class ReminderModel {
       title: title ?? this.title,
       date: date ?? this.date,
       time: time ?? this.time,
-      status: status ?? this.status,
+      status: newStatus,
       repeatRule: repeatRule ?? this.repeatRule,
       requiresProofImage: requiresProofImage ?? this.requiresProofImage,
-      proofImageUrl: proofImageUrl ?? this.proofImageUrl,
+      proofImageUrl:
+          clearProofImage ? null : (proofImageUrl ?? this.proofImageUrl),
       rewardStars: rewardStars ?? this.rewardStars,
       voiceNotePath:
           clearVoiceNote ? null : (voiceNotePath ?? this.voiceNotePath),
@@ -219,14 +403,41 @@ class ReminderModel {
           : (voiceNoteDescription ?? this.voiceNoteDescription),
       completedAt: completedAt ?? this.completedAt,
       createdAt: createdAt ?? this.createdAt,
+      taskType: taskType ?? this.taskType,
+      taskStatus: newTaskStatus,
+      rejectionReason: clearRejectionReason
+          ? null
+          : (rejectionReason ?? this.rejectionReason),
+      delegationCount: delegationCount ?? this.delegationCount,
+      delegatedFromUserId: delegatedFromUserId ?? this.delegatedFromUserId,
+      originalTaskId: originalTaskId ?? this.originalTaskId,
+      creatorHierarchyRole:
+          creatorHierarchyRole ?? this.creatorHierarchyRole,
+      targetHierarchyRole: targetHierarchyRole ?? this.targetHierarchyRole,
     );
   }
 
   Map<String, dynamic> toMap() => toJson();
+  Map<String, dynamic> toFirestore() => toFirestoreMap();
 
-  factory ReminderModel.fromMap(String id, Map<String, dynamic> data) {
+  factory ReminderModel.fromMap(dynamic idOrMap,
+      [Map<String, dynamic>? maybeData]) {
+    if (idOrMap is String && maybeData != null) {
+      final map = Map<String, dynamic>.from(maybeData);
+      map['id'] = idOrMap;
+      return ReminderModel.fromJson(map);
+    } else if (idOrMap is Map<String, dynamic>) {
+      return ReminderModel.fromJson(idOrMap);
+    } else {
+      throw ArgumentError(
+          'Invalid arguments to ReminderModel.fromMap: $idOrMap');
+    }
+  }
+
+  factory ReminderModel.fromFirestore(DocumentSnapshot doc) {
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
     final map = Map<String, dynamic>.from(data);
-    map['id'] = id;
+    map['id'] = doc.id;
     return ReminderModel.fromJson(map);
   }
 
@@ -236,7 +447,8 @@ class ReminderModel {
     if (rawDate.contains('-')) {
       final parts = rawDate.split('-');
       if (parts.length == 3) {
-        rawDate = '${parts[2].padLeft(2, '0')}/${parts[1].padLeft(2, '0')}/${parts[0]}';
+        rawDate =
+            '${parts[2].padLeft(2, '0')}/${parts[1].padLeft(2, '0')}/${parts[0]}';
       }
     }
 
@@ -245,41 +457,91 @@ class ReminderModel {
       rawTime = rawTime.substring(0, 5);
     }
 
+    final rawTaskType = json['taskType'] ?? json['task_type'];
+    final parsedTaskType = TaskType.fromValue(rawTaskType);
+
+    final rawTaskStatus = json['taskStatus'] ?? json['task_status'];
+    final parsedTaskStatus = rawTaskStatus != null
+        ? TaskStatus.fromValue(rawTaskStatus)
+        : TaskStatus.fromValue(json['status']);
+
+    final delegationCountVal = json['delegationCount'] is int
+        ? json['delegationCount'] as int
+        : (json['delegation_count'] is int
+            ? json['delegation_count'] as int
+            : (int.tryParse(
+                    (json['delegationCount'] ?? json['delegation_count'] ?? 0)
+                        .toString()) ??
+                0));
+
     return ReminderModel(
       id: (json['id'] ?? '').toString(),
       familyId: (json['family_id'] ?? json['familyId'] ?? '').toString(),
       familyName:
           json['family_name'] as String? ?? json['familyName'] as String?,
       creatorId: (json['creator_id'] ?? json['creatorId'] ?? '').toString(),
-      creatorName: json['creator_name'] as String? ?? json['creatorName'] as String?,
+      creatorName:
+          json['creator_name'] as String? ?? json['creatorName'] as String?,
       assignedTo: (json['assigned_to'] ?? json['assignedTo'] ?? '').toString(),
-      assignedToName: (json['assigned_to_name'] ?? json['assignedToName'] ?? '').toString(),
+      assignedToName: (json['assigned_to_name'] ??
+              json['assignedToName'] ??
+              '')
+          .toString(),
       title: json['title'] as String? ?? '',
       date: rawDate,
       time: rawTime,
-      status: json['status'] as String? ?? ReminderStatus.pending,
-      repeatRule: (json['repeat_rule'] ?? json['repeatRule'] ?? 'NONE').toString(),
+      status: json['status'] as String? ?? parsedTaskStatus.dbValue,
+      repeatRule:
+          (json['repeat_rule'] ?? json['repeatRule'] ?? 'NONE').toString(),
       requiresProofImage: json['requires_proof_image'] == true ||
-          json['requiresProofImage'] == true,
+          json['requiresProofImage'] == true ||
+          (json['requires_proof_image'] ?? json['requiresProofImage'])
+                  ?.toString()
+                  .toLowerCase() ==
+              'true' ||
+          (json['requires_proof_image'] ?? json['requiresProofImage']) == 1 ||
+          (json['requires_proof_image'] ?? json['requiresProofImage']) == '1',
       proofImageUrl: json['proof_image_url'] as String? ??
           json['proofImageUrl'] as String?,
       rewardStars: json['reward_stars'] is int
           ? json['reward_stars'] as int
           : (json['rewardStars'] is int
               ? json['rewardStars'] as int
-              : (int.tryParse((json['reward_stars'] ?? json['rewardStars'] ?? 0).toString()) ?? 0)),
-      voiceNotePath: json['voice_note_path'] as String? ?? json['voiceNotePath'] as String?,
+              : (int.tryParse((json['reward_stars'] ??
+                          json['rewardStars'] ??
+                          0)
+                      .toString()) ??
+                  0)),
+      voiceNotePath: json['voice_note_path'] as String? ??
+          json['voiceNotePath'] as String?,
       voiceDurationSeconds: json['voice_duration_seconds'] is int
           ? json['voice_duration_seconds'] as int
           : (json['voiceDurationSeconds'] is int
               ? json['voiceDurationSeconds'] as int
-              : (json['voice_duration_seconds'] != null
-                  ? int.tryParse(json['voice_duration_seconds'].toString())
-                  : null)),
+              : (num.tryParse((json['voice_duration_seconds'] ??
+                          json['voiceDurationSeconds'] ??
+                          '')
+                      .toString())
+                  ?.toInt())),
       voiceNoteDescription: json['voice_note_description'] as String? ??
           json['voiceNoteDescription'] as String?,
-      completedAt: _parseDateTime(json['completed_at'] ?? json['completedAt']),
+      completedAt:
+          _parseDateTime(json['completed_at'] ?? json['completedAt']),
       createdAt: _parseDateTime(json['created_at'] ?? json['createdAt']),
+      taskType: parsedTaskType,
+      taskStatus: parsedTaskStatus,
+      rejectionReason: (json['rejectionReason'] ?? json['rejection_reason'])
+          as String?,
+      delegationCount: delegationCountVal,
+      delegatedFromUserId: (json['delegatedFromUserId'] ??
+          json['delegated_from_user_id'] ??
+          json['delegatedFromId']) as String?,
+      originalTaskId:
+          (json['originalTaskId'] ?? json['original_task_id']) as String?,
+      creatorHierarchyRole: (json['creatorHierarchyRole'] ??
+          json['creator_hierarchy_role']) as String?,
+      targetHierarchyRole: (json['targetHierarchyRole'] ??
+          json['target_hierarchy_role']) as String?,
     );
   }
 
@@ -338,6 +600,32 @@ class ReminderModel {
       'completed_at': completedAt?.toIso8601String(),
       'createdAt': createdAt?.toIso8601String(),
       'created_at': createdAt?.toIso8601String(),
+      'taskType': taskType.dbValue,
+      'task_type': taskType.dbValue,
+      'taskStatus': taskStatus.dbValue,
+      'task_status': taskStatus.dbValue,
+      if (rejectionReason != null) ...{
+        'rejectionReason': rejectionReason,
+        'rejection_reason': rejectionReason,
+      },
+      'delegationCount': delegationCount,
+      'delegation_count': delegationCount,
+      if (delegatedFromUserId != null) ...{
+        'delegatedFromUserId': delegatedFromUserId,
+        'delegated_from_user_id': delegatedFromUserId,
+      },
+      if (originalTaskId != null) ...{
+        'originalTaskId': originalTaskId,
+        'original_task_id': originalTaskId,
+      },
+      if (creatorHierarchyRole != null) ...{
+        'creatorHierarchyRole': creatorHierarchyRole,
+        'creator_hierarchy_role': creatorHierarchyRole,
+      },
+      if (targetHierarchyRole != null) ...{
+        'targetHierarchyRole': targetHierarchyRole,
+        'target_hierarchy_role': targetHierarchyRole,
+      },
     };
   }
 
@@ -365,6 +653,17 @@ class ReminderModel {
         'voice_note_description': voiceNoteDescription,
       if (completedAt != null) 'completed_at': completedAt?.toIso8601String(),
       if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
+      'task_type': taskType.dbValue,
+      'task_status': taskStatus.dbValue,
+      if (rejectionReason != null) 'rejection_reason': rejectionReason,
+      'delegation_count': delegationCount,
+      if (delegatedFromUserId != null)
+        'delegated_from_user_id': delegatedFromUserId,
+      if (originalTaskId != null) 'original_task_id': originalTaskId,
+      if (creatorHierarchyRole != null)
+        'creator_hierarchy_role': creatorHierarchyRole,
+      if (targetHierarchyRole != null)
+        'target_hierarchy_role': targetHierarchyRole,
     };
   }
 
@@ -415,6 +714,32 @@ class ReminderModel {
         'createdAt': Timestamp.fromDate(createdAt!),
         'created_at': Timestamp.fromDate(createdAt!),
       },
+      'taskType': taskType.dbValue,
+      'task_type': taskType.dbValue,
+      'taskStatus': taskStatus.dbValue,
+      'task_status': taskStatus.dbValue,
+      if (rejectionReason != null) ...{
+        'rejectionReason': rejectionReason,
+        'rejection_reason': rejectionReason,
+      },
+      'delegationCount': delegationCount,
+      'delegation_count': delegationCount,
+      if (delegatedFromUserId != null) ...{
+        'delegatedFromUserId': delegatedFromUserId,
+        'delegated_from_user_id': delegatedFromUserId,
+      },
+      if (originalTaskId != null) ...{
+        'originalTaskId': originalTaskId,
+        'original_task_id': originalTaskId,
+      },
+      if (creatorHierarchyRole != null) ...{
+        'creatorHierarchyRole': creatorHierarchyRole,
+        'creator_hierarchy_role': creatorHierarchyRole,
+      },
+      if (targetHierarchyRole != null) ...{
+        'targetHierarchyRole': targetHierarchyRole,
+        'target_hierarchy_role': targetHierarchyRole,
+      },
     };
   }
 
@@ -430,7 +755,11 @@ class ReminderModel {
           proofImageUrl == other.proofImageUrl &&
           requiresProofImage == other.requiresProofImage &&
           rewardStars == other.rewardStars &&
-          voiceNotePath == other.voiceNotePath;
+          voiceNotePath == other.voiceNotePath &&
+          taskType == other.taskType &&
+          taskStatus == other.taskStatus &&
+          delegationCount == other.delegationCount &&
+          rejectionReason == other.rejectionReason;
 
   @override
   int get hashCode =>
@@ -441,5 +770,9 @@ class ReminderModel {
       proofImageUrl.hashCode ^
       requiresProofImage.hashCode ^
       rewardStars.hashCode ^
-      voiceNotePath.hashCode;
+      voiceNotePath.hashCode ^
+      taskType.hashCode ^
+      taskStatus.hashCode ^
+      delegationCount.hashCode ^
+      (rejectionReason?.hashCode ?? 0);
 }

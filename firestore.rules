@@ -1,0 +1,216 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Kiểm tra tư cách thành viên hợp lệ trong collection gốc family_members
+    // Document ID quy chuẩn: ${familyId}_${userId}
+    function isMember(familyId) {
+      let memberPath = /databases/$(database)/documents/family_members/$(familyId + '_' + request.auth.uid);
+      return isSignedIn() &&
+        exists(memberPath) && (
+          !('status' in get(memberPath).data) ||
+          get(memberPath).data.status in ['ACTIVE', 'active']
+        );
+    }
+
+    // Trưởng bối (Guardian) bao gồm: Chủ hộ (owner/OWNER), Bố Mẹ (PARENT), Ông Bà (GRANDPARENT)
+    // Cả Ông Bà và Bố Mẹ đều có quyền duyệt thành viên, giao việc ASSIGN, duyệt ảnh và thưởng sao
+    function isGuardian(familyId) {
+      let memberPath = /databases/$(database)/documents/family_members/$(familyId + '_' + request.auth.uid);
+      return isMember(familyId) && (
+        ('role' in get(memberPath).data && get(memberPath).data.role in ['owner', 'OWNER', 'PARENT', 'GRANDPARENT']) ||
+        ('hierarchyRole' in get(memberPath).data && get(memberPath).data.hierarchyRole in ['PARENT', 'GRANDPARENT']) ||
+        ('isOwner' in get(memberPath).data && get(memberPath).data.isOwner == true) ||
+        ('isGuardian' in get(memberPath).data && get(memberPath).data.isGuardian == true)
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. Hồ sơ người dùng (users - Top-Level Collection)
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Không gian Gia đình (families - Top-Level Collection)
+    // -------------------------------------------------------------------------
+    match /families/{familyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isGuardian(familyId);
+      allow delete: if isMember(familyId) && (
+        get(/databases/$(database)/documents/family_members/$(familyId + '_' + request.auth.uid)).data.role in ['owner', 'OWNER'] ||
+        ('isOwner' in get(/databases/$(database)/documents/family_members/$(familyId + '_' + request.auth.uid)).data &&
+         get(/databases/$(database)/documents/family_members/$(familyId + '_' + request.auth.uid)).data.isOwner == true)
+      );
+
+      // Cho phép truy cập các subcollection nội bộ gia đình (ai_chats, jackpot, notifications,...)
+      match /{subcollection}/{docId=**} {
+        allow read, write: if isMember(familyId);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. Thành viên gia đình (family_members - Top-Level Collection)
+    // Document ID: ${familyId}_${userId}
+    // -------------------------------------------------------------------------
+    match /family_members/{docId} {
+      allow read: if isSignedIn();
+
+      // Khởi tạo thành viên: Chính chủ khi tạo gia đình HOẶC do Trưởng bối duyệt vào nhà
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        isGuardian(request.resource.data.familyId)
+      ) && docId == request.resource.data.familyId + '_' + request.resource.data.userId;
+
+      // Cập nhật thành viên:
+      // - Guardian có toàn quyền cập nhật (vai trò, trạng thái, trừ/thưởng sao)
+      // - Thành viên chỉ được tự cập nhật check-in / lastActiveAt và đổi quà (giảm sao):
+      //   + KHÓA CỨNG: Tuyệt đối không cho tự nâng vai trò lên Bố Mẹ/Ông Bà/Owner
+      //   + KHÓA CỨNG: Tuyệt đối không cho tự tăng số dư sao (chỉ được giảm hoặc giữ nguyên)
+      allow update: if isGuardian(resource.data.familyId) || (
+        request.auth.uid == resource.data.userId &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.familyId == resource.data.familyId &&
+        (!('hierarchyRole' in request.resource.data) || request.resource.data.hierarchyRole == resource.data.hierarchyRole) &&
+        (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
+        (!('isOwner' in request.resource.data) || request.resource.data.isOwner == resource.data.isOwner) &&
+        (!('isGuardian' in request.resource.data) || request.resource.data.isGuardian == resource.data.isGuardian) &&
+        (!('rewardStarsTotal' in request.resource.data) || !('rewardStarsTotal' in resource.data) || request.resource.data.rewardStarsTotal <= resource.data.rewardStarsTotal)
+      );
+
+      // Chỉ Trưởng bối mới có quyền xóa hoặc loại thành viên
+      allow delete: if isGuardian(resource.data.familyId);
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. Yêu cầu gia nhập (join_requests - Top-Level Collection)
+    // Document ID: ${familyId}_${userId}
+    // -------------------------------------------------------------------------
+    match /join_requests/{requestId} {
+      allow read: if isSignedIn() && (
+        isMember(resource.data.familyId) ||
+        request.auth.uid == resource.data.userId
+      );
+
+      // Người xin chỉ được tạo yêu cầu cho chính mình với trạng thái PENDING_APPROVAL
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'PENDING_APPROVAL' &&
+        requestId == request.resource.data.familyId + '_' + request.auth.uid;
+
+      // Cập nhật yêu cầu gia nhập:
+      // 1. Trưởng bối (Ông Bà / Bố Mẹ) có quyền duyệt (APPROVED) hoặc từ chối (REJECTED)
+      // 2. Người xin (applicant) có quyền nộp lại (re-apply) sau khi bị từ chối hoặc cập nhật thông tin:
+      //    - Bắt buộc là chính chủ (request.auth.uid == resource.data.userId)
+      //    - Không được thay đổi userId hoặc familyId
+      //    - Trạng thái bắt buộc phải là PENDING_APPROVAL (ngăn chặn người xin tự duyệt sang APPROVED)
+      //    - Không được chỉnh sửa nếu yêu cầu trước đó đã được duyệt (APPROVED)
+      allow update: if isGuardian(resource.data.familyId) || (
+        isSignedIn() &&
+        request.auth.uid == resource.data.userId &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.familyId == resource.data.familyId &&
+        request.resource.data.status == 'PENDING_APPROVAL' &&
+        resource.data.status != 'APPROVED'
+      );
+
+      // Trưởng bối hoặc chính người xin có quyền hủy/xóa yêu cầu
+      allow delete: if isGuardian(resource.data.familyId) ||
+        (isSignedIn() && request.auth.uid == resource.data.userId);
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. Nhiệm vụ & Lời nhắc (reminders - Top-Level Collection)
+    // -------------------------------------------------------------------------
+    match /reminders/{taskId} {
+      allow read: if isMember(resource.data.familyId);
+
+      // Tạo việc: Thành viên hợp lệ; Riêng việc rèn luyện có sao/phạt (ASSIGN) bắt buộc do Trưởng bối tạo
+      allow create: if isMember(request.resource.data.familyId) && (
+        request.resource.data.taskType != 'ASSIGN' || isGuardian(request.resource.data.familyId)
+      );
+
+      // Cập nhật việc:
+      // - Trưởng bối có toàn quyền (duyệt APPROVED, từ chối REJECTED reset ảnh, giao việc,...)
+      // - Người được giao (assignedTo): Được nộp ảnh (SUBMITTED), xin gia hạn, nhận/từ chối FAVOR;
+      //   CẤM người làm tự chuyển sang APPROVED hoặc tự nâng rewardStars.
+      // - Người tạo (creatorId): Được sửa/hủy lời nhờ FAVOR hoặc lời nhắc do mình tạo.
+      allow update: if isMember(resource.data.familyId) && (
+        isGuardian(resource.data.familyId) || (
+          request.auth.uid == resource.data.assignedTo &&
+          request.resource.data.status != 'APPROVED' &&
+          (!('rewardStars' in request.resource.data) || request.resource.data.rewardStars == resource.data.rewardStars) &&
+          request.resource.data.familyId == resource.data.familyId
+        ) || (
+          request.auth.uid == resource.data.creatorId &&
+          request.resource.data.familyId == resource.data.familyId
+        )
+      );
+
+      // Xóa việc: Trưởng bối hoặc chính người tạo việc
+      allow delete: if isGuardian(resource.data.familyId) || (
+        isMember(resource.data.familyId) && request.auth.uid == resource.data.creatorId
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. Sổ cái Sao (star_ledger - Top-Level Collection) - BẤT BIẾN TUYỆT ĐỐI
+    // Document ID: reward_${taskId} hoặc claim_${claimId} hoặc refund_${claimId}
+    // -------------------------------------------------------------------------
+    match /star_ledger/{txId} {
+      allow read: if isMember(resource.data.familyId);
+
+      // BẤT BIẾN: Tuyệt đối không cho phép sửa (update) hoặc xóa (delete) lịch sử sổ cái
+      allow update, delete: if false;
+
+      // Ghi chép sổ cái mới (Tạo giao dịch sao - Milestone 3):
+      // - Thưởng sao hoàn thành việc (amount > 0) hoặc Hoàn sao từ chối quà (REFUND):
+      //   Bắt buộc do Trưởng bối (Guardian) phê duyệt và ghi nhận approvedBy là chính mình.
+      // - Trừ sao đổi quà / Lắc hũ (amount < 0):
+      //   Do chính chủ thành viên (userId) tự thực hiện khi đổi quà hoặc Trưởng bối trừ khi trao quà ngoài đời.
+      allow create: if isMember(request.resource.data.familyId) && (
+        (request.resource.data.amount > 0 &&
+         isGuardian(request.resource.data.familyId) &&
+         request.resource.data.approvedBy == request.auth.uid) ||
+        (request.resource.data.amount < 0 && (
+          request.resource.data.userId == request.auth.uid ||
+          isGuardian(request.resource.data.familyId)
+        ))
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. Thói quen gia đình (family_memories - Top-Level Collection)
+    // Document ID: ${familyId}_${keyword} hoặc UUID
+    // -------------------------------------------------------------------------
+    match /family_memories/{memId} {
+      allow read, delete: if isMember(resource.data.familyId);
+      allow create: if isMember(request.resource.data.familyId);
+      allow update: if isMember(resource.data.familyId) && isMember(request.resource.data.familyId);
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. Bảng tin Điểm danh (check_in_feeds - Top-Level Collection)
+    // -------------------------------------------------------------------------
+    match /check_in_feeds/{feedId} {
+      allow read: if isMember(resource.data.familyId);
+      allow create: if isMember(request.resource.data.familyId) && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isGuardian(resource.data.familyId) || (
+        isMember(resource.data.familyId) && request.auth.uid == resource.data.userId
+      );
+    }
+
+  }
+}
