@@ -108,7 +108,7 @@ class _PaymentCheckoutScreenState extends State<PaymentCheckoutScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('🎉 Thanh toán thành công! Gói Premium đã được kích hoạt.'),
+        content: Text('✨ Thanh toán thành công! Gói Premium đã được kích hoạt.'),
         backgroundColor: DanhColors.brand800,
         duration: Duration(seconds: 3),
       ),
@@ -370,12 +370,15 @@ class _PaymentCheckoutScreenState extends State<PaymentCheckoutScreen> {
                       children: [
                         Icon(Icons.zoom_in_rounded, size: 16, color: DanhColors.brand800),
                         SizedBox(width: 4),
-                        Text(
-                          'Nhấp vào mã QR để phóng to',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: DanhColors.brand800,
+                        Flexible(
+                          child: Text(
+                            'Nhấp vào mã QR để phóng to',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: DanhColors.brand800,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -625,27 +628,43 @@ class _PaymentCheckoutScreenState extends State<PaymentCheckoutScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: DanhColors.textMuted)),
-          Row(
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: isAmount ? 15 : 13,
-                  fontWeight: isHighlight || isAmount ? FontWeight.bold : FontWeight.w600,
-                  color: isHighlight
-                      ? DanhColors.brand800
-                      : (isAmount ? DanhColors.goldDark : DanhColors.textPrimary),
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 13, color: DanhColors.textMuted),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            flex: 3,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Flexible(
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: isAmount ? 15 : 13,
+                      fontWeight: isHighlight || isAmount ? FontWeight.bold : FontWeight.w600,
+                      color: isHighlight
+                          ? DanhColors.brand800
+                          : (isAmount ? DanhColors.goldDark : DanhColors.textPrimary),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                  ),
                 ),
-              ),
-              if (canCopy) ...[
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: () => _copy(value, label),
-                  child: const Icon(Icons.copy_rounded, size: 16, color: DanhColors.brand700),
-                ),
+                if (canCopy) ...[
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => _copy(value, label),
+                    child: const Icon(Icons.copy_rounded, size: 16, color: DanhColors.brand700),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ],
       ),

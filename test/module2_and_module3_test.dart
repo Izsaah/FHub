@@ -8,7 +8,7 @@ import 'package:fhub/Long/models/user_model.dart';
 import 'package:fhub/Long/services/mock_data_service.dart';
 import 'package:fhub/Long/widgets/check_in_button.dart';
 import 'package:fhub/Long/widgets/family_member_tile.dart';
-import 'package:fhub/Long/widgets/family_switcher_bar.dart';
+import 'package:fhub/Long/widgets/family_selector_bar.dart';
 
 void main() {
   group('Module 2 - Multi-Family, Roles & Ownership Tests', () {
@@ -283,10 +283,10 @@ void main() {
         ),
       );
 
-      expect(find.text("You're already checked in"), findsOneWidget);
+      expect(find.text("Bạn đã điểm danh an toàn hôm nay"), findsOneWidget);
     });
 
-    testWidgets('FamilySwitcherBar renders current family and copy code pill', (tester) async {
+    testWidgets('FamilySelectorBar renders current family and selector', (tester) async {
       final fam = FamilyModel(
         id: 'f1',
         name: 'Gia đình Nguyễn',
@@ -297,17 +297,17 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: FamilySwitcherBar(
+            body: FamilySelectorBar(
               currentFamily: fam,
               families: [fam],
-              onFamilyChanged: (_) {},
+              onFamilySelected: (_) {},
+              onAddFamily: () {},
             ),
           ),
         ),
       );
 
       expect(find.text('Gia đình Nguyễn'), findsOneWidget);
-      expect(find.text('A8K29D'), findsOneWidget);
     });
   });
 }

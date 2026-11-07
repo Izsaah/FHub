@@ -375,6 +375,85 @@ class FamilyJackpotService extends ChangeNotifier {
   final AccelerometerShakeEngine shakeEngine = AccelerometerShakeEngine();
   final CashGiftHandshakeEngine handshakeEngine = CashGiftHandshakeEngine();
 
+  final Set<String> _shakeVotes = {};
+  DateTime? _scheduledShakeTime;
+
+  Set<String> get shakeVotes => Set.unmodifiable(_shakeVotes);
+  DateTime? get scheduledShakeTime => _scheduledShakeTime;
+
+  int get totalFamilyMembersCount {
+    if (_cachedFamilyMembers.isNotEmpty) return _cachedFamilyMembers.length;
+    final keys = _jackpot.memberNames.keys.where((k) => k != 'system_daily_mission').toSet();
+    return keys.isNotEmpty ? keys.length : 1;
+  }
+
+  int get requiredShakeVotes {
+    final count = totalFamilyMembersCount;
+    return (count * 0.7).ceil().clamp(1, count);
+  }
+
+  bool get hasReachedShakeConsensus {
+    if (totalFamilyMembersCount <= 1) return true;
+    return _shakeVotes.length >= requiredShakeVotes;
+  }
+
+  void resetShakeVotes() {
+    _shakeVotes.clear();
+    _scheduledShakeTime = null;
+    notifyListeners();
+  }
+
+  Future<bool> voteToShakeNow({
+    required String userId,
+    required String userName,
+  }) async {
+    if (!canUseJackpot) {
+      throw Exception('Gia đình cần có gói Premium để bắt đầu Nổ Hũ!');
+    }
+    if (_jackpot.totalPoolAmount <= 0) {
+      throw Exception('Hũ hiện đang trống (0 ⭐). Hãy tích sao trước khi Nổ Hũ!');
+    }
+    _shakeVotes.add(userId);
+    notifyListeners();
+
+    if (totalFamilyMembersCount <= 1 || _shakeVotes.length >= requiredShakeVotes) {
+      _shakeVotes.clear();
+      await startShakeBattle();
+      return true;
+    } else {
+      final missing = requiredShakeVotes - _shakeVotes.length;
+      unawaited(NotificationService.instance.addNotification(
+        familyId: _currentFamilyId ?? 'f1',
+        title: '🎲 $userName muốn phát động Nổ Hũ!',
+        titleEn: '🎲 $userName initiated Star Jackpot!',
+        body: 'Đã có ${_shakeVotes.length}/$totalFamilyMembersCount thành viên đồng thuận. Cần thêm $missing người đồng ý để bắt đầu phiên lắc 30s!',
+        bodyEn: '${_shakeVotes.length}/$totalFamilyMembersCount agreed. Needs $missing more members to start!',
+        type: 'jackpot_vote_request',
+      ));
+      return false;
+    }
+  }
+
+  Future<void> scheduleShakeEvent({
+    required String userId,
+    required String userName,
+    required DateTime scheduledTime,
+  }) async {
+    _scheduledShakeTime = scheduledTime;
+    _shakeVotes.add(userId);
+    notifyListeners();
+
+    final timeStr = '${scheduledTime.hour.toString().padLeft(2, "0")}:${scheduledTime.minute.toString().padLeft(2, "0")} ngày ${scheduledTime.day}/${scheduledTime.month}';
+    unawaited(NotificationService.instance.addNotification(
+      familyId: _currentFamilyId ?? 'f1',
+      title: '📅 Lên lịch Nổ Hũ Gia Đình!',
+      titleEn: '📅 Family Jackpot Event Scheduled!',
+      body: '$userName vừa đặt lịch Nổ Hũ cả nhà vào lúc $timeStr. Mọi người nhớ tham gia nhé!',
+      bodyEn: '$userName scheduled jackpot at $timeStr. Don\'t miss out!',
+      type: 'jackpot_scheduled',
+    ));
+  }
+
   bool get isProcessingShake => shakeEngine.isProcessingShake;
   int get shakeCount => shakeEngine.shakeCount;
   DateTime? get lastShakeTime => shakeEngine.lastShakeTime;
@@ -450,6 +529,20 @@ class FamilyJackpotService extends ChangeNotifier {
       return;
     }
     _currentFamilyId = effectiveFamilyId;
+    _cachedFamilyMembers.clear();
+    _shakeVotes.clear();
+    _jackpot = FamilyJackpotModel(
+      familyId: effectiveFamilyId,
+      totalPoolAmount: 0,
+      topContributorName: 'Chưa có',
+      topContributorId: null,
+      contributions: const {},
+      memberNames: const {},
+      shakeCounts: const {},
+      prizeResults: const {},
+      memberWallets: const {},
+      memberBanks: const {},
+    );
 
     _jackpotSub?.cancel();
 
@@ -991,8 +1084,8 @@ class FamilyJackpotService extends ChangeNotifier {
         );
         unawaited(NotificationService.instance.addNotification(
           familyId: _currentFamilyId ?? 'f1',
-          title: '🎉 Hoàn thành nhiệm vụ Cả nhà Điểm Danh!',
-          titleEn: '🎉 Daily Family Check-in Completed!',
+          title: '✨ Hoàn thành nhiệm vụ Cả nhà Điểm Danh!',
+          titleEn: '✨ Daily Family Check-in Completed!',
           body: 'Gia đình đã điểm danh đầy đủ hôm nay, +10 ⭐ vừa được cộng vào Hũ Niềm Vui!',
           bodyEn: 'All family members checked in today, +10 ⭐ added to Family Jackpot!',
           type: 'daily_checkin_completed',
@@ -1038,8 +1131,8 @@ class FamilyJackpotService extends ChangeNotifier {
         );
         unawaited(NotificationService.instance.addNotification(
           familyId: _currentFamilyId ?? 'f1',
-          title: '🎉 Hoàn thành nhiệm vụ Cả nhà Điểm Danh!',
-          titleEn: '🎉 Daily Family Check-in Completed!',
+          title: '✨ Hoàn thành nhiệm vụ Cả nhà Điểm Danh!',
+          titleEn: '✨ Daily Family Check-in Completed!',
           body: 'Gia đình đã điểm danh đầy đủ hôm nay, +10 ⭐ vừa được cộng vào Hũ Niềm Vui!',
           bodyEn: 'All family members checked in today, +10 ⭐ added to Family Jackpot!',
           type: 'daily_checkin_completed',
@@ -1476,8 +1569,8 @@ class FamilyJackpotService extends ChangeNotifier {
             );
             unawaited(NotificationService.instance.addNotification(
               familyId: _currentFamilyId ?? 'f1',
-              title: 'Kết quả Nổ Hũ Gia Đình! 🎉',
-              titleEn: 'Family Pot Battle Results! 🎉',
+              title: 'Kết quả Nổ Hũ Gia Đình! ✨',
+              titleEn: 'Family Pot Battle Results! ✨',
               body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize đ!',
               bodyEn: '$winnerName won 1st Prize with a reward of $formattedPrize đ!',
               type: 'jackpot_win',
@@ -1668,6 +1761,8 @@ class FamilyJackpotService extends ChangeNotifier {
     _isTransitioningPhase = false;
     _stopCountdownTimer();
     shakeEngine.reset();
+    _cachedFamilyMembers.clear();
+    _shakeVotes.clear();
 
     _jackpot = _jackpot.copyWith(
       totalPoolAmount: 0,

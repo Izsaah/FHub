@@ -8,6 +8,7 @@ class FamilyMember {
   final String id;
   final String name;
   final String role;
+  final String? hierarchyRole;
   final String? avatarType;
   final String familyId;
   final int rewardStarsTotal;
@@ -16,53 +17,46 @@ class FamilyMember {
     required this.id,
     required this.name,
     required this.role,
+    this.hierarchyRole,
     this.avatarType,
     required this.familyId,
     this.rewardStarsTotal = 0,
   });
 
+  String get _effectiveRole =>
+      ((hierarchyRole != null && hierarchyRole!.isNotEmpty)
+              ? hierarchyRole!
+              : role)
+          .trim()
+          .toUpperCase();
+
   bool get isOwner =>
-      role.toUpperCase() == roleOwner || role.toUpperCase().contains('OWNER');
+      _effectiveRole == roleOwner || _effectiveRole.contains('OWNER');
 
   bool get isRelative =>
-      role == roleRelative ||
-      role.toUpperCase() == roleRelative ||
-      role.toUpperCase().contains('RELATIVE') ||
-      role.toUpperCase().contains('UNCLE') ||
-      role.toUpperCase().contains('AUNT') ||
-      name.toLowerCase().contains('cô') ||
-      name.toLowerCase().contains('dì') ||
-      name.toLowerCase().contains('chú') ||
-      name.toLowerCase().contains('bác') ||
-      name.toLowerCase().contains('cậu') ||
-      name.toLowerCase().contains('thím') ||
-      name.toLowerCase().contains('mợ') ||
-      name.toLowerCase().contains('dượng');
+      _effectiveRole == roleRelative ||
+      _effectiveRole.contains('RELATIVE') ||
+      _effectiveRole.contains('UNCLE') ||
+      _effectiveRole.contains('AUNT');
 
   bool get isParent =>
       !isRelative &&
-      (role.toUpperCase().contains('PARENT') ||
-          role.toUpperCase().contains('OWNER') ||
-          role.toUpperCase().contains('DAD') ||
-          role.toUpperCase().contains('MOM') ||
-          name.toLowerCase().contains('bố') ||
-          name.toLowerCase().contains('mẹ') ||
-          name.toLowerCase().contains('dad') ||
-          name.toLowerCase().contains('mom'));
+      (_effectiveRole.contains('PARENT') ||
+          _effectiveRole.contains('OWNER') ||
+          _effectiveRole.contains('DAD') ||
+          _effectiveRole.contains('MOM'));
 
   bool get isChild =>
       !isRelative &&
-      (role.toUpperCase().contains('CHILD') ||
-          role.toUpperCase().contains('CON') ||
-          id.contains('minh') ||
-          name.toLowerCase().contains('minh') ||
-          name.toLowerCase().contains('con'));
+      (_effectiveRole.contains('CHILD') ||
+          _effectiveRole.contains('CON') ||
+          _effectiveRole.contains('KID'));
 
   bool get isGrandparent =>
       !isRelative &&
-      (role.toUpperCase().contains('GRANDPARENT') ||
-          name.toLowerCase().contains('ông') ||
-          name.toLowerCase().contains('bà'));
+      (_effectiveRole.contains('GRANDPARENT') ||
+          _effectiveRole.contains('ONG') ||
+          _effectiveRole.contains('BA'));
 
   bool get isGuardian => (isParent || isGrandparent || isOwner) && !isRelative;
 
@@ -89,6 +83,7 @@ class FamilyMember {
       id: (json['user_id'] ?? json['id'] ?? '').toString(),
       name: json['name'] as String? ?? 'Member',
       role: json['role'] as String? ?? 'Member',
+      hierarchyRole: (json['hierarchy_role'] ?? json['hierarchyRole']) as String?,
       avatarType: (json['avatar_type'] ?? json['avatarType']) as String?,
       familyId: (json['family_id'] ?? json['familyId'] ?? '').toString(),
       rewardStarsTotal: json['reward_stars_total'] as int? ??
@@ -102,6 +97,7 @@ class FamilyMember {
       'id': id,
       'name': name,
       'role': role,
+      'hierarchyRole': hierarchyRole,
       'avatarType': avatarType,
       'familyId': familyId,
       'rewardStarsTotal': rewardStarsTotal,
@@ -112,6 +108,7 @@ class FamilyMember {
     String? id,
     String? name,
     String? role,
+    String? hierarchyRole,
     String? avatarType,
     String? familyId,
     int? rewardStarsTotal,
@@ -120,6 +117,7 @@ class FamilyMember {
       id: id ?? this.id,
       name: name ?? this.name,
       role: role ?? this.role,
+      hierarchyRole: hierarchyRole ?? this.hierarchyRole,
       avatarType: avatarType ?? this.avatarType,
       familyId: familyId ?? this.familyId,
       rewardStarsTotal: rewardStarsTotal ?? this.rewardStarsTotal,

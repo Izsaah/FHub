@@ -840,7 +840,7 @@ void main() {
         repository: repo,
       );
 
-      expect(res.text, contains('Thứ'));
+      expect(res.text.contains('Thứ') || res.text.contains('Chủ Nhật'), isTrue);
       expect(res.text, contains('ngày'));
     });
 

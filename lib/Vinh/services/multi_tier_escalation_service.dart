@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../models/reminder_model.dart';
+import 'quiet_hours_engine.dart';
 
 /// 3 Mốc báo động đa tầng theo tài liệu EPIC Module 6:
 /// - Mốc 1 (0h): Đúng giờ hẹn -> Nhắc nhẹ nhàng (âm báo chuẩn, rung nhẹ).
@@ -66,21 +67,27 @@ class MultiTierEscalationService {
   static final MultiTierEscalationService instance =
       MultiTierEscalationService._();
 
+  final QuietHoursEngine quietHoursEngine = const QuietHoursEngine();
   final Map<String, List<Timer>> _activeTimers = {};
   Timer? _demoTimer;
   StreamController<EscalationAlert>? _demoAlertController;
 
   /// Đặt lịch 3 mốc thời gian thực tế:
-  /// - task_0h: đúng giờ hẹn (nhắc nhẹ)
+  /// - task_0h: đúng giờ hẹn (nhắc nhẹ, có áp dụng Quiet Hours nếu không phải CARE)
   /// - task_6h: scheduledTime + 6 tiếng (nhắc rung lần 1)
   /// - task_12h: scheduledTime + 12 tiếng (nhắc rung lần 2 + báo về người giao)
   void scheduleMultiTierEscalation(ReminderModel reminder) {
     cancelEscalation(reminder.id);
 
-    final dueDt = reminder.dueDateTime;
-    if (dueDt == null || reminder.isCompleted || reminder.isDeleted) {
+    final rawDueDt = reminder.dueDateTime;
+    if (rawDueDt == null || reminder.isCompleted || reminder.isDeleted) {
       return;
     }
+
+    final dueDt = quietHoursEngine.calculateEffectiveAlarmTime(
+      scheduledTime: rawDueDt,
+      taskType: reminder.taskType.dbValue,
+    );
 
     final now = DateTime.now();
     final timers = <Timer>[];

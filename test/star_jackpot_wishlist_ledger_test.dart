@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fhub/Danh/services/family_jackpot_service.dart';
+import 'package:fhub/Danh/services/payment_service.dart';
 import 'package:fhub/Danh/services/jackpot_algorithm.dart';
 import 'package:fhub/Vinh/models/family_member.dart';
 import 'package:fhub/Vinh/models/wishlist_models.dart';
@@ -923,6 +924,118 @@ void main() {
 
         expect(find.text('Top Header Calendar Content'), findsOneWidget);
         expect(find.text('Tưới cây cảnh'), findsOneWidget);
+      });
+
+      test('6.9 Concurrency: If reward price increases while child has insufficient stars, redemption throws ITEM_PRICE_CHANGED and 0 stars are deducted', () async {
+        final starService = StarEconomyService();
+        starService.seedMemberBalance('fam_race', 'child_bo', 2); // Cu Bo chỉ có 2 sao
+        
+        final item = WishlistRewardItem(
+          id: 'reward_ice_cream',
+          familyId: 'fam_race',
+          title: 'Kem sô-cô-la',
+          starCost: 1, // Snapshot cũ là 1 sao
+          createdBy: 'parent_mom',
+          createdByName: 'Mẹ Lan',
+          createdAt: DateTime.now(),
+        );
+        starService.wishlistCatalog[item.id] = item;
+
+        // Phụ huynh vừa cập nhật giá thành 10 sao
+        starService.wishlistCatalog[item.id] = item.copyWith(starCost: 10);
+
+        // Cu Bo bấm đổi với snapshot cũ (1 sao)
+        expect(
+          () => starService.submitWishlistRedemption(
+            familyId: 'fam_race',
+            childId: 'child_bo',
+            childName: 'Cu Bo',
+            item: item,
+          ),
+          throwsA(isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('ITEM_PRICE_CHANGED'),
+          )),
+        );
+
+        // Số dư của Cu Bo vẫn nguyên vẹn 2 sao (không bị trừ oan)
+        expect(starService.getBalance('fam_race', 'child_bo'), 2);
+      });
+
+      test('6.10 Soft Delete & Auto Refund: Removing reward item automatically cancels and refunds 100% stars for PENDING claims', () async {
+        final starService = StarEconomyService();
+        starService.seedMemberBalance('fam_soft_del', 'child_bo', 50);
+
+        final item = WishlistRewardItem(
+          id: 'reward_book',
+          familyId: 'fam_soft_del',
+          title: 'Sách truyện Harry Potter',
+          starCost: 30,
+          createdBy: 'parent_dad',
+          createdByName: 'Bố Tuấn',
+          createdAt: DateTime.now(),
+        );
+        starService.wishlistCatalog[item.id] = item;
+
+        // Cu Bo đổi quà: 50 - 30 = 20 sao
+        final claim = await starService.submitWishlistRedemption(
+          familyId: 'fam_soft_del',
+          childId: 'child_bo',
+          childName: 'Cu Bo',
+          item: item,
+          claimId: 'claim_book_1',
+        );
+        expect(claim.status, WishlistClaimStatus.pending);
+        expect(starService.getBalance('fam_soft_del', 'child_bo'), 20);
+
+        // Phụ huynh xóa món quà khỏi shop
+        await starService.removeWishlistRewardItem(
+          familyId: 'fam_soft_del',
+          itemId: item.id,
+          removerId: 'parent_dad',
+          removerName: 'Bố Tuấn',
+          removerRole: 'PARENT',
+        );
+
+        // Claim chuyển sang rejected và hoàn 100% sao (20 + 30 = 50 sao)
+        expect(starService.wishlistClaims['claim_book_1']?.status, WishlistClaimStatus.rejected);
+        expect(starService.getBalance('fam_soft_del', 'child_bo'), 50);
+        expect(starService.starLedger.containsKey('refund_claim_book_1'), isTrue);
+      });
+
+      test('6.11 Star Jackpot: Sole member (1 person family) achieves 100% consensus and triggers shake battle immediately', () async {
+        final jackpotService = FamilyJackpotService.instance;
+        jackpotService.overrideCanUseJackpotForTest = true;
+        jackpotService.initForFamily('fam_sole');
+        await jackpotService.contributeStars(
+          stars: 10,
+          memberId: 'system_daily_mission',
+          memberName: 'Cả nhà điểm danh',
+        );
+
+        // Gia đình 1 thành viên
+        expect(jackpotService.hasReachedShakeConsensus, isTrue);
+        final started = await jackpotService.voteToShakeNow(
+          userId: 'u_sole',
+          userName: 'Người dùng đơn thân',
+        );
+        expect(started, isTrue);
+        expect(jackpotService.jackpot.isShaking, isTrue);
+      });
+
+      test('6.12 Account-Level Premium: PaymentService maintains isPremium across families when account has active subscription', () async {
+        final paymentService = PaymentService();
+        paymentService.clearFamily();
+        expect(paymentService.isPremium, isFalse);
+
+        await paymentService.activatePremium(planName: 'Family Hub Premium', maxMembers: 10);
+        expect(paymentService.isPremium, isTrue);
+        expect(paymentService.memberLimit, 10);
+
+        // Chuyển sang gia đình mới được tạo mà không làm mất trạng thái Premium
+        paymentService.setFamilyId('fam_new_created');
+        expect(paymentService.isPremium, isTrue);
       });
     });
 

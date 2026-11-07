@@ -7,7 +7,7 @@ import '../../Long/services/family_state_manager.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
-import 'family_memory_service.dart';
+import '../../Ai/services/family_memory_service.dart';
 import 'reminder_repository.dart';
 
 /// Tin nhắn trong đoạn hội thoại với Trợ lý AI Gia đình

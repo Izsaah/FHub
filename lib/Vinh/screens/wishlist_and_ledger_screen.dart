@@ -6,11 +6,13 @@ import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../models/wishlist_models.dart';
 import '../services/star_economy_service.dart';
+import '../../Long/services/family_data_service.dart';
 
 /// Màn hình Cửa hàng Đổi Sao (Wishlist Phúc lợi thực tế), Lì xì Sao từ Người thân (RELATIVE),
 /// và Sổ cái Lịch sử Giao dịch Sao (`star_ledger`).
 class WishlistAndLedgerScreen extends StatefulWidget {
   final String familyId;
+  final String? familyName;
   final String currentUserId;
   final String currentUserName;
   final String currentUserRole;
@@ -21,6 +23,7 @@ class WishlistAndLedgerScreen extends StatefulWidget {
   const WishlistAndLedgerScreen({
     super.key,
     required this.familyId,
+    this.familyName,
     required this.currentUserId,
     required this.currentUserName,
     this.currentUserRole = 'PARENT',
@@ -39,6 +42,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   late final StarEconomyService _starService;
   late final TabController _tabController;
   String _ledgerFilterType = 'ALL';
+  String _resolvedFamilyName = '';
 
   FamilyMember? get _currentMember {
     for (final m in widget.familyMembers) {
@@ -92,6 +96,14 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   @override
   void initState() {
     super.initState();
+    _resolvedFamilyName = widget.familyName ?? '';
+    if (_resolvedFamilyName.isEmpty) {
+      FamilyDataService().getCurrentFamily().then((f) {
+        if (mounted && f != null && f.name.isNotEmpty) {
+          setState(() => _resolvedFamilyName = f.name);
+        }
+      });
+    }
     _starService = widget.starEconomyService ?? StarEconomyService.instance;
     _tabController = TabController(
       length: 2,
@@ -155,16 +167,31 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   appBar: AppBar(
                     backgroundColor: const Color(0xFFEDF5F2),
                     elevation: 1,
-                    title: Text(
-                      AppLanguage.text(
-                        'Cửa Hàng Đổi Sao & Sổ Cái ⭐',
-                        'Star Shop & Ledger ⭐',
-                      ),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 17,
-                        color: primaryColor,
-                      ),
+                    title: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          AppLanguage.text(
+                            'Cửa Hàng Đổi Sao & Sổ Cái ⭐',
+                            'Star Shop & Ledger ⭐',
+                          ),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: primaryColor,
+                          ),
+                        ),
+                        if (_resolvedFamilyName.isNotEmpty)
+                          Text(
+                            _resolvedFamilyName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: primaryColor.withValues(alpha: 0.8),
+                            ),
+                          ),
+                      ],
                     ),
                     actions: [
                       if (_isRelative || _isGuardian)
@@ -605,127 +632,181 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     final effectiveBalance = liveBalance ?? _myStarBalance;
     final canAfford = effectiveBalance >= item.starCost;
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDCE8E3)),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: canAfford ? const Color(0xFFFFCC80) : const Color(0xFFE0ECE6),
+          width: 1.2,
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 6,
-            offset: Offset(0, 2),
+            color: canAfford ? const Color(0x12FF9800) : const Color(0x06000000),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF8E1),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text(item.iconEmoji, style: const TextStyle(fontSize: 26)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14.5,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFFF9C4), Color(0xFFFFE082)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                ),
-                if (item.description.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    item.description,
-                    style: const TextStyle(fontSize: 12, color: Colors.black54),
-                  ),
-                ],
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF3E0),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${item.starCost} ⭐',
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFFE65100),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14F57F17),
+                      blurRadius: 6,
+                      offset: Offset(0, 2),
                     ),
-                  ),
+                  ],
+                ),
+                child: Text(item.iconEmoji, style: const TextStyle(fontSize: 26)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: Color(0xFF1B2E28),
+                      ),
+                    ),
+                    if (item.description.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        item.description,
+                        style: const TextStyle(fontSize: 12.5, color: Color(0xFF556962), height: 1.3),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (_isGuardian) ...[
+                IconButton(
+                  key: Key('btn_edit_reward_${item.id}'),
+                  icon: const Icon(Icons.edit_outlined, size: 19, color: Color(0xFF005F50)),
+                  tooltip: 'Sửa phúc lợi',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  onPressed: () => _showEditRewardDialog(item),
+                ),
+                IconButton(
+                  key: Key('btn_delete_reward_${item.id}'),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 19, color: Color(0xFFBA1A1A)),
+                  tooltip: 'Xóa phúc lợi',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  onPressed: () => _confirmDeleteReward(item),
                 ),
               ],
-            ),
+            ],
           ),
-          if (_isGuardian) ...[
-            IconButton(
-              key: Key('btn_edit_reward_${item.id}'),
-              icon: const Icon(Icons.edit_outlined, size: 20, color: Color(0xFF005F50)),
-              tooltip: 'Sửa phúc lợi',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              onPressed: () => _showEditRewardDialog(item),
-            ),
-            IconButton(
-              key: Key('btn_delete_reward_${item.id}'),
-              icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Color(0xFFBA1A1A)),
-              tooltip: 'Xóa phúc lợi',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              onPressed: () => _confirmDeleteReward(item),
-            ),
-            const SizedBox(width: 4),
-          ],
-          if (widget.currentUserId.isNotEmpty && widget.currentUserId == item.createdBy)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF81C784)),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFF0F4F2)),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFFCC80)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.stars_rounded, size: 16, color: Color(0xFFE65100)),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${item.starCost} ⭐',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFE65100),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: canAfford ? const Color(0xFFE8F5E9) : const Color(0xFFF5F5F5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      canAfford
+                          ? AppLanguage.text('Đủ sao đổi', 'Available')
+                          : AppLanguage.text('Thiếu ${item.starCost - effectiveBalance} ⭐', 'Need ${item.starCost - effectiveBalance} ⭐'),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: canAfford ? const Color(0xFF2E7D32) : Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              child: Text(
-                AppLanguage.text('Bạn đã tạo', 'Created by you'),
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2E7D32),
+              if (widget.currentUserId.isNotEmpty && widget.currentUserId == item.createdBy)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF81C784)),
+                  ),
+                  child: Text(
+                    AppLanguage.text('Bạn đã tạo', 'Created by you'),
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2E7D32),
+                    ),
+                  ),
+                )
+              else
+                ElevatedButton.icon(
+                  key: Key('btn_redeem_${item.id}'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: canAfford ? const Color(0xFFE65100) : Colors.grey.shade300,
+                    foregroundColor: canAfford ? Colors.white : Colors.black45,
+                    elevation: canAfford ? 2 : 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                  icon: const Icon(Icons.card_giftcard_rounded, size: 16),
+                  label: Text(
+                    AppLanguage.text('Đổi quà', 'Redeem'),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                  ),
+                  onPressed: () => _handleRedeemReward(item),
                 ),
-              ),
-            )
-          else
-            ElevatedButton(
-              key: Key('btn_redeem_${item.id}'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    canAfford ? const Color(0xFFE65100) : Colors.grey.shade300,
-                foregroundColor: canAfford ? Colors.white : Colors.black45,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              ),
-              onPressed: () => _handleRedeemReward(item),
-              child: Text(
-                AppLanguage.text('Đổi quà', 'Redeem'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
-              ),
-            ),
+            ],
+          ),
         ],
       ),
     );
@@ -754,7 +835,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
               const SizedBox(width: 8),
               _buildFilterChip('TASK_REWARD', 'Việc nhà (+⭐)'),
               const SizedBox(width: 8),
-              _buildFilterChip('JACKPOT_WIN', 'Nổ Hũ Sao (🎉)'),
+              _buildFilterChip('JACKPOT_WIN', 'Nổ Hũ Sao (⭐)'),
               const SizedBox(width: 8),
               _buildFilterChip('RELATIVE_SPONSOR', 'Lì xì Sao (🎁)'),
               const SizedBox(width: 8),
@@ -801,6 +882,12 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                         : const Color(0xFFC62828);
                     final sign = isPos ? '+' : '';
 
+                    final memberName = (entry.userName != null &&
+                            entry.userName!.trim().isNotEmpty)
+                        ? entry.userName!
+                        : (entry.userId == widget.currentUserId
+                            ? 'Bạn'
+                            : 'Thành viên gia đình');
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -823,7 +910,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                         ),
                       ),
                       subtitle: Text(
-                        'Thành viên: ${entry.userName ?? entry.userId}'
+                        'Thành viên: $memberName'
                         '${entry.actorName != null ? ' • Duyệt/Gửi bởi: ${entry.actorName}' : ''}',
                         style: const TextStyle(fontSize: 12),
                       ),
@@ -894,7 +981,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '🎉 Đã đổi "${item.title}" (-${item.starCost} ⭐)! Đã gửi thông báo cho Phụ huynh duyệt.',
+            '✨ Đã đổi "${item.title}" (-${item.starCost} ⭐)! Đã gửi thông báo cho Phụ huynh duyệt.',
           ),
           backgroundColor: const Color(0xFF005F50),
         ),
@@ -1192,60 +1279,83 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   }
 
   void _showSponsorStarsDialog() {
-    final children = widget.familyMembers.where((m) => m.isChild).toList();
-    String targetChildId =
-        children.isNotEmpty ? children.first.id : 'child_default';
-    String targetChildName =
-        children.isNotEmpty ? children.first.name : 'Cháu ngoan';
+    final eligibleReceivers = widget.familyMembers.where((m) => m.id != widget.currentUserId).toList();
+    if (eligibleReceivers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gia đình cần có ít nhất 2 thành viên để sử dụng tính năng tặng sao khích lệ!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    String targetMemberId = eligibleReceivers.first.id;
+    String targetMemberName = eligibleReceivers.first.name;
     final starsCtrl = TextEditingController(text: '10');
-    final noteCtrl = TextEditingController(text: 'Lì xì sao khích lệ cháu chăm ngoan');
+    final noteCtrl = TextEditingController(text: 'Lì xì sao khích lệ chăm ngoan');
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('🎁 Lì Xì / Tặng Sao Khích Lệ Cháu'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.card_giftcard_rounded, color: Color(0xFF005F50), size: 24),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Lì Xì / Tặng Sao Khích Lệ', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (children.isNotEmpty)
-                  DropdownButtonFormField<String>(
-                    initialValue: targetChildId,
-                    decoration: const InputDecoration(labelText: 'Chọn cháu nhận sao'),
-                    items: children
-                        .map(
-                          (c) => DropdownMenuItem(
-                            value: c.id,
-                            child: Text(c.name),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setDialogState(() {
-                          targetChildId = val;
-                          targetChildName = children
-                              .firstWhere((c) => c.id == val)
-                              .name;
-                        });
-                      }
-                    },
+                DropdownButtonFormField<String>(
+                  initialValue: targetMemberId,
+                  decoration: const InputDecoration(
+                    labelText: 'Chọn thành viên nhận sao',
+                    prefixIcon: Icon(Icons.person_rounded),
                   ),
-                const SizedBox(height: 10),
+                  items: eligibleReceivers
+                      .map(
+                        (c) => DropdownMenuItem(
+                          value: c.id,
+                          child: Text('${c.name} (${c.role.isNotEmpty ? c.role : "Thành viên"})'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() {
+                        targetMemberId = val;
+                        targetMemberName = eligibleReceivers
+                            .firstWhere((c) => c.id == val)
+                            .name;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
                 TextField(
                   key: const Key('input_sponsor_stars'),
                   controller: starsCtrl,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                    labelText: 'Số sao lì xì (> 0 ⭐)',
+                    labelText: 'Số sao lì xì (1 - 20 ⭐)',
+                    helperText: 'Hạn mức tối đa 20 ⭐/lần, 50 ⭐/tuần/thành viên',
+                    prefixIcon: Icon(Icons.stars_rounded, color: Colors.amber),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 TextField(
                   controller: noteCtrl,
                   decoration: const InputDecoration(
                     labelText: 'Lời nhắn khích lệ',
+                    prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
                   ),
                 ),
               ],
@@ -1258,16 +1368,30 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
             ),
             ElevatedButton(
               key: const Key('btn_confirm_sponsor_stars'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF005F50),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
               onPressed: () async {
                 final stars = int.tryParse(starsCtrl.text.trim()) ?? 0;
+                if (stars <= 0 || stars > 20) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Số sao tặng mỗi lần phải từ 1 đến 20 ⭐!'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
                 try {
                   await _starService.giftStarsToChild(
                     familyId: widget.familyId,
                     senderId: widget.currentUserId,
                     senderName: widget.currentUserName,
                     senderRole: _effectiveRole,
-                    childId: targetChildId,
-                    childName: targetChildName,
+                    childId: targetMemberId,
+                    childName: targetMemberName,
                     stars: stars,
                     note: noteCtrl.text.trim(),
                   );
@@ -1277,18 +1401,18 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          '🎁 Đã lì xì +$stars ⭐ cho $targetChildName thành công!',
+                          '🎁 Đã lì xì +$stars ⭐ cho $targetMemberName thành công!',
                         ),
                         backgroundColor: const Color(0xFF2E7D32),
                       ),
                     );
                   }
                 } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
                       SnackBar(
-                        content: Text(e.toString()),
-                        backgroundColor: const Color(0xFFC62828),
+                        content: Text(e.toString().replaceAll('Exception: ', '').replaceAll('StateError: ', '')),
+                        backgroundColor: Colors.red,
                       ),
                     );
                   }

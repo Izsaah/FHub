@@ -388,6 +388,11 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
               ),
+            const SizedBox(height: 32),
+            const SafeArea(
+              top: false,
+              child: SizedBox.shrink(),
+            ),
           ],
         ),
       ),

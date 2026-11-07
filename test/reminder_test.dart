@@ -10,7 +10,7 @@ import 'package:fhub/Vinh/screens/calendar_page.dart';
 import 'package:fhub/Vinh/screens/family_ai_chat_screen.dart';
 import 'package:fhub/Vinh/screens/views/reminder_list_view.dart';
 import 'package:fhub/Vinh/services/family_ai_assistant_service.dart';
-import 'package:fhub/Vinh/services/family_memory_service.dart';
+import 'package:fhub/Ai/services/family_memory_service.dart';
 import 'package:fhub/Vinh/widgets/chore_reward_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_scope_filter_chips.dart';
@@ -20,6 +20,8 @@ import 'package:fhub/Vinh/widgets/family_progress_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_detail_bottom_sheet.dart';
 import 'package:fhub/Vinh/widgets/multi_tier_simulation_dialog.dart';
 import 'package:fhub/Vinh/widgets/voice_reminder_player.dart';
+import 'package:fhub/Vinh/services/quiet_hours_engine.dart';
+export 'package:fhub/Vinh/services/quiet_hours_engine.dart';
 
 void main() {
   group('Reminder Validator Tests (Lab 11 Cases)', () {
@@ -807,16 +809,6 @@ void main() {
 
       all = await repo.getReminders(familyId: 'f1');
       expect(all.firstWhere((r) => r.id == 'rem_del_1').isPending, isTrue);
-    });
-  });
-
-  group('Supabase Repository Fallback Tests', () {
-    test(
-        'SupabaseReminderRepository falls back to in-memory gracefully when offline',
-        () async {
-      final repo = SupabaseReminderRepository();
-      final reminders = await repo.getReminders(familyId: 'f1');
-      expect(reminders, isNotNull);
     });
   });
 
@@ -3412,58 +3404,6 @@ class RejectionResetEngine {
     }
 
     t.status = 'APPROVED';
-  }
-}
-
-class NotificationChannelConfig {
-  final String channelId;
-  final String soundFileName;
-  final bool enableTtsReadout;
-  final bool isQuietHoursImmune;
-
-  NotificationChannelConfig({
-    required this.channelId,
-    required this.soundFileName,
-    required this.enableTtsReadout,
-    required this.isQuietHoursImmune,
-  });
-}
-
-class QuietHoursEngine {
-  DateTime calculateEffectiveAlarmTime({
-    required DateTime scheduledTime,
-    required String taskType,
-  }) {
-    if (taskType == 'CARE') {
-      return scheduledTime;
-    }
-
-    final h = scheduledTime.hour;
-    if (h >= 22) {
-      final nextDay = scheduledTime.add(const Duration(days: 1));
-      return DateTime(nextDay.year, nextDay.month, nextDay.day, 7, 0, 0);
-    } else if (h < 6) {
-      return DateTime(scheduledTime.year, scheduledTime.month, scheduledTime.day, 7, 0, 0);
-    }
-
-    return scheduledTime;
-  }
-
-  NotificationChannelConfig getNotificationChannelConfig({required String taskType}) {
-    if (taskType == 'CARE') {
-      return NotificationChannelConfig(
-        channelId: 'CARE_CHANNEL',
-        soundFileName: 'nhac_uong_thuoc.mp3',
-        enableTtsReadout: true,
-        isQuietHoursImmune: true,
-      );
-    }
-    return NotificationChannelConfig(
-      channelId: 'DEFAULT_CHANNEL',
-      soundFileName: 'default_chime.mp3',
-      enableTtsReadout: false,
-      isQuietHoursImmune: false,
-    );
   }
 }
 

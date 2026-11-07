@@ -159,6 +159,7 @@ class DanhPaymentEntry {
       MaterialPageRoute(
         builder: (_) => WishlistAndLedgerScreen(
           familyId: familyId,
+          familyName: family?.name,
           currentUserId: user.id,
           currentUserName: user.name,
           currentUserRole: roleCode,

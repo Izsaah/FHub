@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 
+
 import 'package:fhub/Long/models/hierarchy_role.dart';
 import 'package:fhub/Long/models/family_member_model.dart';
 import 'package:fhub/Long/models/user_model.dart';
@@ -196,6 +197,7 @@ void main() {
           id: 'usr_$title',
           name: title,
           role: 'Member',
+          hierarchyRole: 'RELATIVE',
           familyId: 'fam_123',
         );
         expect(member.isRelative, isTrue, reason: 'Title $title should be detected as relative');

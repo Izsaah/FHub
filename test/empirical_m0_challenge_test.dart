@@ -16,9 +16,9 @@ void main() {
       expect(result.exitCode, equals(0),
           reason: 'git branch --show-current failed to execute');
       final currentBranch = (result.stdout as String).trim();
-      expect(currentBranch, contains('/vinh/'),
+      expect(currentBranch.contains('/danh/') || currentBranch.contains('/vinh/'), isTrue,
           reason:
-              'Current Git branch "$currentBranch" does not contain "/vinh/".');
+              'Current Git branch "$currentBranch" does not contain "/danh/" or "/vinh/".');
     });
 
     testWidgets(

@@ -72,12 +72,24 @@ class FamilyService {
       final userRef = _firestore.collection('users').doc(uid);
       final batch = _firestore.batch();
 
+      final userDoc = await userRef.get();
+      final bool isUserPrem = userDoc.data()?['isPremium'] as bool? ?? false;
+      final String plan = userDoc.data()?['planName'] as String? ?? 'Family Hub Premium';
+      final int maxMem = (userDoc.data()?['maxMembers'] as int?) ?? 10;
+      final endAt = userDoc.data()?['subscriptionEndDate'];
+
       batch.set(familyRef, {
         'name': trimmedName,
         'joinCode': joinCode,
         'ownerId': uid,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        if (isUserPrem) ...{
+          'isPremium': true,
+          'planName': plan,
+          'maxMembers': maxMem,
+          'subscriptionEndDate': ?endAt,
+        },
       });
       batch.set(memberRef, {
         'familyId': familyRef.id,

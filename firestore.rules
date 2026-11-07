@@ -55,9 +55,24 @@ service cloud.firestore {
          get(/databases/$(database)/documents/family_members/$(familyId + '_' + request.auth.uid)).data.isOwner == true)
       );
 
-      // Cho phép truy cập các subcollection nội bộ gia đình (ai_chats, jackpot, notifications,...)
+      // Quà ước nguyện (wishlist_rewards): Trưởng bối (Guardian) tạo/sửa/xóa, thành viên chỉ đọc
+      match /wishlist_rewards/{rewardId} {
+        allow read: if isMember(familyId);
+        allow write: if isGuardian(familyId);
+      }
+
+      // Quản lý yêu cầu đổi quà (wishlist_claims): Thành viên tạo, Guardian cập nhật duyệt/từ chối
+      match /wishlist_claims/{claimId} {
+        allow read: if isMember(familyId);
+        allow create: if isMember(familyId) && request.resource.data.childId == request.auth.uid;
+        allow update, delete: if isGuardian(familyId);
+      }
+
+      // Cho phép truy cập các subcollection nội bộ gia đình khác (ai_chats, jackpot, notifications,...)
       match /{subcollection}/{docId=**} {
-        allow read, write: if isMember(familyId);
+        allow read, write: if isMember(familyId) &&
+          subcollection != 'wishlist_rewards' &&
+          subcollection != 'wishlist_claims';
       }
     }
 
@@ -178,12 +193,17 @@ service cloud.firestore {
       // Ghi chép sổ cái mới (Tạo giao dịch sao - Milestone 3):
       // - Thưởng sao hoàn thành việc (amount > 0) hoặc Hoàn sao từ chối quà (REFUND):
       //   Bắt buộc do Trưởng bối (Guardian) phê duyệt và ghi nhận approvedBy là chính mình.
+      // - Tặng sao khích lệ / Lì xì từ Cô/Dì/Chú/Bác (RELATIVE_SPONSOR, amount > 0):
+      //   Bắt buộc người tặng senderId là chính request.auth.uid.
       // - Trừ sao đổi quà / Lắc hũ (amount < 0):
       //   Do chính chủ thành viên (userId) tự thực hiện khi đổi quà hoặc Trưởng bối trừ khi trao quà ngoài đời.
       allow create: if isMember(request.resource.data.familyId) && (
         (request.resource.data.amount > 0 &&
          isGuardian(request.resource.data.familyId) &&
          request.resource.data.approvedBy == request.auth.uid) ||
+        (request.resource.data.amount > 0 &&
+         request.resource.data.type == 'RELATIVE_SPONSOR' &&
+         request.resource.data.senderId == request.auth.uid) ||
         (request.resource.data.amount < 0 && (
           request.resource.data.userId == request.auth.uid ||
           isGuardian(request.resource.data.familyId)

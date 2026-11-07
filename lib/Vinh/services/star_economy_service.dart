@@ -3,6 +3,7 @@ import '../../Danh/services/family_jackpot_service.dart';
 
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -541,9 +542,20 @@ class StarEconomyService {
     required String userId,
     required int refundStars,
     String? reason,
+    String? approvedBy,
   }) async {
     if (refundStars <= 0) {
       throw ArgumentError('Số sao hoàn lại phải lớn hơn 0');
+    }
+
+    String currentUserId = approvedBy ?? '';
+    if (currentUserId.isEmpty) {
+      try {
+        currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+      } catch (_) {}
+    }
+    if (currentUserId.isEmpty) {
+      currentUserId = 'system';
     }
 
     final firestore = _firestore;
@@ -554,6 +566,7 @@ class StarEconomyService {
         userId: userId,
         refundStars: refundStars,
         reason: reason,
+        approvedBy: currentUserId,
       );
     }
 
@@ -605,6 +618,7 @@ class StarEconomyService {
         'type': 'CLAIM_REFUND',
         'claimId': claimId,
         'reason': reason ?? 'GUARDIAN_REJECTED',
+        'approvedBy': currentUserId,
         'createdAt': FieldValue.serverTimestamp(),
       });
     });
@@ -1243,6 +1257,32 @@ class StarEconomyService {
 
     wishlistCatalog.remove(itemId);
 
+    // Tự động từ chối và hoàn 100% sao cho các yêu cầu đang PENDING của vật phẩm này
+    final pendingClaims = wishlistClaims.values
+        .where((c) =>
+            c.itemId == itemId &&
+            c.status == WishlistClaimStatus.pending &&
+            c.familyId == familyId)
+        .toList();
+
+    for (final claim in pendingClaims) {
+      await refundWishlistClaim(
+        claimId: claim.id,
+        familyId: familyId,
+        userId: claim.childId,
+        refundStars: claim.starCost,
+        reason: 'REWARD_ITEM_REMOVED',
+        approvedBy: removerId,
+      );
+      wishlistClaims[claim.id] = claim.copyWith(
+        status: WishlistClaimStatus.rejected,
+        reviewedBy: removerId,
+        reviewedByName: removerName,
+        reviewedAt: DateTime.now(),
+        rejectReason: 'Vật phẩm đã bị xóa khỏi cửa hàng',
+      );
+    }
+
     if (_firestore != null) {
       try {
         await _firestore!
@@ -1265,6 +1305,13 @@ class StarEconomyService {
     required WishlistRewardItem item,
     String? claimId,
   }) async {
+    final currentInCatalog = wishlistCatalog[item.id];
+    if (currentInCatalog != null && currentInCatalog.starCost != item.starCost) {
+      throw StateError(
+        'ITEM_PRICE_CHANGED: Giá của vật phẩm đã được cập nhật thành ${currentInCatalog.starCost} ⭐. Vui lòng thử lại với giá mới.',
+      );
+    }
+
     if (childId.isNotEmpty && childId == item.createdBy) {
       throw StateError(
         'ANTI_EXPLOIT_CREATOR_CANNOT_REDEEM: Người tạo phúc lợi không được tự đổi vật phẩm do chính mình thiết lập.',
@@ -1434,6 +1481,7 @@ class StarEconomyService {
       userId: existing.childId,
       refundStars: existing.starCost,
       reason: reason,
+      approvedBy: guardianId,
     );
 
     // 2. Cập nhật trạng thái REJECTED
@@ -1686,6 +1734,7 @@ class StarEconomyService {
     required String userId,
     required int refundStars,
     String? reason,
+    String? approvedBy,
   }) async {
     final ledgerKey = 'refund_$claimId';
     if (starLedger.containsKey(ledgerKey)) {
@@ -1704,6 +1753,7 @@ class StarEconomyService {
       'type': 'CLAIM_REFUND',
       'claimId': claimId,
       'reason': reason ?? 'GUARDIAN_REJECTED',
+      'approvedBy': approvedBy ?? 'system',
       'createdAt': DateTime.now(),
     };
   }

@@ -10,7 +10,6 @@ import 'reminder_validator.dart';
 export 'firebase_reminder_repository.dart';
 export 'multi_tier_escalation_service.dart';
 export 'reminder_exceptions.dart';
-export 'supabase_reminder_repository.dart';
 
 abstract class ReminderRepository {
   Future<List<ReminderModel>> getReminders({required String familyId});
