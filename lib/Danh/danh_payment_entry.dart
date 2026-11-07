@@ -1,6 +1,7 @@
 import '../Long/services/family_data_service.dart';
 import '../Long/models/family_member_model.dart';
 import '../Vinh/screens/wishlist_and_ledger_screen.dart';
+import '../Vinh/models/family_member.dart';
 import 'package:flutter/material.dart';
 import 'screens/premium_plan_screen.dart';
 import 'screens/manage_subscription_screen.dart';
@@ -109,9 +110,28 @@ class DanhPaymentEntry {
 
   /// Điều hướng tới Cửa Hàng Đổi Sao & Sổ Cái Phúc Lợi Thực Tế
   static Future<void> openWishlistAndLedger(BuildContext context) async {
-    if (!_ensureHasFamily(context)) return;
-    final familyId = service.currentFamilyId;
     final familyDataService = FamilyDataService();
+    final family = await familyDataService.getCurrentFamily();
+    final familyId = (family != null && family.id.trim().isNotEmpty)
+        ? family.id
+        : service.currentFamilyId;
+
+    if (familyId.trim().isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                'Vui lòng chọn hoặc tham gia một gia đình trước!',
+                'Please select or join a family first!',
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     final user = await familyDataService.getCurrentUser();
     final members = await familyDataService.getFamilyMembers(familyId: familyId);
     FamilyMemberModel? me;
@@ -122,6 +142,17 @@ class DanhPaymentEntry {
       }
     }
     final roleCode = me?.hierarchyRole.code ?? 'PARENT';
+
+    final convertedMembers = members.map((m) {
+      return FamilyMember(
+        id: m.user.id,
+        name: m.user.name,
+        role: m.hierarchyRole.code,
+        familyId: familyId,
+        rewardStarsTotal: m.rewardStarsTotal,
+      );
+    }).toList();
+
     if (!context.mounted) return;
     Navigator.push(
       context,
@@ -131,6 +162,7 @@ class DanhPaymentEntry {
           currentUserId: user.id,
           currentUserName: user.name,
           currentUserRole: roleCode,
+          familyMembers: convertedMembers,
         ),
       ),
     );

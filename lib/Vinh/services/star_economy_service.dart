@@ -776,15 +776,19 @@ class StarEconomyService {
         upper.contains('BÀ');
   }
 
-  /// Khởi tạo danh sách Phúc lợi thực tế mặc định cho gia đình nếu chưa có
+  /// Lấy danh sách Phúc lợi thực tế của gia đình từ bộ nhớ cache
+  /// Tuyệt đối KHÔNG tự động chèn mock data! Nếu gia đình chưa có phần thưởng nào,
+  /// hàm sẽ trả về danh sách rỗng [] để giao diện hiển thị Empty State cho Bố Mẹ tạo mới.
   List<WishlistRewardItem> getWishlistCatalog(String familyId) {
     final existing = wishlistCatalog.values
         .where((item) => item.familyId == familyId && item.isActive)
         .toList();
-    if (existing.isNotEmpty) {
-      existing.sort((a, b) => a.starCost.compareTo(b.starCost));
-      return existing;
-    }
+    existing.sort((a, b) => a.starCost.compareTo(b.starCost));
+    return existing;
+  }
+
+  /// Helper chỉ dành cho unit test môi trường cô lập in-memory
+  List<WishlistRewardItem> seedDefaultWishlistRewardsForTest(String familyId) {
     final defaults = [
       WishlistRewardItem(
         id: '${familyId}_reward_movie_30m',
@@ -837,6 +841,134 @@ class StarEconomyService {
     return defaults;
   }
 
+  /// Tải danh mục Phúc Lợi Thực Tế của gia đình từ Firestore (Không dùng mock data)
+  Future<List<WishlistRewardItem>> fetchWishlistCatalog(String familyId) async {
+    if (_firestore != null) {
+      try {
+        final snap = await _firestore!
+            .collection('families')
+            .doc(familyId)
+            .collection('wishlist_rewards')
+            .get();
+        final list = <WishlistRewardItem>[];
+        for (final doc in snap.docs) {
+          final item = WishlistRewardItem.fromMap(doc.id, doc.data());
+          if (item.isActive) {
+            list.add(item);
+          }
+          wishlistCatalog[doc.id] = item;
+        }
+        list.sort((a, b) => a.starCost.compareTo(b.starCost));
+        return list;
+      } catch (e) {
+        debugPrint('fetchWishlistCatalog error: $e');
+      }
+    }
+    final local = wishlistCatalog.values
+        .where((item) => item.familyId == familyId && item.isActive)
+        .toList();
+    local.sort((a, b) => a.starCost.compareTo(b.starCost));
+    return local;
+  }
+
+  /// Lắng nghe Stream danh mục Phúc Lợi Thực Tế thời gian thực từ Firestore
+  Stream<List<WishlistRewardItem>> watchWishlistCatalog(String familyId) {
+    if (_firestore != null) {
+      return _firestore!
+          .collection('families')
+          .doc(familyId)
+          .collection('wishlist_rewards')
+          .snapshots()
+          .map((snapshot) {
+            final list = <WishlistRewardItem>[];
+            for (final doc in snapshot.docs) {
+              final item = WishlistRewardItem.fromMap(doc.id, doc.data());
+              if (item.isActive) {
+                list.add(item);
+              }
+              wishlistCatalog[doc.id] = item;
+            }
+            list.sort((a, b) => a.starCost.compareTo(b.starCost));
+            return list;
+          });
+    }
+    return Stream.value(getWishlistCatalog(familyId));
+  }
+
+  /// Lắng nghe Stream yêu cầu đổi quà của gia đình thời gian thực từ Firestore
+  Stream<List<WishlistClaimRecord>> watchWishlistClaims(
+    String familyId, {
+    String? childId,
+  }) {
+    if (_firestore != null) {
+      return _firestore!
+          .collection('families')
+          .doc(familyId)
+          .collection('wishlist_claims')
+          .snapshots()
+          .map((snapshot) {
+            final list = <WishlistClaimRecord>[];
+            for (final doc in snapshot.docs) {
+              final claim = WishlistClaimRecord.fromMap(doc.id, doc.data());
+              if (childId != null && childId.isNotEmpty && claim.childId != childId) {
+                continue;
+              }
+              list.add(claim);
+              wishlistClaims[doc.id] = claim;
+            }
+            list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            return list;
+          });
+    }
+    return Stream.value(getWishlistClaims(familyId, childId: childId));
+  }
+
+  /// Lắng nghe Stream số dư sao của thành viên thời gian thực
+  Stream<int> watchMemberBalance(String familyId, String userId) {
+    if (_firestore != null) {
+      return _firestore!
+          .collection('family_members')
+          .doc('${familyId}_$userId')
+          .snapshots()
+          .map((snapshot) {
+            if (!snapshot.exists) return 0;
+            final data = snapshot.data();
+            final val = data?['rewardStarsTotal'] ?? data?['reward_stars_total'];
+            final balance = (val as num?)?.toInt() ?? 0;
+            seedMemberBalance(familyId, userId, balance);
+            return balance;
+          });
+    }
+    return Stream.value(getBalance(familyId, userId));
+  }
+
+  /// Lắng nghe Stream lịch sử giao dịch sao (Sổ cái) của gia đình thời gian thực
+  Stream<List<StarLedgerEntryModel>> watchStarLedger(
+    String familyId, {
+    String? userId,
+  }) {
+    if (_firestore != null) {
+      return _firestore!
+          .collection('star_ledger')
+          .where('familyId', isEqualTo: familyId)
+          .snapshots()
+          .map((snapshot) {
+            final list = <StarLedgerEntryModel>[];
+            for (final doc in snapshot.docs) {
+              final entry = StarLedgerEntryModel.fromMap(doc.id, doc.data());
+              if (userId != null && userId.isNotEmpty && entry.userId != userId) {
+                continue;
+              }
+              list.add(entry);
+              starLedger[doc.id] = doc.data();
+            }
+            list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            return list;
+          });
+    }
+    return Stream.value(getStarLedgerHistory(familyId, userId: userId));
+  }
+
   /// Chỉ Người giám hộ (`PARENT`, `GRANDPARENT`) mới có quyền tạo phúc lợi đổi sao mới
   Future<WishlistRewardItem> createWishlistRewardItem({
     required String familyId,
@@ -883,7 +1015,7 @@ class StarEconomyService {
         await _firestore!
             .collection('families')
             .doc(familyId)
-            .collection('wishlist_catalog')
+            .collection('wishlist_rewards')
             .doc(effectiveId)
             .set(item.toMap());
       } catch (e) {
@@ -916,7 +1048,23 @@ class StarEconomyService {
       );
     }
 
-    final existing = wishlistCatalog[itemId];
+    var existing = wishlistCatalog[itemId];
+    if (existing == null && _firestore != null) {
+      try {
+        final doc = await _firestore!
+            .collection('families')
+            .doc(familyId)
+            .collection('wishlist_rewards')
+            .doc(itemId)
+            .get();
+        if (doc.exists && doc.data() != null) {
+          existing = WishlistRewardItem.fromMap(doc.id, doc.data()!);
+          wishlistCatalog[itemId] = existing;
+        }
+      } catch (e) {
+        debugPrint('find wishlist item on firestore error: $e');
+      }
+    }
     if (existing == null) {
       throw StateError('Không tìm thấy phúc lợi cần chỉnh sửa ($itemId)!');
     }

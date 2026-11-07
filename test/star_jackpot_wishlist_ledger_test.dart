@@ -76,7 +76,7 @@ void main() {
 
       test('1.1c Wishlist redemption contributes 10% cashback of starCost to Family Star Pot', () async {
         starService.seedMemberBalance('fam_cashback', 'child_bo', 100);
-        final catalog = starService.getWishlistCatalog('fam_cashback');
+        final catalog = starService.seedDefaultWishlistRewardsForTest('fam_cashback');
         final comicItem = catalog.firstWhere((i) => i.starCost == 50);
 
         final initialPot = FamilyJackpotService.instance.jackpot.totalPoolStars;
@@ -211,7 +211,7 @@ void main() {
 
       test('2.2 Child redeeming reward deducts stars immediately, creates PENDING claim, and Guardian can approve', () async {
         starService.seedMemberBalance('fam_wish', 'child_bo', 60);
-        final catalog = starService.getWishlistCatalog('fam_wish');
+        final catalog = starService.seedDefaultWishlistRewardsForTest('fam_wish');
         final comicItem =
             catalog.firstWhere((i) => i.starCost == 50); // Mua 1 quyển truyện tranh (50 sao)
 
@@ -243,7 +243,7 @@ void main() {
 
       test('2.3 Guardian rejecting a PENDING claim automatically refunds 100% of stars to the child and writes refund_{claimId}', () async {
         starService.seedMemberBalance('fam_wish', 'child_bo', 50);
-        final catalog = starService.getWishlistCatalog('fam_wish');
+        final catalog = starService.seedDefaultWishlistRewardsForTest('fam_wish');
         final movieItem =
             catalog.firstWhere((i) => i.starCost == 15); // Xem phim 30 phút (15 sao)
 
@@ -279,7 +279,7 @@ void main() {
       });
 
       test('2.4 Guardian can edit WishlistRewardItem; non-guardian is blocked with StateError', () async {
-        final catalog = starService.getWishlistCatalog('fam_edit_test');
+        final catalog = starService.seedDefaultWishlistRewardsForTest('fam_edit_test');
         final item = catalog.first;
 
         // Guardian can edit title, description, starCost
@@ -313,7 +313,7 @@ void main() {
       });
 
       test('2.5 Guardian can remove WishlistRewardItem; non-guardian is blocked with StateError', () async {
-        final catalog = starService.getWishlistCatalog('fam_remove_test');
+        final catalog = starService.seedDefaultWishlistRewardsForTest('fam_remove_test');
         final item = catalog.last;
 
         // Non-guardian (CHILD) is blocked
@@ -454,6 +454,7 @@ void main() {
         );
 
         // 4. Wishlist claim (-15)
+        starService.seedDefaultWishlistRewardsForTest('fam_audit');
         final movieItem = starService
             .getWishlistCatalog('fam_audit')
             .firstWhere((i) => i.starCost == 15);
@@ -493,6 +494,7 @@ void main() {
 
       testWidgets('4.2 WishlistAndLedgerScreen renders Star Balance, Catalog, Redemption, and Ledger tabs', (tester) async {
         starService.seedMemberBalance('fam_ui', 'child_bo', 55);
+        starService.seedDefaultWishlistRewardsForTest('fam_ui');
         const members = [
           FamilyMember(
             id: 'child_bo',
@@ -542,6 +544,149 @@ void main() {
 
         expect(find.text('Đổi quà: Xem phim hoạt hình 30 phút'), findsOneWidget);
         expect(find.text('-15 ⭐'), findsOneWidget);
+      });
+    });
+
+    // R6: MULTI-FAMILY MARKET ISOLATION & COMPREHENSIVE FIREBASE KEYS
+    group('R6: Multi-Family Market Isolation & Comprehensive Firebase Keys', () {
+      test('5.1 WishlistRewardItem.toMap & fromMap correctly serialize and deserialize all required Firebase keys', () {
+        final now = DateTime(2026, 11, 7, 18, 0, 0);
+        final item = WishlistRewardItem(
+          id: 'reward_custom_001',
+          familyId: 'fam_doan_tu',
+          title: 'Đi nhà sách FAHASA cuối tuần',
+          description: 'Bố mẹ dẫn đi chọn sách và đồ dùng học tập',
+          starCost: 60,
+          iconEmoji: '📖',
+          createdBy: 'user_vinh_parent',
+          createdByName: 'Lương Diệu Vinh',
+          createdAt: now,
+          isActive: true,
+        );
+
+        final map = item.toMap();
+        // Check standard camelCase keys
+        expect(map['id'], 'reward_custom_001');
+        expect(map['familyId'], 'fam_doan_tu');
+        expect(map['title'], 'Đi nhà sách FAHASA cuối tuần');
+        expect(map['description'], 'Bố mẹ dẫn đi chọn sách và đồ dùng học tập');
+        expect(map['starCost'], 60);
+        expect(map['iconEmoji'], '📖');
+        expect(map['createdBy'], 'user_vinh_parent');
+        expect(map['createdByName'], 'Lương Diệu Vinh');
+        expect(map['isActive'], true);
+
+        // Check snake_case alias keys for Firebase interoperability
+        expect(map['family_id'], 'fam_doan_tu');
+        expect(map['name'], 'Đi nhà sách FAHASA cuối tuần');
+        expect(map['desc'], 'Bố mẹ dẫn đi chọn sách và đồ dùng học tập');
+        expect(map['star_cost'], 60);
+        expect(map['icon_emoji'], '📖');
+        expect(map['created_by'], 'user_vinh_parent');
+        expect(map['created_by_name'], 'Lương Diệu Vinh');
+        expect(map['is_active'], true);
+
+        // Deserialization from pure snake_case map
+        final snakeMap = {
+          'family_id': 'fam_tinh_nguoi',
+          'name': 'Xem đá bóng sân vận động',
+          'desc': 'Đi xem bóng đá cùng bố',
+          'star_cost': 100,
+          'icon_emoji': '⚽',
+          'created_by': 'user_father_02',
+          'created_by_name': 'Bố Vinh',
+          'created_at': '2026-11-07T18:00:00.000',
+          'is_active': true,
+        };
+
+        final fromSnake = WishlistRewardItem.fromMap('reward_snake_002', snakeMap);
+        expect(fromSnake.id, 'reward_snake_002');
+        expect(fromSnake.familyId, 'fam_tinh_nguoi');
+        expect(fromSnake.title, 'Xem đá bóng sân vận động');
+        expect(fromSnake.description, 'Đi xem bóng đá cùng bố');
+        expect(fromSnake.starCost, 100);
+        expect(fromSnake.iconEmoji, '⚽');
+        expect(fromSnake.createdBy, 'user_father_02');
+        expect(fromSnake.createdByName, 'Bố Vinh');
+        expect(fromSnake.isActive, isTrue);
+      });
+
+      test('5.2 Multi-family market isolation: Each family has an independent rewards catalog', () async {
+        final starService = StarEconomyService.inMemory();
+        starService.resetMockData();
+
+        const familyA = 'fam_doan_tu_MGJL5440';
+        const familyB = 'fam_tinh_nguoi_WZFG0038';
+
+        // Parent creates a reward in Family A
+        await starService.createWishlistRewardItem(
+          familyId: familyA,
+          creatorId: 'user_vinh',
+          creatorName: 'Lương Diệu Vinh',
+          creatorRole: 'PARENT',
+          title: 'Phần thưởng gia đình Đoàn Tụ',
+          description: 'Dành riêng cho gia đình Đoàn Tụ',
+          starCost: 45,
+          iconEmoji: '🎉',
+        );
+
+        // Parent creates a different reward in Family B
+        await starService.createWishlistRewardItem(
+          familyId: familyB,
+          creatorId: 'user_vinh',
+          creatorName: 'Lương Diệu Vinh',
+          creatorRole: 'PARENT',
+          title: 'Phần thưởng gia đình Tình Người',
+          description: 'Dành riêng cho gia đình Tình Người',
+          starCost: 90,
+          iconEmoji: '🏡',
+        );
+
+        final catalogA = starService.getWishlistCatalog(familyA);
+        final catalogB = starService.getWishlistCatalog(familyB);
+
+        // Strict isolation: Family A must only contain its own reward
+        expect(catalogA.length, 1);
+        expect(catalogA.first.title, 'Phần thưởng gia đình Đoàn Tụ');
+        expect(catalogA.first.starCost, 45);
+        expect(catalogA.first.familyId, familyA);
+
+        // Family B must only contain its own reward
+        expect(catalogB.length, 1);
+        expect(catalogB.first.title, 'Phần thưởng gia đình Tình Người');
+        expect(catalogB.first.starCost, 90);
+        expect(catalogB.first.familyId, familyB);
+      });
+
+      testWidgets('5.3 Empty catalog renders friendly Empty State with Add Reward CTA', (tester) async {
+        final starService = StarEconomyService.inMemory();
+        starService.resetMockData();
+        const emptyFamily = 'fam_brand_new_empty';
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WishlistAndLedgerScreen(
+              familyId: emptyFamily,
+              currentUserId: 'parent_user',
+              currentUserName: 'Phụ huynh Vinh',
+              currentUserRole: 'PARENT',
+              familyMembers: const [
+                FamilyMember(
+                  id: 'parent_user',
+                  name: 'Phụ huynh Vinh',
+                  role: 'PARENT',
+                  familyId: emptyFamily,
+                ),
+              ],
+              starEconomyService: starService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Verifies the friendly empty state
+        expect(find.text('Gia đình chưa có phần thưởng nào!'), findsOneWidget);
+        expect(find.byKey(const Key('btn_add_first_reward')), findsOneWidget);
       });
     });
   });

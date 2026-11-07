@@ -88,20 +88,29 @@ class WishlistRewardItem {
     return {
       'id': id,
       'familyId': familyId,
+      'family_id': familyId,
       'title': title,
+      'name': title,
       'description': description,
+      'desc': description,
       'starCost': starCost,
+      'star_cost': starCost,
       'iconEmoji': iconEmoji,
+      'icon_emoji': iconEmoji,
       'createdBy': createdBy,
+      'created_by': createdBy,
       'createdByName': createdByName,
+      'created_by_name': createdByName,
       'createdAt': Timestamp.fromDate(createdAt),
+      'created_at': Timestamp.fromDate(createdAt),
       'isActive': isActive,
+      'is_active': isActive,
     };
   }
 
   factory WishlistRewardItem.fromMap(String id, Map<String, dynamic> map) {
     DateTime parsedCreatedAt = DateTime.now();
-    final rawDate = map['createdAt'];
+    final rawDate = map['createdAt'] ?? map['created_at'];
     if (rawDate is Timestamp) {
       parsedCreatedAt = rawDate.toDate();
     } else if (rawDate is DateTime) {
@@ -110,17 +119,37 @@ class WishlistRewardItem {
       parsedCreatedAt = DateTime.tryParse(rawDate) ?? DateTime.now();
     }
 
+    final effectiveTitle =
+        (map['title'] ?? map['name'] ?? map['rewardTitle'] ?? '').toString();
+    final effectiveDesc =
+        (map['description'] ?? map['desc'] ?? map['rewardDesc'] ?? '').toString();
+    final rawCost = map['starCost'] ?? map['star_cost'] ?? map['cost'];
+    final effectiveCost = (rawCost is num)
+        ? rawCost.toInt()
+        : (int.tryParse(rawCost?.toString() ?? '') ?? 0);
+    final effectiveEmoji =
+        (map['iconEmoji'] ?? map['icon_emoji'] ?? '🎁').toString();
+
+    final effectiveFamilyId =
+        (map['familyId'] ?? map['family_id'] ?? '').toString();
+    final effectiveCreatedBy =
+        (map['createdBy'] ?? map['created_by'] ?? '').toString();
+    final effectiveCreatedByName =
+        (map['createdByName'] ?? map['created_by_name'] ?? 'Phụ huynh').toString();
+    final rawActive = map['isActive'] ?? map['is_active'];
+    final effectiveIsActive = rawActive is bool ? rawActive : true;
+
     return WishlistRewardItem(
       id: id,
-      familyId: (map['familyId'] ?? '').toString(),
-      title: (map['title'] ?? '').toString(),
-      description: (map['description'] ?? '').toString(),
-      starCost: (map['starCost'] as num?)?.toInt() ?? 0,
-      iconEmoji: (map['iconEmoji'] ?? '🎁').toString(),
-      createdBy: (map['createdBy'] ?? '').toString(),
-      createdByName: (map['createdByName'] ?? 'Phụ huynh').toString(),
+      familyId: effectiveFamilyId,
+      title: effectiveTitle,
+      description: effectiveDesc,
+      starCost: effectiveCost,
+      iconEmoji: effectiveEmoji.trim().isEmpty ? '🎁' : effectiveEmoji.trim(),
+      createdBy: effectiveCreatedBy,
+      createdByName: effectiveCreatedByName,
       createdAt: parsedCreatedAt,
-      isActive: map['isActive'] as bool? ?? true,
+      isActive: effectiveIsActive,
     );
   }
 }
@@ -197,18 +226,30 @@ class WishlistClaimRecord {
     return {
       'id': id,
       'familyId': familyId,
+      'family_id': familyId,
       'itemId': itemId,
+      'item_id': itemId,
       'itemName': itemName,
+      'item_name': itemName,
       'iconEmoji': iconEmoji,
+      'icon_emoji': iconEmoji,
       'childId': childId,
+      'child_id': childId,
       'childName': childName,
+      'child_name': childName,
       'starCost': starCost,
+      'star_cost': starCost,
       'status': status.code,
       'createdAt': Timestamp.fromDate(createdAt),
+      'created_at': Timestamp.fromDate(createdAt),
       'reviewedBy': reviewedBy,
+      'reviewed_by': reviewedBy,
       'reviewedByName': reviewedByName,
+      'reviewed_by_name': reviewedByName,
       'reviewedAt': reviewedAt != null ? Timestamp.fromDate(reviewedAt!) : null,
+      'reviewed_at': reviewedAt != null ? Timestamp.fromDate(reviewedAt!) : null,
       'rejectReason': rejectReason,
+      'reject_reason': rejectReason,
     };
   }
 
@@ -220,21 +261,34 @@ class WishlistClaimRecord {
       return DateTime.now();
     }
 
+    final effectiveFamilyId = (map['familyId'] ?? map['family_id'] ?? '').toString();
+    final effectiveItemId = (map['itemId'] ?? map['item_id'] ?? '').toString();
+    final effectiveItemName = (map['itemName'] ?? map['item_name'] ?? '').toString();
+    final effectiveEmoji = (map['iconEmoji'] ?? map['icon_emoji'] ?? '🎁').toString();
+    final effectiveChildId = (map['childId'] ?? map['child_id'] ?? '').toString();
+    final effectiveChildName = (map['childName'] ?? map['child_name'] ?? 'Con').toString();
+    final rawCost = map['starCost'] ?? map['star_cost'];
+    final effectiveCost = (rawCost is num)
+        ? rawCost.toInt()
+        : (int.tryParse(rawCost?.toString() ?? '') ?? 0);
+    final rawCreatedAt = map['createdAt'] ?? map['created_at'];
+    final rawReviewedAt = map['reviewedAt'] ?? map['reviewed_at'];
+
     return WishlistClaimRecord(
       id: id,
-      familyId: (map['familyId'] ?? '').toString(),
-      itemId: (map['itemId'] ?? '').toString(),
-      itemName: (map['itemName'] ?? '').toString(),
-      iconEmoji: (map['iconEmoji'] ?? '🎁').toString(),
-      childId: (map['childId'] ?? '').toString(),
-      childName: (map['childName'] ?? 'Con').toString(),
-      starCost: (map['starCost'] as num?)?.toInt() ?? 0,
+      familyId: effectiveFamilyId,
+      itemId: effectiveItemId,
+      itemName: effectiveItemName,
+      iconEmoji: effectiveEmoji.trim().isEmpty ? '🎁' : effectiveEmoji.trim(),
+      childId: effectiveChildId,
+      childName: effectiveChildName,
+      starCost: effectiveCost,
       status: WishlistClaimStatus.fromString(map['status']?.toString()),
-      createdAt: parseDate(map['createdAt']),
-      reviewedBy: map['reviewedBy']?.toString(),
-      reviewedByName: map['reviewedByName']?.toString(),
-      reviewedAt: map['reviewedAt'] != null ? parseDate(map['reviewedAt']) : null,
-      rejectReason: map['rejectReason']?.toString(),
+      createdAt: parseDate(rawCreatedAt),
+      reviewedBy: (map['reviewedBy'] ?? map['reviewed_by'])?.toString(),
+      reviewedByName: (map['reviewedByName'] ?? map['reviewed_by_name'])?.toString(),
+      reviewedAt: rawReviewedAt != null ? parseDate(rawReviewedAt) : null,
+      rejectReason: (map['rejectReason'] ?? map['reject_reason'])?.toString(),
     );
   }
 }

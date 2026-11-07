@@ -109,6 +109,9 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
       }
     }
     _starService.getWishlistCatalog(widget.familyId);
+    _starService.fetchWishlistCatalog(widget.familyId).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -120,83 +123,114 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   @override
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF005F50);
-    final catalog = _starService.getWishlistCatalog(widget.familyId);
-    final claims = _starService.getWishlistClaims(widget.familyId);
-    final pendingClaims =
-        claims.where((c) => c.status == WishlistClaimStatus.pending).toList();
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3FBF8),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFEDF5F2),
-        elevation: 1,
-        title: Text(
-          AppLanguage.text(
-            'Cửa Hàng Đổi Sao & Sổ Cái ⭐',
-            'Star Shop & Ledger ⭐',
-          ),
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 17,
-            color: primaryColor,
-          ),
-        ),
-        actions: [
-          if (_isRelative || _isGuardian)
-            IconButton(
-              tooltip: AppLanguage.text(
-                'Lì xì / Tặng sao khích lệ cho cháu',
-                'Sponsor / Gift Stars to Child',
+    return StreamBuilder<List<WishlistRewardItem>>(
+      stream: _starService.watchWishlistCatalog(widget.familyId),
+      initialData: _starService.getWishlistCatalog(widget.familyId),
+      builder: (context, catalogSnap) {
+        final catalog = catalogSnap.data ?? [];
+        return StreamBuilder<List<WishlistClaimRecord>>(
+          stream: _starService.watchWishlistClaims(widget.familyId),
+          initialData: _starService.getWishlistClaims(widget.familyId),
+          builder: (context, claimsSnap) {
+            final claims = claimsSnap.data ?? [];
+            final pendingClaims = claims
+                .where((c) => c.status == WishlistClaimStatus.pending)
+                .toList();
+
+            return StreamBuilder<int>(
+              stream: _starService.watchMemberBalance(
+                widget.familyId,
+                widget.currentUserId,
               ),
-              icon: const Icon(
-                Icons.card_giftcard_rounded,
-                color: Color(0xFFE65100),
-              ),
-              onPressed: _showSponsorStarsDialog,
-            ),
-          if (_isGuardian)
-            IconButton(
-              tooltip: AppLanguage.text(
-                'Thêm phúc lợi thực tế mới',
-                'Add New Real-World Reward',
-              ),
-              icon: const Icon(
-                Icons.add_business_rounded,
-                color: primaryColor,
-              ),
-              onPressed: _showCreateRewardDialog,
-            ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: primaryColor,
-          unselectedLabelColor: Colors.black54,
-          indicatorColor: primaryColor,
-          tabs: [
-            Tab(
-              icon: const Icon(Icons.storefront_rounded, size: 18),
-              text: AppLanguage.text(
-                'Đổi Quà Phúc Lợi (${catalog.length})',
-                'Reward Shop (${catalog.length})',
-              ),
-            ),
-            Tab(
-              icon: const Icon(Icons.receipt_long_rounded, size: 18),
-              text: AppLanguage.text(
-                'Lịch Sử Sao (Sổ Cái)',
-                'Star Ledger History',
-              ),
-            ),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildWishlistShopTab(catalog, claims, pendingClaims),
-          _buildLedgerHistoryTab(),
-        ],
-      ),
+              initialData: _myStarBalance,
+              builder: (context, balanceSnap) {
+                final liveBalance = balanceSnap.data ?? _myStarBalance;
+
+                return Scaffold(
+                  backgroundColor: const Color(0xFFF3FBF8),
+                  appBar: AppBar(
+                    backgroundColor: const Color(0xFFEDF5F2),
+                    elevation: 1,
+                    title: Text(
+                      AppLanguage.text(
+                        'Cửa Hàng Đổi Sao & Sổ Cái ⭐',
+                        'Star Shop & Ledger ⭐',
+                      ),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 17,
+                        color: primaryColor,
+                      ),
+                    ),
+                    actions: [
+                      if (_isRelative || _isGuardian)
+                        IconButton(
+                          tooltip: AppLanguage.text(
+                            'Lì xì / Tặng sao khích lệ cho cháu',
+                            'Sponsor / Gift Stars to Child',
+                          ),
+                          icon: const Icon(
+                            Icons.card_giftcard_rounded,
+                            color: Color(0xFFE65100),
+                          ),
+                          onPressed: _showSponsorStarsDialog,
+                        ),
+                      if (_isGuardian)
+                        IconButton(
+                          key: const Key('btn_appbar_add_reward'),
+                          tooltip: AppLanguage.text(
+                            'Thêm phúc lợi thực tế mới',
+                            'Add New Real-World Reward',
+                          ),
+                          icon: const Icon(
+                            Icons.add_business_rounded,
+                            color: primaryColor,
+                          ),
+                          onPressed: _showCreateRewardDialog,
+                        ),
+                    ],
+                    bottom: TabBar(
+                      controller: _tabController,
+                      labelColor: primaryColor,
+                      unselectedLabelColor: Colors.black54,
+                      indicatorColor: primaryColor,
+                      tabs: [
+                        Tab(
+                          icon: const Icon(Icons.storefront_rounded, size: 18),
+                          text: AppLanguage.text(
+                            'Đổi Quà Phúc Lợi (${catalog.length})',
+                            'Reward Shop (${catalog.length})',
+                          ),
+                        ),
+                        Tab(
+                          icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                          text: AppLanguage.text(
+                            'Lịch Sử Sao (Sổ Cái)',
+                            'Star Ledger History',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  body: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildWishlistShopTab(
+                        catalog,
+                        claims,
+                        pendingClaims,
+                        liveBalance,
+                      ),
+                      _buildLedgerHistoryTab(),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 
@@ -204,6 +238,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     List<WishlistRewardItem> catalog,
     List<WishlistClaimRecord> allClaims,
     List<WishlistClaimRecord> pendingClaims,
+    int liveBalance,
   ) {
     final potStars = _starService.getFamilyStarPool(widget.familyId);
 
@@ -248,7 +283,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '$_myStarBalance ⭐',
+                            '$liveBalance ⭐',
                             key: const Key('user_star_balance_text'),
                             style: const TextStyle(
                               fontSize: 28,
@@ -376,7 +411,115 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
             style: const TextStyle(fontSize: 12.5, color: Colors.black54),
           ),
           const SizedBox(height: 12),
-          ...catalog.map(_buildRewardCatalogCard),
+          if (catalog.isEmpty)
+            _buildEmptyCatalogCard()
+          else
+            ...catalog.map((item) => _buildRewardCatalogCard(item, liveBalance)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyCatalogCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+      margin: const EdgeInsets.only(top: 8, bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE0ECE6)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE8F5E9),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: const Text('🎁', style: TextStyle(fontSize: 36)),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            AppLanguage.text(
+              'Gia đình chưa có phần thưởng nào!',
+              'No rewards added for this family yet!',
+            ),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF005F50),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            AppLanguage.text(
+              'Mỗi gia đình có một Cửa hàng Đổi Sao riêng biệt trên Firebase. Bố/Mẹ hãy tạo các phần thưởng thiết thực (như xem TV 30 phút, mua truyện, đi chơi...) để các con chăm chỉ làm việc nhà tích sao đổi thưởng nhé!',
+              'Each family has its own rewards market on Firebase. Parents can create real-world rewards (screen time, books, outings) to motivate children!',
+            ),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Colors.black54,
+              height: 1.4,
+            ),
+          ),
+          if (_isGuardian) ...[
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              key: const Key('btn_add_first_reward'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF005F50),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                elevation: 2,
+              ),
+              icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
+              label: Text(
+                AppLanguage.text(
+                  '+ Thêm phúc lợi cho gia đình',
+                  '+ Add family reward',
+                ),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              onPressed: _showCreateRewardDialog,
+            ),
+          ] else ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8E1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFE082)),
+              ),
+              child: Text(
+                AppLanguage.text(
+                  '💡 Nhắc Bố/Mẹ thêm phần thưởng con yêu thích vào cửa hàng nhé!',
+                  '💡 Ask Mom/Dad to add rewards you would love to redeem!',
+                ),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFE65100),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -455,8 +598,9 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     );
   }
 
-  Widget _buildRewardCatalogCard(WishlistRewardItem item) {
-    final canAfford = _myStarBalance >= item.starCost;
+  Widget _buildRewardCatalogCard(WishlistRewardItem item, [int? liveBalance]) {
+    final effectiveBalance = liveBalance ?? _myStarBalance;
+    final canAfford = effectiveBalance >= item.starCost;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -567,14 +711,18 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   }
 
   Widget _buildLedgerHistoryTab() {
-    final allEntries = _starService.getStarLedgerHistory(widget.familyId);
-    final filteredEntries = _ledgerFilterType == 'ALL'
-        ? allEntries
-        : allEntries
-            .where((e) => e.type.toUpperCase() == _ledgerFilterType)
-            .toList();
+    return StreamBuilder<List<StarLedgerEntryModel>>(
+      stream: _starService.watchStarLedger(widget.familyId),
+      initialData: _starService.getStarLedgerHistory(widget.familyId),
+      builder: (context, snapshot) {
+        final allEntries = snapshot.data ?? [];
+        final filteredEntries = _ledgerFilterType == 'ALL'
+            ? allEntries
+            : allEntries
+                .where((e) => e.type.toUpperCase() == _ledgerFilterType)
+                .toList();
 
-    return Column(
+        return Column(
       children: [
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -672,6 +820,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
         ),
       ],
     );
+      },
+    );
   }
 
   Widget _buildFilterChip(String code, String label) {
@@ -684,6 +834,18 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   }
 
   Future<void> _handleRedeemReward(WishlistRewardItem item) async {
+    final balance = _myStarBalance;
+    if (balance < item.starCost) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '⚠️ Số dư sao của bạn ($balance ⭐) không đủ để đổi "${item.title}" (Cần ${item.starCost} ⭐). Hãy làm thêm việc nhà để tích sao nhé!',
+          ),
+          backgroundColor: const Color(0xFFD84315),
+        ),
+      );
+      return;
+    }
     try {
       HapticFeedback.mediumImpact();
       await _starService.submitWishlistRedemption(
