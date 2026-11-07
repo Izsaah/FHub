@@ -8,6 +8,7 @@ import '../models/user_bank_info.dart';
 import '../models/notification_model.dart';
 import '../models/wallet_transaction_model.dart';
 import '../services/notification_service.dart';
+import '../../Long/services/family_data_service.dart';
 import '../services/family_jackpot_service.dart';
 import '../services/payment_config.dart';
 import '../services/bank_directory.dart';
@@ -38,7 +39,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   @override
   void initState() {
     super.initState();
-    _jackpotService.initForFamily(PaymentService().currentFamilyId);
+    final famId = PaymentService().currentFamilyId;
+    _jackpotService.initForFamily(famId);
+    _syncCheckInFromHome(famId);
     _lastRenderedShakeCount = _jackpotService.myShakeCount;
     _shakeAnimController = AnimationController(
       vsync: this,
@@ -46,6 +49,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
       lowerBound: -0.12,
       upperBound: 0.12,
     );
+  }
+
+  Future<void> _syncCheckInFromHome(String famId) async {
+    try {
+      final members = await FamilyDataService().getFamilyMembers(familyId: famId);
+      await _jackpotService.syncCheckInsFromMembers(members);
+    } catch (e) {
+      debugPrint('_syncCheckInFromHome error: $e');
+    }
   }
 
   @override
@@ -378,14 +390,43 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           ],
         ),
         const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            _buildQuickStarDepositButton(10, '+10 ⭐'),
-                            const SizedBox(width: 8),
-                            _buildQuickStarDepositButton(20, '+20 ⭐'),
-                            const SizedBox(width: 8),
-                            _buildQuickStarDepositButton(50, '+50 ⭐'),
-                          ],
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFDE7),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFFFE082)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.stars_rounded, color: Color(0xFFF57F17), size: 20),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    AppLanguage.text('Quy chế tích lũy sao vào hũ', 'How pot stars accumulate'),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: Color(0xFFE65100),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                AppLanguage.text(
+                                  '• Cả nhà hoàn thành điểm danh mỗi ngày: +10 ⭐ vào hũ.\n'
+                                  '• Đổi phúc lợi từ shop: Tích điểm 10% tổng số sao vào hũ.',
+                                  '• Daily family check-in completed: +10 ⭐ to pot.\n'
+                                  '• Wishlist reward redeemed: 10% cashback added to pot.',
+                                ),
+                                style: const TextStyle(fontSize: 12, height: 1.4, color: Color(0xFF5D4037)),
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 12),
                         _buildDailyCheckInCard(jackpot),
@@ -1032,40 +1073,6 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
   }
 
-  Widget _buildQuickStarDepositButton(int stars, String label) {
-    return Expanded(
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-          side: const BorderSide(color: DanhColors.brand500),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          backgroundColor: Colors.white,
-        ),
-        onPressed: () async {
-          await _jackpotService.contributeStars(stars: stars);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('🎉 Đã góp +$stars ⭐ vào Hũ Sao Gia Đình!'),
-                backgroundColor: DanhColors.brand800,
-              ),
-            );
-          }
-        },
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: DanhColors.brand800,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   /// DIALOG NẠP TIỀN VÀO HŨ BẰNG VIETQR SEPAY + TỰ ĐỘNG BẮT GIAO DỊCH
   // ignore: unused_element
@@ -2616,7 +2623,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     '3. Trận chiến Lắc 30s: Cả nhà cùng lắc điện thoại (hoặc bấm Lắc Ngay). Mỗi lần lắc = +1 vé may mắn!\n'
                     '4. Vừa hết 30s: Lộ diện ngay "Quán Quân Lắc Tay", sau đó 10s thần may mắn công bố kết quả trao thưởng.\n'
                     '5. Công thức chia thưởng tổng quỹ A: Giải Nhất nhận 3/4 của A, Giải Nhì nhận 3/5 phần còn lại, tiếp theo nhận 3/4 của 2 phần còn lại, chia trọn vẹn 100% quỹ cho cả nhà.\n'
-                    '6. Đặc biệt: Nếu mất gói Premium khi hũ chưa lắc -> Toàn bộ tiền trong hũ bị tiêu hủy!\n'
+                    '6. Đặc biệt: Khi hết hạn gói Premium, số sao đã tích lũy trong hũ vẫn được bảo toàn nguyên vẹn (chỉ lắc nổ hũ khi kích hoạt Premium)!\n'
                     '7. Ai lắc nhiều nhất nhà mà trượt Giải Nhất sẽ nhận thêm tấm Poster "Ý TRỜI"! 🤣',
                     style: TextStyle(fontSize: 13, height: 1.45, color: DanhColors.textPrimary),
                   ),
@@ -2662,16 +2669,16 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'HŨ ĐÃ BỊ TIÊU HỦY DO MẤT GÓI PREMIUM!',
+                  'HŨ SAO GIA ĐÌNH ĐƯỢC BẢO TOÀN!',
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.bold,
-                    color: DanhColors.error,
+                    color: DanhColors.brand900,
                   ),
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Theo quy định: Hũ Niềm Vui Gia Đình chỉ duy trì khi gia đình sở hữu Gói Premium. Khi gói hết hạn hoặc bị hủy trước khi nổ hũ, toàn bộ số tiền quỹ trong hũ đã bị tiêu hủy!',
+                  'Khi gói Premium hết hạn, số sao đã tích lũy trong Hũ vẫn được giữ nguyên vẹn. Bạn chỉ cần gia hạn gói Premium để tiếp tục cùng gia đình lắc nổ hũ!',
                   style: TextStyle(
                     fontSize: 12,
                     color: DanhColors.textSecondary,
@@ -2718,7 +2725,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           ),
           const SizedBox(height: 8),
           const Text(
-            'Hũ Niềm Vui Gia Đình là đặc quyền dành riêng cho gia đình sở hữu Gói Premium.\n\n⚠️ Lưu ý nghiêm ngặt: Trong quá trình tích lũy hũ, nếu gia đình hết hạn Premium trước khi bấm nổ hũ thì toàn bộ số tiền trong hũ sẽ bị mất!',
+            'Hũ Niềm Vui Gia Đình là đặc quyền dành riêng cho gia đình sở hữu Gói Premium.\n\n⭐ Lưu ý: Khi hết hạn Premium, số sao đã tích trữ trong hũ vẫn được BẢO TOÀN NGUYÊN VẸN. Nhiệm vụ điểm danh vẫn đồng bộ nhưng chỉ tăng sao vào hũ khi kích hoạt lại gói Premium!',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12.5,

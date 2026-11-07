@@ -112,6 +112,9 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     _starService.fetchWishlistCatalog(widget.familyId).then((_) {
       if (mounted) setState(() {});
     });
+    _starService.fetchMemberBalance(widget.familyId, widget.currentUserId).then((b) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -688,23 +691,41 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
             ),
             const SizedBox(width: 4),
           ],
-          ElevatedButton(
-            key: Key('btn_redeem_${item.id}'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  canAfford ? const Color(0xFFE65100) : Colors.grey.shade300,
-              foregroundColor: canAfford ? Colors.white : Colors.black45,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          if (widget.currentUserId.isNotEmpty && widget.currentUserId == item.createdBy)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF81C784)),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Text(
+                AppLanguage.text('Bạn đã tạo', 'Created by you'),
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2E7D32),
+                ),
+              ),
+            )
+          else
+            ElevatedButton(
+              key: Key('btn_redeem_${item.id}'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    canAfford ? const Color(0xFFE65100) : Colors.grey.shade300,
+                foregroundColor: canAfford ? Colors.white : Colors.black45,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              ),
+              onPressed: () => _handleRedeemReward(item),
+              child: Text(
+                AppLanguage.text('Đổi quà', 'Redeem'),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+              ),
             ),
-            onPressed: () => _handleRedeemReward(item),
-            child: Text(
-              AppLanguage.text('Đổi quà', 'Redeem'),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
-            ),
-          ),
         ],
       ),
     );
@@ -834,6 +855,20 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   }
 
   Future<void> _handleRedeemReward(WishlistRewardItem item) async {
+    if (widget.currentUserId.isNotEmpty && widget.currentUserId == item.createdBy) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              '⚠️ Bạn là người tạo phần thưởng này, không thể tự đổi vật phẩm của chính mình.',
+              '⚠️ You created this reward and cannot redeem your own item.',
+            ),
+          ),
+          backgroundColor: const Color(0xFFD84315),
+        ),
+      );
+      return;
+    }
     final balance = _myStarBalance;
     if (balance < item.starCost) {
       ScaffoldMessenger.of(context).showSnackBar(

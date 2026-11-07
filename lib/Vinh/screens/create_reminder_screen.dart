@@ -922,8 +922,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                                 onSelectionChanged: (newSelection) {
                                   setState(() {
                                     _selectedTaskType = newSelection.first;
-                                    if (_selectedTaskType == TaskType.favor.dbValue ||
-                                        _selectedTaskType == TaskType.care.dbValue) {
+                                    if (_selectedTaskType == TaskType.favor.dbValue) {
                                       _rewardStars = 0;
                                       _requiresProofImage = false;
                                     } else if (_rewardStars == 0) {
@@ -1361,7 +1360,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                                 const SizedBox(height: 10),
                                 Wrap(
                                   spacing: 8,
-                                  children: [1, 2, 3, 5].map((star) {
+                                  children: [1, 2, 3, 4, 5].map((star) {
                                     final isSelected = _rewardStars == star;
                                     return ChoiceChip(
                                       label: Text(
@@ -1439,6 +1438,59 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                                     final sample = title.isNotEmpty ? title : 'Uống thuốc huyết áp sau ăn';
                                     AiSpeechPlatform.instance.speak("Kính mời Ông Bà: $sample", isEnglish: false);
                                   },
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFBDC9C4)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star_rounded, color: Colors.amber, size: 24),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        AppLanguage.text('Thưởng sao chăm sóc (1 - 5 ⭐)', 'Care Star Reward (1 - 5 ⭐)'),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textPrimary),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  children: [1, 2, 3, 4, 5].map((star) {
+                                    final isSelected = _rewardStars == star;
+                                    return ChoiceChip(
+                                      label: Text(
+                                        '$star ⭐',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: isSelected ? Colors.amber.shade900 : textPrimary,
+                                        ),
+                                      ),
+                                      selected: isSelected,
+                                      selectedColor: Colors.amber.shade100,
+                                      backgroundColor: Colors.grey.shade50,
+                                      side: BorderSide(
+                                        color: isSelected ? Colors.amber.shade700 : const Color(0xFFBDC9C4),
+                                      ),
+                                      onSelected: (selected) {
+                                        if (selected) setState(() => _rewardStars = star);
+                                      },
+                                    );
+                                  }).toList(),
                                 ),
                               ],
                             ),

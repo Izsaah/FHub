@@ -39,6 +39,7 @@ class ReminderListScreen extends StatefulWidget {
   final ValueChanged<String>? onUserChanged;
   final VoidCallback? onNavigateToFamily;
   final bool initialShowAll;
+  final bool isActive;
 
   const ReminderListScreen({
     super.key,
@@ -52,6 +53,7 @@ class ReminderListScreen extends StatefulWidget {
     this.onUserChanged,
     this.onNavigateToFamily,
     this.initialShowAll = false,
+    this.isActive = true,
   });
 
   @override
@@ -164,7 +166,9 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   @override
   void didUpdateWidget(covariant ReminderListScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.familyId != widget.familyId ||
+    final becameActive = widget.isActive && !oldWidget.isActive;
+    if (becameActive ||
+        oldWidget.familyId != widget.familyId ||
         oldWidget.currentUserId != widget.currentUserId ||
         oldWidget.families != widget.families) {
       _resolveContext();

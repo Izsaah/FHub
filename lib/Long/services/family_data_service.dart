@@ -794,6 +794,14 @@ class FamilyDataService implements IFamilyService {
             lastCheckInDate = userLastCheckInDate;
           }
 
+          final rawStars = memberData['rewardStarsTotal'] ??
+              memberData['reward_stars_total'] ??
+              memberData['stars'] ??
+              0;
+          final int parsedRewardStars = (rawStars is num)
+              ? rawStars.toInt()
+              : (int.tryParse(rawStars.toString()) ?? 0);
+
           members.add(
             FamilyMemberModel(
               familyId: targetFamilyId,
@@ -804,6 +812,7 @@ class FamilyDataService implements IFamilyService {
               lastActiveAt: lastActiveAt,
               lastCheckInAt: lastCheckInAt,
               lastCheckInDate: lastCheckInDate,
+              rewardStarsTotal: parsedRewardStars,
             ),
           );
         }

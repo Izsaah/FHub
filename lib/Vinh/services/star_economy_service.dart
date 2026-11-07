@@ -138,6 +138,131 @@ class StarEconomyService {
     familyStarPools.clear();
   }
 
+  /// Đọc số dư sao thời gian thực của thành viên theo đúng familyId từ Firestore
+  Future<int> fetchMemberBalance(String familyId, String userId) async {
+    if (_firestore != null) {
+      try {
+        final doc = await _firestore!
+            .collection('family_members')
+            .doc('${familyId}_$userId')
+            .get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          final val = data['rewardStarsTotal'] ?? data['reward_stars_total'] ?? data['stars'];
+          final balance = (val as num?)?.toInt() ?? 0;
+          seedMemberBalance(familyId, userId, balance);
+          return balance;
+        }
+      } catch (e) {
+        debugPrint('fetchMemberBalance error: $e');
+      }
+    }
+    return getBalance(familyId, userId);
+  }
+
+  /// Cộng sao khi hoàn thành task reminder (Việc nhà / Chăm sóc)
+  /// QUY TẮC CỐT LÕI: Không áp dụng cộng sao cho task trong đó Người tạo là Người hoàn thành
+  /// (chống tự tạo việc cho mình rồi tự hoàn thành để farm sao).
+  Future<void> awardStarsForCompletedChore({
+    required String familyId,
+    required String taskId,
+    required String completerId,
+    String? completerName,
+    required String creatorId,
+    String? creatorName,
+    required int stars,
+    String? taskTitle,
+  }) async {
+    // Chống tự tạo việc cho chính mình rồi tự hoàn thành để nhận sao
+    if (creatorId.isNotEmpty && creatorId == completerId) {
+      debugPrint('awardStarsForCompletedChore: Người tạo ($creatorId) tự hoàn thành task -> Bỏ qua cộng sao.');
+      return;
+    }
+
+    if (stars <= 0) return;
+
+    final ledgerKey = 'reward_$taskId';
+
+    final firestore = _firestore;
+    if (firestore == null) {
+      if (starLedger.containsKey(ledgerKey)) return; // Idempotent
+      final memberKey = '${familyId}_$completerId';
+      memberBalances[memberKey] = (memberBalances[memberKey] ?? 0) + stars;
+      starLedger[ledgerKey] = {
+        'id': ledgerKey,
+        'txId': ledgerKey,
+        'familyId': familyId,
+        'userId': completerId,
+        'userName': completerName ?? 'Thành viên',
+        'amount': stars,
+        'type': 'TASK_REWARD',
+        'taskId': taskId,
+        'sourceId': taskId,
+        'creatorId': creatorId,
+        'creatorName': creatorName,
+        'taskTitle': taskTitle ?? 'Hoàn thành việc nhà',
+        'note': 'Thưởng hoàn thành: ${taskTitle ?? 'Công việc'}',
+        'createdAt': DateTime.now(),
+      };
+      return;
+    }
+
+    final ledgerRef = firestore.collection('star_ledger').doc(ledgerKey);
+    final memberRef =
+        firestore.collection('family_members').doc('${familyId}_$completerId');
+
+    try {
+      await firestore.runTransaction((transaction) async {
+        final ledgerSnap = await transaction.get(ledgerRef);
+        if (ledgerSnap.exists) return; // Idempotent: Đã cộng sao cho task này rồi
+
+        final memberSnap = await transaction.get(memberRef);
+        final currentBalance = memberSnap.exists
+            ? (memberSnap.data()?['rewardStarsTotal'] as num?)?.toInt() ?? 0
+            : 0;
+
+        if (memberSnap.exists) {
+          transaction.update(memberRef, {
+            'rewardStarsTotal': currentBalance + stars,
+            'reward_stars_total': currentBalance + stars,
+            'lastActiveAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          transaction.set(
+            memberRef,
+            {
+              'familyId': familyId,
+              'userId': completerId,
+              'rewardStarsTotal': stars,
+              'reward_stars_total': stars,
+              'lastActiveAt': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true),
+          );
+        }
+
+        transaction.set(ledgerRef, {
+          'id': ledgerKey,
+          'txId': ledgerKey,
+          'familyId': familyId,
+          'userId': completerId,
+          'userName': completerName ?? 'Thành viên',
+          'amount': stars,
+          'type': 'TASK_REWARD',
+          'taskId': taskId,
+          'sourceId': taskId,
+          'creatorId': creatorId,
+          'creatorName': creatorName,
+          'taskTitle': taskTitle ?? 'Hoàn thành việc nhà',
+          'note': 'Thưởng hoàn thành: ${taskTitle ?? 'Công việc'}',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      });
+    } catch (e) {
+      debugPrint('awardStarsForCompletedChore transaction error: $e');
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // 1. APPROVE TASK WITH DOUBLE-AWARD PROTECTION
   // ---------------------------------------------------------------------------
@@ -1140,6 +1265,12 @@ class StarEconomyService {
     required WishlistRewardItem item,
     String? claimId,
   }) async {
+    if (childId.isNotEmpty && childId == item.createdBy) {
+      throw StateError(
+        'ANTI_EXPLOIT_CREATOR_CANNOT_REDEEM: Người tạo phúc lợi không được tự đổi vật phẩm do chính mình thiết lập.',
+      );
+    }
+
     final effectiveClaimId =
         claimId ?? '${childId}_${item.id}_${DateTime.now().microsecondsSinceEpoch}';
 

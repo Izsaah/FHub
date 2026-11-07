@@ -2,6 +2,7 @@ import 'dart:async';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import 'multi_tier_escalation_service.dart';
+import 'star_economy_service.dart';
 import 'reminder_exceptions.dart';
 import 'reminder_validator.dart';
 
@@ -744,6 +745,23 @@ class InMemoryReminderRepository implements ReminderRepository {
     );
 
     _reminders[index] = updated;
+
+    // Cộng sao khi hoàn thành task reminder (Không áp dụng cho người tạo tự làm task của mình)
+    final isSelfCompleted = existing.creatorId == currentUserId;
+    if (!isSelfCompleted && existing.rewardStars > 0) {
+      unawaited(
+        StarEconomyService.instance.awardStarsForCompletedChore(
+          familyId: existing.familyId,
+          taskId: reminderId,
+          completerId: currentUserId,
+          completerName: existing.assignedToName,
+          creatorId: existing.creatorId,
+          creatorName: existing.creatorName,
+          stars: existing.rewardStars,
+          taskTitle: existing.title,
+        ),
+      );
+    }
 
     // Tự động sinh chu kỳ tiếp theo cho lời nhắc lặp lại (DAILY / WEEKLY)
     final rule = existing.repeatRule;

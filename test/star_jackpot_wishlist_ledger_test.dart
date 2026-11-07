@@ -6,6 +6,8 @@ import 'package:fhub/Vinh/models/family_member.dart';
 import 'package:fhub/Vinh/models/wishlist_models.dart';
 import 'package:fhub/Vinh/screens/wishlist_and_ledger_screen.dart';
 import 'package:fhub/Vinh/services/star_economy_service.dart';
+import 'package:fhub/Long/models/family_member_model.dart';
+import 'package:fhub/Long/models/user_model.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +20,7 @@ void main() {
       starService.resetMockData();
       StarEconomyService.instance.resetMockData();
       FamilyJackpotService.instance.resetJackpot();
+      FamilyJackpotService.instance.overrideCanUseJackpotForTest = true;
     });
 
     // -------------------------------------------------------------------------
@@ -689,5 +692,141 @@ void main() {
         expect(find.byKey(const Key('btn_add_first_reward')), findsOneWidget);
       });
     });
+
+    // -------------------------------------------------------------------------
+    // R6: ADVANCED GOVERNANCE & ANTI-EXPLOIT (Tasks, Wishlist & Jackpot)
+    // -------------------------------------------------------------------------
+    group('R6: Advanced Governance & Anti-Exploit Rules', () {
+      test('6.1 awardStarsForCompletedChore awards stars when creatorId != completerId', () async {
+        starService.seedMemberBalance('fam_gov', 'child_vinh', 0);
+
+        await starService.awardStarsForCompletedChore(
+          familyId: 'fam_gov',
+          taskId: 'task_wash_dishes',
+          completerId: 'child_vinh',
+          completerName: 'Lương Diệu Vinh',
+          creatorId: 'parent_dad',
+          creatorName: 'Bố Tuấn',
+          stars: 4,
+          taskTitle: 'Rửa chén sau bữa tối',
+        );
+
+        expect(starService.getBalance('fam_gov', 'child_vinh'), 4);
+        expect(starService.starLedger.containsKey('reward_task_wash_dishes'), isTrue);
+      });
+
+      test('6.2 awardStarsForCompletedChore BLOCKS awarding stars when creatorId == completerId', () async {
+        starService.seedMemberBalance('fam_gov', 'creator_user', 10);
+
+        // User creates task for themselves and completes it
+        await starService.awardStarsForCompletedChore(
+          familyId: 'fam_gov',
+          taskId: 'task_self_award',
+          completerId: 'creator_user',
+          completerName: 'Tự Làm Việc',
+          creatorId: 'creator_user',
+          creatorName: 'Tự Làm Việc',
+          stars: 5,
+          taskTitle: 'Tự tạo việc cho mình',
+        );
+
+        // Balance should NOT change! Anti-exploit protection
+        expect(starService.getBalance('fam_gov', 'creator_user'), 10);
+        expect(starService.starLedger.containsKey('reward_task_self_award'), isFalse);
+      });
+
+      test('6.3 Wishlist redemption BLOCKS creator from redeeming their own item', () async {
+        starService.seedMemberBalance('fam_gov', 'parent_vinh', 100);
+        final item = WishlistRewardItem(
+          id: 'item_self_created',
+          familyId: 'fam_gov',
+          title: 'Vật phẩm tự tạo',
+          description: 'Test',
+          starCost: 10,
+          iconEmoji: '🎁',
+          createdBy: 'parent_vinh',
+          createdByName: 'Lương Diệu Vinh',
+          createdAt: DateTime.now(),
+        );
+
+        expect(
+          () => starService.submitWishlistRedemption(
+            familyId: 'fam_gov',
+            childId: 'parent_vinh',
+            childName: 'Lương Diệu Vinh',
+            item: item,
+          ),
+          throwsA(isA<StateError>()),
+        );
+      });
+
+      test('6.4 onPremiumLost() preserves accumulated pot stars (does NOT reset to 0)', () async {
+        final jackpotSvc = FamilyJackpotService.instance;
+        await jackpotSvc.resetJackpot();
+        await jackpotSvc.contributeStars(stars: 80, memberId: 'u_donor', memberName: 'Nhà hảo tâm');
+        expect(jackpotSvc.jackpot.totalPoolStars, 80);
+
+        // Family loses premium
+        await jackpotSvc.onPremiumLost();
+
+        // Pot stars MUST BE PRESERVED!
+        expect(jackpotSvc.jackpot.totalPoolStars, 80);
+      });
+
+      test('6.5 Ending shake battle distributes stars to each participant personal balance', () async {
+        final jackpotSvc = FamilyJackpotService.instance;
+        await jackpotSvc.resetJackpot();
+        await jackpotSvc.contributeStars(stars: 100, memberId: 'u_donor', memberName: 'Nhà hảo tâm');
+        StarEconomyService.instance.seedMemberBalance('f1', 'user_a', 0);
+        StarEconomyService.instance.seedMemberBalance('f1', 'user_b', 0);
+
+        final result = await jackpotSvc.distributeStarPotNow(
+          overrideShakeCounts: {'user_a': 50, 'user_b': 30},
+          overrideParticipantIds: ['user_a', 'user_b'],
+        );
+
+        expect(result.prizes.isNotEmpty, isTrue);
+        // Pot is emptied after successful settlement
+        expect(jackpotSvc.jackpot.totalPoolStars, 0);
+        // Personal balances are credited to each participant
+        final balanceA = StarEconomyService.instance.getBalance('f1', 'user_a');
+        final balanceB = StarEconomyService.instance.getBalance('f1', 'user_b');
+        expect(balanceA + balanceB, 100);
+        expect(balanceA, greaterThan(0));
+        expect(balanceB, greaterThan(0));
+      });
+
+      test('6.6 syncCheckInsFromMembers syncs check-in status from home members (with and without Premium)', () async {
+        final jackpotSvc = FamilyJackpotService.instance;
+        await jackpotSvc.resetJackpot();
+
+        final member1 = FamilyMemberModel(
+          familyId: 'f1',
+          user: UserModel(id: 'm1', name: 'Member 1', email: 'm1@test.com'),
+          role: Role.owner,
+          lastCheckInAt: DateTime.now(),
+        );
+        final member2 = FamilyMemberModel(
+          familyId: 'f1',
+          user: UserModel(id: 'm2', name: 'Member 2', email: 'm2@test.com'),
+          role: Role.member,
+          lastCheckInAt: DateTime.now(),
+        );
+
+        // Case A: When family has Premium -> syncs and awards +10 ⭐ to pot
+        jackpotSvc.overrideCanUseJackpotForTest = true;
+        await jackpotSvc.syncCheckInsFromMembers([member1, member2]);
+        expect(jackpotSvc.isDailyCheckInCompletedToday(), isTrue);
+        expect(jackpotSvc.jackpot.totalPoolStars, 10);
+
+        // Case B: When family does NOT have Premium -> pot stars remain 0, no stars added
+        await jackpotSvc.resetJackpot();
+        jackpotSvc.overrideCanUseJackpotForTest = false;
+        await jackpotSvc.syncCheckInsFromMembers([member1, member2]);
+        expect(jackpotSvc.isDailyCheckInCompletedToday(), isTrue);
+        expect(jackpotSvc.jackpot.totalPoolStars, 0);
+      });
+    });
+
   });
 }
