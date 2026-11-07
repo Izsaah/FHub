@@ -19,6 +19,8 @@ class ReminderListView extends StatelessWidget {
   final bool isParentOrOwner;
   final Map<String, String> familyNamesById;
   final bool showFamilyBadge;
+  final bool shrinkWrap;
+  final ScrollPhysics? physics;
   final bool Function(ReminderModel)? canDeletePredicate;
   final VoidCallback onCreatePressed;
   final VoidCallback onShowAllPressed;
@@ -38,6 +40,8 @@ class ReminderListView extends StatelessWidget {
     this.isParentOrOwner = false,
     this.familyNamesById = const {},
     this.showFamilyBadge = false,
+    this.shrinkWrap = false,
+    this.physics,
     this.canDeletePredicate,
     required this.onCreatePressed,
     required this.onShowAllPressed,
@@ -70,7 +74,7 @@ class ReminderListView extends StatelessWidget {
         }
 
         final overdueList = activeReminders
-            .where((r) => r.isOverdue && !r.isCompleted)
+            .where((r) => r.isOverdue && !r.isCompleted && !r.isSubmitted)
             .toList();
 
         final openList = activeReminders
@@ -80,6 +84,10 @@ class ReminderListView extends StatelessWidget {
         final pendingList = activeReminders
             .where((r) =>
                 r.isPending && !r.isOverdue && !r.isOpen && !r.isCompleted)
+            .toList();
+
+        final submittedList = activeReminders
+            .where((r) => r.isSubmitted && !r.isCompleted)
             .toList();
 
         final completedList =
@@ -100,7 +108,9 @@ class ReminderListView extends StatelessWidget {
         }
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
+          shrinkWrap: shrinkWrap,
+          physics: physics,
+          padding: EdgeInsets.fromLTRB(16, 4, 16, shrinkWrap ? 24 : 110),
           children: [
             // 1. Nhóm Quá Hạn (Ưu tiên cao nhất)
             if (overdueList.isNotEmpty) ...[
@@ -131,6 +141,29 @@ class ReminderListView extends StatelessWidget {
                       reminder.isOpenTask && onClaimAndCompleteReminder != null
                           ? () => onClaimAndCompleteReminder!(reminder)
                           : null,
+                ),
+              ),
+            ],
+
+            // 1b. Nhóm Chờ Duyệt Nghiệm Thu (Ảnh con nộp chờ Bố Mẹ / Ông Bà duyệt & thưởng sao)
+            if (submittedList.isNotEmpty) ...[
+              ReminderSectionHeader(
+                title: AppLanguage.text('CHỜ DUYỆT NGHIỆM THU', 'PENDING APPROVAL'),
+                count: submittedList.length,
+                color: const Color(0xFF6750A4),
+                icon: Icons.rate_review_rounded,
+              ),
+              ...submittedList.map(
+                (reminder) => ReminderCard(
+                  reminder: reminder,
+                  currentUserId: currentUserId,
+                  familyName:
+                      showFamilyBadge ? resolveFamilyName(reminder) : null,
+                  showFamilyBadge: showFamilyBadge,
+                  onTap: () => onTapReminder(reminder),
+                  onDelete: canDelete(reminder)
+                      ? () => onDeleteReminder(reminder)
+                      : null,
                 ),
               ),
             ],

@@ -5,6 +5,8 @@ import 'package:fhub/Danh/services/jackpot_algorithm.dart';
 import 'package:fhub/Vinh/models/family_member.dart';
 import 'package:fhub/Vinh/models/wishlist_models.dart';
 import 'package:fhub/Vinh/screens/wishlist_and_ledger_screen.dart';
+import 'package:fhub/Vinh/screens/views/reminder_list_view.dart';
+import 'package:fhub/Vinh/models/reminder_model.dart';
 import 'package:fhub/Vinh/services/star_economy_service.dart';
 import 'package:fhub/Long/models/family_member_model.dart';
 import 'package:fhub/Long/models/user_model.dart';
@@ -825,6 +827,102 @@ void main() {
         await jackpotSvc.syncCheckInsFromMembers([member1, member2]);
         expect(jackpotSvc.isDailyCheckInCompletedToday(), isTrue);
         expect(jackpotSvc.jackpot.totalPoolStars, 0);
+      });
+
+      testWidgets('6.7 ReminderListView renders CHỜ DUYỆT NGHIỆM THU when task is submitted, and ReminderCard displays Duyệt ngay button', (tester) async {
+        final submittedReminder = ReminderModel(
+          id: 'task_submitted_1',
+          familyId: 'f1',
+          title: 'Quét nhà sạch sẽ',
+          date: '07/11/2026',
+          time: '20:30',
+          assignedTo: 'child_bo',
+          assignedToName: 'Cu Bo',
+          creatorId: 'parent_dad',
+          creatorName: 'Bố Tuấn',
+          taskType: TaskType.assign,
+          taskStatus: TaskStatus.submitted,
+          requiresProofImage: true,
+          proofImageUrl: 'https://example.com/proof.jpg',
+          rewardStars: 5,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ReminderListView(
+                allReminders: [submittedReminder],
+                displayedReminders: [submittedReminder],
+                currentUserId: 'parent_dad',
+                selectedDateStr: '07/11/2026',
+                isShowingAll: false,
+                isParentOrOwner: true,
+                onCreatePressed: () {},
+                onShowAllPressed: () {},
+                onTapReminder: (_) {},
+                onCompleteReminder: (_) {},
+                onDeleteReminder: (_) {},
+                onClaimReminder: (_) {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. The PENDING APPROVAL section header MUST be present!
+        expect(find.text('CHỜ DUYỆT NGHIỆM THU'), findsOneWidget);
+        // 2. The task title must be shown
+        expect(find.text('Quét nhà sạch sẽ'), findsOneWidget);
+        // 3. The 'Duyệt ngay' action button on the card must be visible!
+        expect(find.text('Duyệt ngay'), findsOneWidget);
+      });
+
+      testWidgets('6.8 ReminderListView renders cleanly inside SingleChildScrollView with shrinkWrap for Calendar View', (tester) async {
+        final task = ReminderModel(
+          id: 'task_cal_scroll_1',
+          familyId: 'f1',
+          title: 'Tưới cây cảnh',
+          date: '07/11/2026',
+          time: '18:00',
+          assignedTo: 'child_bo',
+          assignedToName: 'Cu Bo',
+          creatorId: 'parent_dad',
+          taskType: TaskType.assign,
+          taskStatus: TaskStatus.pending,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    const Text('Top Header Calendar Content'),
+                    ReminderListView(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      allReminders: [task],
+                      displayedReminders: [task],
+                      currentUserId: 'parent_dad',
+                      selectedDateStr: '07/11/2026',
+                      isShowingAll: false,
+                      onCreatePressed: () {},
+                      onShowAllPressed: () {},
+                      onTapReminder: (_) {},
+                      onCompleteReminder: (_) {},
+                      onDeleteReminder: (_) {},
+                      onClaimReminder: (_) {},
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Top Header Calendar Content'), findsOneWidget);
+        expect(find.text('Tưới cây cảnh'), findsOneWidget);
       });
     });
 

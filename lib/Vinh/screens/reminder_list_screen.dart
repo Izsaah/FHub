@@ -760,6 +760,28 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       }
 
       HapticFeedback.mediumImpact();
+      if (reminder.requiresProofImage && proofUrl != null) {
+        await _repository.submitTaskWithProof(
+          taskId: reminder.id,
+          proofImageUrl: proofUrl,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLanguage.text(
+                  '📸 Đã nộp ảnh nghiệm thu! Đang chờ Bố Mẹ/Ông Bà duyệt sao.',
+                  '📸 Proof submitted! Waiting for Guardian approval and stars.',
+                ),
+              ),
+              backgroundColor: const Color(0xFF0D7A68),
+            ),
+          );
+          setState(() {});
+        }
+        return;
+      }
+
       await _repository.completeReminder(
         reminderId: reminder.id,
         currentUserId: _currentUserId,
@@ -837,6 +859,33 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       }
 
       HapticFeedback.mediumImpact();
+      if (reminder.requiresProofImage && proofUrl != null) {
+        await _repository.claimOpenTask(
+          reminderId: reminder.id,
+          currentUserId: _currentUserId,
+          currentUserName: _currentUserName,
+        );
+        await _repository.submitTaskWithProof(
+          taskId: reminder.id,
+          proofImageUrl: proofUrl,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLanguage.text(
+                  '📸 Đã nhận việc và nộp ảnh nghiệm thu! Đang chờ Bố Mẹ/Ông Bà duyệt sao.',
+                  '📸 Claimed and proof submitted! Waiting for Guardian approval and stars.',
+                ),
+              ),
+              backgroundColor: const Color(0xFF0D7A68),
+            ),
+          );
+          setState(() {});
+        }
+        return;
+      }
+
       await _repository.claimAndCompleteOpenTask(
         reminderId: reminder.id,
         currentUserId: _currentUserId,
@@ -1737,6 +1786,75 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                                 _isSameDay(r.dueDateTime!, _selectedDate)))
                         .toList();
 
+                if (_isCalendarView) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.only(bottom: 120),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 680),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ReminderScopeFilterChips(
+                              filterOnlyMine: _filterOnlyMine,
+                              onScopeChanged: (val) =>
+                                  setState(() => _filterOnlyMine = val),
+                            ),
+                            _buildFamilyContextBar(),
+                            ReminderCalendarView(
+                              currentMonth: _currentMonth,
+                              selectedDate: _selectedDate,
+                              showAll: _showAll,
+                              reminders: scopedReminders,
+                              selectedDateFormatted: selectedDateStr,
+                              onDateSelected: (date) {
+                                setState(() {
+                                  _selectedDate = date;
+                                  _showAll = false;
+                                });
+                              },
+                              onMonthChanged: (newMonth) {
+                                setState(() {
+                                  _currentMonth = newMonth;
+                                });
+                              },
+                              onShowAllPressed: () => setState(() => _showAll = true),
+                            ),
+                            FamilyProgressCard(
+                              reminders: _showAll ? searchedReminders : displayedReminders,
+                              dateTitle: _showAll ? AppLanguage.text('Tất cả', 'All') : selectedDateStr,
+                            ),
+                            ReminderListView(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              allReminders: scopedReminders,
+                              displayedReminders: displayedReminders,
+                              currentUserId: _currentUserId,
+                              selectedDateStr: selectedDateStr,
+                              isShowingAll: _showAll,
+                              isParentOrOwner: _familyMembers.any(
+                                (m) =>
+                                    m.id == _currentUserId &&
+                                    (m.isParent || m.isGrandparent),
+                              ),
+                              familyNamesById: _familyNamesById,
+                              showFamilyBadge: _filterOnlyMine,
+                              canDeletePredicate: _canDeleteReminder,
+                              onCreatePressed: _openCreateReminder,
+                              onShowAllPressed: () => setState(() => _showAll = true),
+                              onTapReminder: _showDetailBottomSheet,
+                              onCompleteReminder: _completeReminder,
+                              onDeleteReminder: _confirmAndDelete,
+                              onClaimReminder: _claimReminder,
+                              onClaimAndCompleteReminder: _claimAndCompleteReminder,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
                 return Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 680),
@@ -1752,44 +1870,23 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                         // Thanh chọn Family (ở chế độ Cả nhà) hoặc hiển thị ngữ cảnh đa gia đình (ở chế độ Việc của tôi)
                         _buildFamilyContextBar(),
 
-                        // Calendar View hoặc Weekly Strip
-                        if (_isCalendarView) ...[
-                          ReminderCalendarView(
-                            currentMonth: _currentMonth,
-                            selectedDate: _selectedDate,
-                            showAll: _showAll,
-                            reminders: scopedReminders,
-                            selectedDateFormatted: selectedDateStr,
-                            onDateSelected: (date) {
-                              setState(() {
-                                _selectedDate = date;
-                                _showAll = false;
-                              });
-                            },
-                            onMonthChanged: (newMonth) {
-                              setState(() {
-                                _currentMonth = newMonth;
-                              });
-                            },
-                            onShowAllPressed: () => setState(() => _showAll = true),
-                          ),
-                        ] else
-                          WeeklyCalendarStrip(
-                            selectedDate: _selectedDate,
-                            showAll: _showAll,
-                            reminders: scopedReminders,
-                            onDateSelected: (date) {
-                              setState(() {
-                                _selectedDate = date;
-                                _showAll = false;
-                              });
-                            },
-                            onSelectAll: () {
-                              setState(() {
-                                _showAll = true;
-                              });
-                            },
-                          ),
+                        // Weekly Strip
+                        WeeklyCalendarStrip(
+                          selectedDate: _selectedDate,
+                          showAll: _showAll,
+                          reminders: scopedReminders,
+                          onDateSelected: (date) {
+                            setState(() {
+                              _selectedDate = date;
+                              _showAll = false;
+                            });
+                          },
+                          onSelectAll: () {
+                            setState(() {
+                              _showAll = true;
+                            });
+                          },
+                        ),
 
                         // Family Daily Progress Card
                         FamilyProgressCard(
@@ -1797,7 +1894,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                           dateTitle: _showAll ? AppLanguage.text('Tất cả', 'All') : selectedDateStr,
                         ),
 
-                        // List View phân nhóm theo 4 mức ưu tiên
+                        // List View phân nhóm theo các mức ưu tiên
                         Expanded(
                           child: ReminderListView(
                             allReminders: scopedReminders,

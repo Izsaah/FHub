@@ -255,7 +255,7 @@ class ReminderModel {
       assignedTo == 'ALL';
 
   bool get isOverdue {
-    if (isCompleted || isDeleted) return false;
+    if (isCompleted || isDeleted || isSubmitted) return false;
     if (status == ReminderStatus.overdue) return true;
     final dt = dueDateTime;
     if (dt != null && dt.isBefore(DateTime.now())) return true;

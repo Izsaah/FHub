@@ -650,7 +650,25 @@ class ReminderCard extends StatelessWidget {
                             },
                           ),
                         ],
-                        if (canComplete && onComplete != null)
+                        if (reminder.isSubmitted)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF6750A4),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.rate_review_outlined, size: 16),
+                              label: Text(
+                                AppLanguage.text('Duyệt ngay', 'Review'),
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: onTap,
+                            ),
+                          )
+                        else if (canComplete && onComplete != null)
                           IconButton(
                             icon: Icon(
                               reminder.requiresProofImage
