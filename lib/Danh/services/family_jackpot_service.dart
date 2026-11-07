@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import '../../Long/services/family_data_service.dart';
+import '../../Vinh/services/star_economy_service.dart';
 import '../models/family_jackpot_model.dart';
 import '../models/user_bank_info.dart';
 import '../models/wallet_transaction_model.dart';
@@ -945,10 +946,124 @@ class FamilyJackpotService extends ChangeNotifier {
       familyId: _currentFamilyId ?? 'f1',
       title: 'Quỹ Hũ Niềm Vui được nạp thêm',
       titleEn: 'Family Pot Received a Deposit',
-      body: '$name vừa đóng góp $formattedDeposit đ vào Hũ Niềm Vui!',
-      bodyEn: '$name just deposited $formattedDeposit đ into the Family Pot!',
+      body: '$name vừa đóng góp $formattedDeposit ⭐ vào Hũ Niềm Vui!',
+      bodyEn: '$name just deposited $formattedDeposit ⭐ into the Family Pot!',
       type: 'jackpot_deposit',
     ));
+  }
+
+  /// Tích lũy Sao vào Hũ Sao Gia Đình (từ nhiệm vụ hoàn thành hoặc thành viên đóng góp sao)
+  Future<void> contributeStars({
+    required int stars,
+    String? memberId,
+    String? memberName,
+    String? sourceTaskId,
+  }) async {
+    if (stars <= 0) return;
+    final uid = memberId ?? currentUserId;
+    final name = memberName ?? currentUserName;
+    final updatedContribs = Map<String, int>.from(_jackpot.contributions);
+    updatedContribs[uid] = (updatedContribs[uid] ?? 0) + stars;
+
+    final updatedNames = Map<String, String>.from(_jackpot.memberNames);
+    updatedNames[uid] = name;
+
+    String? topUid;
+    int maxStars = 0;
+    updatedContribs.forEach((k, v) {
+      if (v > maxStars) {
+        maxStars = v;
+        topUid = k;
+      }
+    });
+
+    final newTotal = _jackpot.totalPoolAmount + stars;
+    _jackpot = _jackpot.copyWith(
+      totalPoolAmount: newTotal,
+      status: JackpotStatus.idle,
+      topContributorId: topUid,
+      topContributorName: updatedNames[topUid] ?? name,
+      contributions: updatedContribs,
+      memberNames: updatedNames,
+      clearShakeStartTime: true,
+      clearSuspenseStartTime: true,
+      lostDueToPremiumExpired: false,
+    );
+    notifyListeners();
+
+    await StarEconomyService.instance.contributeStarsToJackpotPool(
+      familyId: _currentFamilyId ?? 'f1',
+      contributorId: uid.isNotEmpty ? uid : 'family_member',
+      contributorName: name,
+      stars: stars,
+      sourceTaskId: sourceTaskId,
+    );
+
+    await _recordTransaction(
+      type: WalletTransactionType.contribute,
+      amount: stars,
+      title: sourceTaskId != null ? 'Tích lũy sao từ việc nhà' : 'Góp sao vào Hũ Sao Gia Đình',
+      description: 'Đóng góp +$stars ⭐ bởi $name',
+      targetUserId: uid,
+      targetUserName: name,
+    );
+  }
+
+  /// Thực thi chia sao Hũ Sao Gia Đình ngay lập tức và cộng vào StarEconomyService
+  Future<JackpotDistributionResult> distributeStarPotNow({
+    Map<String, int>? overrideShakeCounts,
+    List<String>? overrideParticipantIds,
+    String? roundId,
+  }) async {
+    final participants = overrideParticipantIds ??
+        (_jackpot.memberNames.keys.isNotEmpty
+            ? _jackpot.memberNames.keys.toList()
+            : (overrideShakeCounts?.keys.toList() ?? <String>[]));
+    final shakes = overrideShakeCounts ?? _jackpot.shakeCounts;
+    final poolStars = _jackpot.totalPoolAmount;
+
+    final result = JackpotAlgorithm.calculate(
+      totalAmount: poolStars,
+      shakeCounts: shakes,
+      participantIds: participants,
+    );
+
+    if (result.prizes.isEmpty) {
+      return result;
+    }
+
+    final effectiveRoundId =
+        roundId ?? 'round_${DateTime.now().microsecondsSinceEpoch}';
+    final famId = _currentFamilyId ?? 'f1';
+    final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
+
+    for (final entry in result.prizes.entries) {
+      final uid = entry.key;
+      final wonStars = entry.value;
+      if (wonStars > 0) {
+        updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonStars;
+        await StarEconomyService.instance.creditJackpotStarWin(
+          familyId: famId,
+          winnerId: uid,
+          winnerName: _jackpot.memberNames[uid] ?? 'Thành viên',
+          wonStars: wonStars,
+          roundId: effectiveRoundId,
+          isFirstPrize: uid == result.firstPrizeWinnerId,
+        );
+      }
+    }
+
+    _jackpot = _jackpot.copyWith(
+      totalPoolAmount: 0,
+      status: JackpotStatus.finished,
+      shakeCounts: shakes,
+      prizeResults: result.prizes,
+      memberWallets: updatedWallets,
+      topShakerId: result.topShakerId,
+      firstPrizeWinnerId: result.firstPrizeWinnerId,
+    );
+    notifyListeners();
+    return result;
   }
 
   /// Bắt đầu 30s Nổ Hũ (Chỉ người nạp nhiều nhất mới được gọi)
@@ -1280,16 +1395,28 @@ class FamilyJackpotService extends ChangeNotifier {
         }
 
         final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
+        final roundId = 'round_${DateTime.now().microsecondsSinceEpoch}';
+        final famId = _currentFamilyId ?? 'f1';
         result.prizes.forEach((uid, wonAmount) {
           updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonAmount;
           if (wonAmount > 0) {
             final isTop1 = uid == result.firstPrizeWinnerId;
             final mName = _jackpot.memberNames[uid] ?? 'Thành viên';
+            unawaited(
+              StarEconomyService.instance.creditJackpotStarWin(
+                familyId: famId,
+                winnerId: uid,
+                winnerName: mName,
+                wonStars: wonAmount,
+                roundId: roundId,
+                isFirstPrize: isTop1,
+              ),
+            );
             _recordTransaction(
               type: WalletTransactionType.prize,
               amount: wonAmount,
               title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
-              description: 'Phần thưởng chia từ quỹ Hũ',
+              description: 'Phần thưởng chia từ quỹ Hũ Sao',
               targetUserId: uid,
               targetUserName: mName,
             );

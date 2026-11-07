@@ -97,6 +97,9 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
       case FamilyMember.roleGrandparent:
         rolePart = AppLanguage.text('Ông / Bà', 'Grandparent');
         break;
+      case FamilyMember.roleRelative:
+        rolePart = AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative');
+        break;
       case FamilyMember.roleChild:
         rolePart = AppLanguage.text('Con cái', 'Child');
         break;

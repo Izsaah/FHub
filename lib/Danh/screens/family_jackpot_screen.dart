@@ -16,6 +16,7 @@ import '../services/sepay_service.dart';
 import '../theme/danh_colors.dart';
 import '../theme/danh_svgs.dart';
 import 'premium_plan_screen.dart';
+import '../../Vinh/screens/wishlist_and_ledger_screen.dart';
 
 /// Màn hình Hũ Niềm Vui Gia Đình (Nổ Hũ Shopee Shake)
 /// Tính năng độc quyền cho gói Tổ Ấm Premium
@@ -252,9 +253,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
   }
 
-  /// Thẻ Hũ Vàng trung tâm với biểu tượng SVG và tổng quỹ A + Ví cá nhân
+  /// Thẻ Hũ Vàng trung tâm với biểu tượng SVG và tổng quỹ Sao + Ví Sao cá nhân
   Widget _buildPotHeaderCard(FamilyJackpotModel jackpot) {
-    final formattedAmount = '${jackpot.totalPoolAmount} đ'.replaceAllMapped(
+    final formattedAmount = '${jackpot.totalPoolAmount} ⭐'.replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (Match m) => '${m[1]}.',
     );
@@ -284,7 +285,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      AppLanguage.text('TỔNG QUỸ HŨ NIỀM VUI', 'TOTAL HAPPINESS POT'),
+                      AppLanguage.text('TỔNG QUỸ HŨ SAO GIA ĐÌNH', 'FAMILY STAR JACKPOT POOL'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -573,7 +574,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           runSpacing: 4,
           children: [
             Text(
-              AppLanguage.text('1. Nạp Tiền Vào Quỹ Hũ (VietQR)', '1. Deposit into Pot (VietQR)'),
+              AppLanguage.text('1. Tích Lũy Sao Vào Hũ Niềm Vui ⭐', '1. Contribute Stars into Family Pot ⭐'),
               style: TextStyle(
                 fontSize: 15.5,
                 fontWeight: FontWeight.bold,
@@ -583,15 +584,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: Colors.amber.shade50,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200, width: 0.8),
+                border: Border.all(color: Colors.amber.shade300, width: 0.8),
               ),
               child: Text(
-                'MBBank 0000000001',
+                '⭐ Nổ Hũ Sao',
                 style: TextStyle(
                   fontSize: 11,
-                  color: Colors.blue.shade800,
+                  color: Colors.amber.shade900,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -599,16 +600,51 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           ],
         ),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            _buildQuickDepositButton(20000, '+20.000 đ'),
-            const SizedBox(width: 8),
-            _buildQuickDepositButton(50000, '+50.000 đ'),
-            const SizedBox(width: 8),
-            _buildQuickDepositButton(100000, '+100.000 đ'),
-          ],
-        ),
-        const SizedBox(height: 24),
+                        Row(
+                          children: [
+                            _buildQuickStarDepositButton(10, '+10 ⭐'),
+                            const SizedBox(width: 8),
+                            _buildQuickStarDepositButton(20, '+20 ⭐'),
+                            const SizedBox(width: 8),
+                            _buildQuickStarDepositButton(50, '+50 ⭐'),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFFE65100)),
+                              foregroundColor: const Color(0xFFE65100),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(Icons.storefront_rounded, size: 18),
+                            label: Text(
+                              AppLanguage.text(
+                                'Mở Cửa Hàng Đổi Sao & Phúc Lợi Thực Tế ⭐',
+                                'Open Star Reward Shop & Ledger ⭐',
+                              ),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => WishlistAndLedgerScreen(
+                                    familyId: PaymentService().currentFamilyId.isNotEmpty
+                                        ? PaymentService().currentFamilyId
+                                        : 'f1',
+                                    currentUserId: _jackpotService.currentUserId,
+                                    currentUserName: _jackpotService.currentUserName,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 24),
 
         Text(
           AppLanguage.text('2. Bảng Vinh Danh Thành Viên Đóng Góp', '2. Contributor Leaderboard'),
@@ -1294,7 +1330,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
   }
 
-  Widget _buildQuickDepositButton(int amount, String label) {
+  Widget _buildQuickStarDepositButton(int stars, String label) {
     return Expanded(
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
@@ -1303,12 +1339,26 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           backgroundColor: Colors.white,
         ),
-        onPressed: () => _openDepositQrDialog(amount),
+        onPressed: () async {
+          await _jackpotService.contributeStars(stars: stars);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('🎉 Đã góp +$stars ⭐ vào Hũ Sao Gia Đình!'),
+                backgroundColor: DanhColors.brand800,
+              ),
+            );
+          }
+        },
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
             label,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: DanhColors.brand800),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: DanhColors.brand800,
+            ),
           ),
         ),
       ),
@@ -1316,6 +1366,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   }
 
   /// DIALOG NẠP TIỀN VÀO HŨ BẰNG VIETQR SEPAY + TỰ ĐỘNG BẮT GIAO DỊCH
+  // ignore: unused_element
   void _openDepositQrDialog(int amount) {
     final depositOrderCode = 'FHUBPOT${Random().nextInt(899999) + 100000}';
     final qrUrl = PaymentConfig.buildVietQrUrl(orderCode: depositOrderCode, amount: amount);

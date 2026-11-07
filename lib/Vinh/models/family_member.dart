@@ -3,6 +3,7 @@ class FamilyMember {
   static const roleParent = 'PARENT';
   static const roleChild = 'CHILD';
   static const roleOwner = 'OWNER';
+  static const roleRelative = 'RELATIVE';
 
   final String id;
   final String name;
@@ -20,34 +21,65 @@ class FamilyMember {
     this.rewardStarsTotal = 0,
   });
 
+  bool get isOwner =>
+      role.toUpperCase() == roleOwner || role.toUpperCase().contains('OWNER');
+
+  bool get isRelative =>
+      role == roleRelative ||
+      role.toUpperCase() == roleRelative ||
+      role.toUpperCase().contains('RELATIVE') ||
+      role.toUpperCase().contains('UNCLE') ||
+      role.toUpperCase().contains('AUNT') ||
+      name.toLowerCase().contains('cô') ||
+      name.toLowerCase().contains('dì') ||
+      name.toLowerCase().contains('chú') ||
+      name.toLowerCase().contains('bác') ||
+      name.toLowerCase().contains('cậu') ||
+      name.toLowerCase().contains('thím') ||
+      name.toLowerCase().contains('mợ') ||
+      name.toLowerCase().contains('dượng');
+
   bool get isParent =>
-      role.toUpperCase().contains('PARENT') ||
-      role.toUpperCase().contains('OWNER') ||
-      role.toUpperCase().contains('DAD') ||
-      role.toUpperCase().contains('MOM') ||
-      name.toLowerCase().contains('bố') ||
-      name.toLowerCase().contains('mẹ') ||
-      name.toLowerCase().contains('dad') ||
-      name.toLowerCase().contains('mom');
+      !isRelative &&
+      (role.toUpperCase().contains('PARENT') ||
+          role.toUpperCase().contains('OWNER') ||
+          role.toUpperCase().contains('DAD') ||
+          role.toUpperCase().contains('MOM') ||
+          name.toLowerCase().contains('bố') ||
+          name.toLowerCase().contains('mẹ') ||
+          name.toLowerCase().contains('dad') ||
+          name.toLowerCase().contains('mom'));
 
   bool get isChild =>
-      role.toUpperCase().contains('CHILD') ||
-      role.toUpperCase().contains('CON') ||
-      id.contains('minh') ||
-      name.toLowerCase().contains('minh') ||
-      name.toLowerCase().contains('con');
+      !isRelative &&
+      (role.toUpperCase().contains('CHILD') ||
+          role.toUpperCase().contains('CON') ||
+          id.contains('minh') ||
+          name.toLowerCase().contains('minh') ||
+          name.toLowerCase().contains('con'));
 
   bool get isGrandparent =>
-      role.toUpperCase().contains('GRANDPARENT') ||
-      name.toLowerCase().contains('ông') ||
-      name.toLowerCase().contains('bà');
+      !isRelative &&
+      (role.toUpperCase().contains('GRANDPARENT') ||
+          name.toLowerCase().contains('ông') ||
+          name.toLowerCase().contains('bà'));
 
-  bool get canCreateForOthers => isParent || isGrandparent;
-  bool get canAssignChores => isParent || isGrandparent;
+  bool get isGuardian => (isParent || isGrandparent || isOwner) && !isRelative;
+
+  bool get canCreateForOthers => isParent || isGrandparent || isRelative;
+  bool get canAssignChores => (isParent || isGrandparent) && !isRelative;
+
+  int get hierarchyLevel {
+    if (isGrandparent) return 3;
+    if (isParent || isOwner) return 2;
+    if (isRelative) return 2;
+    return 1;
+  }
 
   String get roleDisplayName {
     if (isGrandparent) return 'Ông Bà';
     if (isParent) return 'Bố Mẹ';
+    if (isRelative) return 'Cô / Dì / Chú / Bác';
     if (isChild) return 'Con cái';
     return role;
   }

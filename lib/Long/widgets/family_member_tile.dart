@@ -432,6 +432,10 @@ class FamilyMemberTile extends StatelessWidget {
         bg = const Color(0xFFE8DAEF);
         fg = const Color(0xFF5B2C6F);
         break;
+      case HierarchyRole.relative:
+        bg = const Color(0xFFE2F0D9);
+        fg = const Color(0xFF385723);
+        break;
     }
 
     if (isMuted) {

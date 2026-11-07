@@ -20,6 +20,7 @@ import '../widgets/weekly_calendar_strip.dart';
 import 'calendar_page.dart';
 import 'create_reminder_screen.dart';
 import 'family_ai_chat_screen.dart';
+import 'wishlist_and_ledger_screen.dart';
 import 'views/reminder_calendar_view.dart';
 import 'views/reminder_list_view.dart';
 
@@ -37,6 +38,7 @@ class ReminderListScreen extends StatefulWidget {
   final ReminderRepository? repository;
   final ValueChanged<String>? onUserChanged;
   final VoidCallback? onNavigateToFamily;
+  final bool initialShowAll;
 
   const ReminderListScreen({
     super.key,
@@ -49,6 +51,7 @@ class ReminderListScreen extends StatefulWidget {
     this.repository,
     this.onUserChanged,
     this.onNavigateToFamily,
+    this.initialShowAll = false,
   });
 
   @override
@@ -76,7 +79,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   DateTime _currentMonth =
       DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
-  bool _showAll = true;
+  late bool _showAll;
   bool _filterOnlyMine = false;
   bool _isSearchOpen = false;
   String _searchQuery = '';
@@ -93,9 +96,14 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     return '$d/$m/${dt.year}';
   }
 
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
   @override
   void initState() {
     super.initState();
+    _showAll = widget.initialShowAll;
     // 1. Lắng nghe thay đổi gia đình toàn cục từ FamilyDataService
     FamilyDataService().selectedFamilyIdNotifier.addListener(_onGlobalFamilyNotifierChanged);
 
@@ -588,6 +596,26 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       ),
     );
     setState(() {});
+  }
+
+  Future<void> _openWishlistShop() async {
+    final currentRole = _familyMembers
+            .where((m) => m.id == _currentUserId)
+            .map((m) => m.role)
+            .firstOrNull ??
+        'PARENT';
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => WishlistAndLedgerScreen(
+          familyId: _familyId.isNotEmpty ? _familyId : 'f1',
+          currentUserId: _currentUserId,
+          currentUserName: _currentUserName,
+          currentUserRole: currentRole,
+          familyMembers: _familyMembers,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   List<FamilyMember> _getMembersForReminder(ReminderModel reminder) {
@@ -1481,6 +1509,21 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               ),
               // Chuyển đổi qua lại giữa List View và Calendar View
               IconButton(
+                key: const Key('btn_open_wishlist_shop'),
+                icon: const Icon(
+                  Icons.stars_rounded,
+                  color: Color(0xFFE65100),
+                  size: 22,
+                ),
+                tooltip: AppLanguage.text(
+                  'Cửa hàng Đổi Sao & Sổ cái ⭐',
+                  'Star Shop & Ledger ⭐',
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                onPressed: _openWishlistShop,
+              ),
+              IconButton(
                 icon: Icon(
                   _isCalendarView
                       ? Icons.format_list_bulleted_rounded
@@ -1519,6 +1562,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                     );
                   } else if (val == 'ai_assistant') {
                     _openAiAssistant();
+                  } else if (val == 'wishlist_shop') {
+                    _openWishlistShop();
                   } else if (val == 'create_reminder') {
                     _openCreateReminder();
                   } else if (val == 'refresh') {
@@ -1526,6 +1571,23 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   }
                 },
                 itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'wishlist_shop',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.stars_rounded,
+                            size: 18, color: Color(0xFFE65100)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text('Cửa hàng Đổi Sao & Sổ cái ⭐', 'Star Shop & Ledger ⭐'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'ai_assistant',
                     child: Row(
@@ -1665,7 +1727,10 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 final displayedReminders = _showAll
                     ? searchedReminders
                     : searchedReminders
-                        .where((r) => r.date == selectedDateStr)
+                        .where((r) =>
+                            r.date == selectedDateStr ||
+                            (r.dueDateTime != null &&
+                                _isSameDay(r.dueDateTime!, _selectedDate)))
                         .toList();
 
                 return Center(

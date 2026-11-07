@@ -12,6 +12,8 @@ import 'package:fhub/Long/models/join_request_model.dart';
 import 'package:fhub/Long/services/join_request_service.dart';
 import 'package:fhub/Long/services/family_data_service.dart';
 import 'package:fhub/Ai/models/family_memory_model.dart';
+import 'package:fhub/Khoa/services/family_service.dart';
+import 'package:fhub/Vinh/models/family_member.dart' as vinh_member;
 import 'package:fhub/Vinh/models/reminder_model.dart';
 import 'package:fhub/Vinh/services/reminder_repository.dart';
 
@@ -1218,6 +1220,236 @@ void main() {
       expect(created.title, 'Mua 2 lốc sữa Vinamilk Không Đường');
       final list = await repo.getReminders(familyId: 'fam_hanoi');
       expect(list.first.title, 'Mua 2 lốc sữa Vinamilk Không Đường');
+    });
+  });
+
+  // ===========================================================================
+  // GROUP 6: Milestone 1 - F7 Relative Role in Hierarchy & F8 Cultural Governance
+  // ===========================================================================
+  group('Milestone 1 - F7 Relative Role in Hierarchy & F8 Cultural Governance Rules', () {
+    test('HierarchyRole (Long): relative enum properties, levels, and serialization', () {
+      const role = HierarchyRole.relative;
+      expect(role.code, 'RELATIVE');
+      expect(role.displayName, anyOf(contains('Relative'), contains('Cô / Dì / Chú / Bác')));
+      expect(role.hierarchyLevel, 2);
+      expect(role.isGuardian, isFalse);
+      expect(role.canAssignChores, isFalse);
+      expect(role.toJson(), 'RELATIVE');
+
+      // Parsing resilience
+      expect(HierarchyRole.fromString('RELATIVE'), HierarchyRole.relative);
+      expect(HierarchyRole.fromString('NGUOI_THAN'), HierarchyRole.relative);
+      expect(HierarchyRole.fromString('CO_DI_CHU_BAC'), HierarchyRole.relative);
+      expect(HierarchyRole.fromString('UNCLE_AUNT'), HierarchyRole.relative);
+      expect(HierarchyRole.fromString('UNCLE'), HierarchyRole.relative);
+      expect(HierarchyRole.fromString('AUNT'), HierarchyRole.relative);
+    });
+
+    test('FamilyMemberModel (Long): relative role label, level and non-guardian status', () {
+      final user = UserModel(id: 'u_relative', name: 'Chú Hùng', email: 'hung@example.com');
+      final relativeMember = FamilyMemberModel(
+        familyId: 'fam_rel',
+        user: user,
+        role: Role.member,
+        hierarchyRole: HierarchyRole.relative,
+      );
+
+      expect(relativeMember.isRelative, isTrue);
+      expect(relativeMember.isGuardian, isFalse);
+      expect(relativeMember.hierarchyLevel, 2);
+      expect(relativeMember.roleLabel, anyOf(contains('Relative'), contains('Cô / Dì / Chú / Bác')));
+      expect(relativeMember.isKid, isFalse);
+
+      final json = relativeMember.toJson();
+      expect(json['hierarchy_role'], 'RELATIVE');
+      final restored = FamilyMemberModel.fromJson(json);
+      expect(restored.hierarchyRole, HierarchyRole.relative);
+      expect(restored.isRelative, isTrue);
+      expect(restored.isGuardian, isFalse);
+    });
+
+    test('FamilyMember (Khoa): roleRelative constant, hierarchyLevel, and non-guardian status', () {
+      const relative = khoa_member.FamilyMember(
+        familyId: 'fam_k',
+        userId: 'u_k_rel',
+        role: khoa_member.FamilyMember.roleRelative,
+      );
+
+      expect(relative.isRelative, isTrue);
+      expect(relative.isGuardian, isFalse);
+      expect(relative.hierarchyLevel, 2);
+      expect(relative.isKid, isFalse);
+
+      final map = relative.toMap();
+      expect(map['role'], 'RELATIVE');
+      final fromMap = khoa_member.FamilyMember.fromMap(map);
+      expect(fromMap.isRelative, isTrue);
+      expect(fromMap.isGuardian, isFalse);
+      expect(fromMap.hierarchyLevel, 2);
+    });
+
+    test('FamilyMember (Vinh): roleRelative, roleDisplayName, canAssignChores, and hierarchyLevel', () {
+      const vRelative = vinh_member.FamilyMember(
+        id: 'u_v_rel',
+        name: 'Dì Út',
+        role: vinh_member.FamilyMember.roleRelative,
+        familyId: 'fam_v',
+      );
+
+      expect(vRelative.isRelative, isTrue);
+      expect(vRelative.isGuardian, isFalse);
+      expect(vRelative.canAssignChores, isFalse);
+      expect(vRelative.hierarchyLevel, 2);
+      expect(vRelative.roleDisplayName, 'Cô / Dì / Chú / Bác');
+
+      const vChild = vinh_member.FamilyMember(
+        id: 'u_v_child',
+        name: 'Bé Na',
+        role: vinh_member.FamilyMember.roleChild,
+        familyId: 'fam_v',
+      );
+      expect(vChild.isChild, isTrue);
+      expect(vChild.hierarchyLevel, 1);
+      expect(vChild.canAssignChores, isFalse);
+    });
+
+    test('FamilyService (Khoa): validates FamilyMember.roleRelative as a valid role', () {
+      expect(() => FamilyService.validateRole(khoa_member.FamilyMember.roleRelative), returnsNormally);
+      expect(() => FamilyService.validateRole(khoa_member.FamilyMember.roleParent), returnsNormally);
+      expect(() => FamilyService.validateRole(khoa_member.FamilyMember.roleGrandparent), returnsNormally);
+      expect(() => FamilyService.validateRole(khoa_member.FamilyMember.roleChild), returnsNormally);
+      expect(() => FamilyService.validateRole('INVALID_ROLE'), throwsA(isA<Exception>()));
+    });
+
+    test('Cultural Governance: CHILD cannot ASSIGN chores to RELATIVE (hierarchy violation)', () async {
+      final repo = InMemoryReminderRepository(initialReminders: []);
+      final now = DateTime(2026, 11, 7, 10, 0);
+
+      final assignTask = ReminderModel(
+        id: 'child_assign_to_relative',
+        familyId: 'fam_gov',
+        creatorId: 'child_uid',
+        creatorName: 'Bé Na',
+        assignedTo: 'relative_uid',
+        assignedToName: 'Chú Ba',
+        title: 'Bắt Chú Ba dọn phòng',
+        date: '08/11/2026',
+        time: '18:00',
+        taskType: TaskType.assign,
+        taskStatus: TaskStatus.pending,
+        creatorHierarchyRole: 'CHILD',
+        targetHierarchyRole: 'RELATIVE',
+        rewardStars: 3,
+      );
+
+      expect(
+        () => repo.createReminder(
+          reminder: assignTask,
+          currentUserId: 'child_uid',
+          now: now,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('CULTURE_HIERARCHY_VIOLATION'),
+          ),
+        ),
+      );
+    });
+
+    test('Cultural Governance: CHILD <-> RELATIVE can exchange voluntary FAVOR tasks bidirectionally', () async {
+      final repo = InMemoryReminderRepository(initialReminders: []);
+      final now = DateTime(2026, 11, 7, 10, 0);
+
+      // 1. Child asks Relative for a favor (Nhờ chú chở đi mua sách)
+      final childToRelativeFavor = ReminderModel(
+        id: 'favor_child_to_relative',
+        familyId: 'fam_gov',
+        creatorId: 'child_uid',
+        creatorName: 'Bé Na',
+        assignedTo: 'relative_uid',
+        assignedToName: 'Chú Ba',
+        title: 'Nhờ chú chở con đi mua sách',
+        date: '08/11/2026',
+        time: '14:00',
+        taskType: TaskType.favor,
+        taskStatus: TaskStatus.pending,
+        creatorHierarchyRole: 'CHILD',
+        targetHierarchyRole: 'RELATIVE',
+      );
+
+      final createdFavor1 = await repo.createReminder(
+        reminder: childToRelativeFavor,
+        currentUserId: 'child_uid',
+        now: now,
+      );
+      expect(createdFavor1.id, 'favor_child_to_relative');
+      expect(createdFavor1.taskType, TaskType.favor);
+
+      // 2. Relative asks Child for a favor (Nhờ cháu tưới cây)
+      final relativeToChildFavor = ReminderModel(
+        id: 'favor_relative_to_child',
+        familyId: 'fam_gov',
+        creatorId: 'relative_uid',
+        creatorName: 'Chú Ba',
+        assignedTo: 'child_uid',
+        assignedToName: 'Bé Na',
+        title: 'Nhờ cháu tưới giúp giàn phong lan',
+        date: '08/11/2026',
+        time: '16:00',
+        taskType: TaskType.favor,
+        taskStatus: TaskStatus.pending,
+        creatorHierarchyRole: 'RELATIVE',
+        targetHierarchyRole: 'CHILD',
+      );
+
+      final createdFavor2 = await repo.createReminder(
+        reminder: relativeToChildFavor,
+        currentUserId: 'relative_uid',
+        now: now,
+      );
+      expect(createdFavor2.id, 'favor_relative_to_child');
+      expect(createdFavor2.taskType, TaskType.favor);
+    });
+
+    test('Cultural Governance: RELATIVE can create CARE tasks for GRANDPARENT', () async {
+      final repo = InMemoryReminderRepository(initialReminders: []);
+      final now = DateTime(2026, 11, 7, 10, 0);
+
+      final careTask = ReminderModel(
+        id: 'care_relative_to_grandparent',
+        familyId: 'fam_gov',
+        creatorId: 'relative_uid',
+        creatorName: 'Cô Lan',
+        assignedTo: 'gp_uid',
+        assignedToName: 'Bà Nội',
+        title: 'Nhắc bà đo huyết áp và uống thuốc tim mạch',
+        date: '08/11/2026',
+        time: '07:30',
+        taskType: TaskType.care,
+        taskStatus: TaskStatus.pending,
+        creatorHierarchyRole: 'RELATIVE',
+        targetHierarchyRole: 'GRANDPARENT',
+      );
+
+      final createdCare = await repo.createReminder(
+        reminder: careTask,
+        currentUserId: 'relative_uid',
+        now: now,
+      );
+      expect(createdCare.id, 'care_relative_to_grandparent');
+      expect(createdCare.taskType, TaskType.care);
+    });
+
+    test('Security Oracle: RELATIVE is NOT recognized as a Guardian', () {
+      final relativeDoc = {
+        'role': 'MEMBER',
+        'hierarchyRole': 'RELATIVE',
+        'isOwner': false,
+        'status': 'ACTIVE',
+      };
+      expect(FirestoreRulesSecurityOracle.isGuardian(memberDoc: relativeDoc), isFalse);
     });
   });
 }

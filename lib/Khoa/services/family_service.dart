@@ -812,15 +812,18 @@ class FamilyService {
     }
   }
 
-  void _validateRole(String role) {
+  static void validateRole(String role) {
     if (![
       FamilyMember.roleGrandparent,
       FamilyMember.roleParent,
+      FamilyMember.roleRelative,
       FamilyMember.roleChild,
     ].contains(role)) {
       throw Exception('Vui lòng chọn vai vế hợp lệ.');
     }
   }
+
+  void _validateRole(String role) => validateRole(role);
 
   DateTime? _dateTimeFrom(dynamic value) {
     if (value is Timestamp) return value.toDate();

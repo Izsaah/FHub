@@ -316,6 +316,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.tap(find.text('Tất cả'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Tổ Ấm Yêu Thương'), findsOneWidget);
       expect(find.text('CHỜ THỰC HIỆN'), findsOneWidget);
       expect(find.text('ĐÃ HOÀN THÀNH'), findsOneWidget);
@@ -351,6 +354,75 @@ void main() {
       expect(find.byType(WeeklyCalendarStrip), findsOneWidget);
       expect(find.byType(FamilyProgressCard), findsOneWidget);
       expect(find.text('Tất cả'), findsOneWidget);
+    });
+
+    testWidgets(
+        'ReminderListScreen defaults to Today and toggles to All on chip tap',
+        (tester) async {
+      final now = DateTime.now();
+      final todayStr =
+          '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+      final tomorrow = now.add(const Duration(days: 1));
+      final tomorrowStr =
+          '${tomorrow.day.toString().padLeft(2, '0')}/${tomorrow.month.toString().padLeft(2, '0')}/${tomorrow.year}';
+
+      final repo = InMemoryReminderRepository(initialReminders: [
+        ReminderModel(
+          id: 'rem_today',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Today Task Clean Room',
+          date: todayStr,
+          time: '09:00',
+          status: ReminderStatus.pending,
+        ),
+        ReminderModel(
+          id: 'rem_tomorrow',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Tomorrow Task Wash Car',
+          date: tomorrowStr,
+          time: '14:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      const members = [
+        FamilyMember(
+          id: 'user_minh',
+          name: 'Minh',
+          role: 'Owner',
+          familyId: 'f1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReminderListScreen(
+            familyId: 'f1',
+            currentUserId: 'user_minh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Assert today's reminder is visible, tomorrow's reminder is NOT visible
+      expect(find.text('Today Task Clean Room'), findsOneWidget);
+      expect(find.text('Tomorrow Task Wash Car'), findsNothing);
+
+      // Tap "Tất cả" chip in WeeklyCalendarStrip
+      await tester.tap(find.text('Tất cả'));
+      await tester.pumpAndSettle();
+
+      // Assert both today's and tomorrow's reminders are visible
+      expect(find.text('Today Task Clean Room'), findsOneWidget);
+      expect(find.text('Tomorrow Task Wash Car'), findsOneWidget);
     });
 
     testWidgets('CalendarPage renders MonthlyCalendarGrid and tasks',
@@ -1843,6 +1915,7 @@ void main() {
             currentUserName: 'Lương Diệu Vinh',
             familyMembers: members,
             repository: repo,
+            initialShowAll: true,
           ),
         ),
       );
@@ -2097,6 +2170,7 @@ void main() {
             currentUserId: 'user_vinh',
             currentUserName: 'Vinh',
             repository: repo,
+            initialShowAll: true,
           ),
         ),
       );
