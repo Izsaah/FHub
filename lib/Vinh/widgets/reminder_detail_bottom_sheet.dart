@@ -197,8 +197,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
           reason: controller.text.trim(),
         );
         if (context.mounted) {
+          final messenger = ScaffoldMessenger.of(context);
           Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(
               content: Text(
                 AppLanguage.text(
@@ -238,8 +239,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         proofImageUrl: proofUrl,
       );
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -349,8 +351,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       );
 
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               reminder.rewardStars > 0
@@ -402,8 +405,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       HapticFeedback.mediumImpact();
       await repository.acceptFavorTask(reminder.id);
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -430,8 +434,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       HapticFeedback.lightImpact();
       await repository.declineFavorTask(reminder.id);
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -485,8 +490,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         targetUserRole: 'Child',
       );
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -547,8 +553,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       );
 
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -635,8 +642,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         currentUserName: currentUserName,
       );
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -704,8 +712,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       );
 
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
