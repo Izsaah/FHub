@@ -6,6 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import '../../Long/services/family_data_service.dart';
+import '../../Long/models/family_member_model.dart';
+import '../../Vinh/services/star_economy_service.dart';
 import '../models/family_jackpot_model.dart';
 import '../models/user_bank_info.dart';
 import '../models/wallet_transaction_model.dart';
@@ -424,7 +426,10 @@ class FamilyJackpotService extends ChangeNotifier {
   }
 
   /// Điều kiện tiên quyết: Gia đình phải đang kích hoạt Gói Premium
-  bool get canUseJackpot => PaymentService().isPremium;
+  bool? overrideCanUseJackpotForTest;
+
+  /// Điều kiện tiên quyết: Gia đình phải đang kích hoạt Gói Premium
+  bool get canUseJackpot => overrideCanUseJackpotForTest ?? PaymentService().isPremium;
 
   bool _isPaymentListenerBound = false;
 
@@ -501,8 +506,8 @@ class FamilyJackpotService extends ChangeNotifier {
 
         _jackpot = incoming;
 
-        // Nếu nhận dữ liệu mà gia đình không còn Premium nhưng hũ có tiền -> lập tức tiêu hủy hũ
-        if (!canUseJackpot && _jackpot.totalPoolAmount > 0 && !_jackpot.isFinished) {
+        // Nếu nhận dữ liệu mà gia đình không còn Premium nhưng đang trong phiên lắc -> hủy phiên lắc
+        if (!canUseJackpot && (_jackpot.isShaking || _jackpot.isSuspense)) {
           onPremiumLost();
         } else {
           _ensureCountdownTimerRunning();
@@ -634,40 +639,37 @@ class FamilyJackpotService extends ChangeNotifier {
   }
 
   void _onPaymentStateChanged() {
-    if (!canUseJackpot && _jackpot.totalPoolAmount > 0 && !_jackpot.isFinished) {
+    if (!canUseJackpot && (_jackpot.isShaking || _jackpot.isSuspense)) {
       onPremiumLost();
     } else {
       notifyListeners();
     }
   }
 
-  /// QUY TẮC BẮT BUỘC: Nếu đang có hũ chưa lắc xong mà gia đình MẤT GÓI PREMIUM
-  /// thì TOÀN BỘ TIỀN TRONG HŨ SẼ BỊ MẤT (HŨ BỊ TIÊU HỦY / RESET VỀ 0), nhưng giữ nguyên ví cá nhân đã trúng trước đó
+  /// QUY TẮC CỐT LÕI: Khi gia đình MẤT GÓI PREMIUM:
+  /// - Hũ VẪN GIỮ NGUYÊN SỐ SAO ĐÃ TÍCH TRỮ (Sao trong hũ không tự mất đi, chỉ tiêu khi lắc hũ)
+  /// - Nếu đang trong phiên lắc hoặc hồi hộp, hủy phiên lắc đó (trở về idle)
+  /// - Không thể bắt đầu Nổ Hũ mới cho đến khi gia hạn Premium.
   Future<void> onPremiumLost() async {
-    final hadMoney = _jackpot.totalPoolAmount > 0;
     _localMyShakeCount = 0;
     _stopCountdownTimer();
 
-    _jackpot = _jackpot.copyWith(
-      totalPoolAmount: 0,
-      status: JackpotStatus.idle,
-      clearTopContributorId: true,
-      topContributorName: 'Chưa có',
-      contributions: const {},
-      shakeCounts: const {},
-      prizeResults: const {},
-      clearTopShakerId: true,
-      clearFirstPrizeWinnerId: true,
-      clearShakeStartTime: true,
-      clearSuspenseStartTime: true,
-      lostDueToPremiumExpired: hadMoney,
-    );
-
-    notifyListeners();
-    if (hadMoney) {
-      debugPrint('FamilyJackpotService: MẤT GÓI PREMIUM -> HŨ VÀNG ĐÃ BỊ TIÊU HỦY, TOÀN BỘ TIỀN QUỸ BỊ MẤT!');
+    if (_jackpot.isShaking || _jackpot.isSuspense) {
+      _jackpot = _jackpot.copyWith(
+        status: JackpotStatus.idle,
+        shakeCounts: const {},
+        prizeResults: const {},
+        clearTopShakerId: true,
+        clearFirstPrizeWinnerId: true,
+        clearShakeStartTime: true,
+        clearSuspenseStartTime: true,
+        lostDueToPremiumExpired: false,
+      );
+      notifyListeners();
+      await _saveToFirestore();
+    } else {
+      notifyListeners();
     }
-    await _saveToFirestore();
   }
 
   /// Lắng nghe cảm biến chuyển động lắc của điện thoại (Accelerometer)
@@ -945,16 +947,238 @@ class FamilyJackpotService extends ChangeNotifier {
       familyId: _currentFamilyId ?? 'f1',
       title: 'Quỹ Hũ Niềm Vui được nạp thêm',
       titleEn: 'Family Pot Received a Deposit',
-      body: '$name vừa đóng góp $formattedDeposit đ vào Hũ Niềm Vui!',
-      bodyEn: '$name just deposited $formattedDeposit đ into the Family Pot!',
+      body: '$name vừa đóng góp $formattedDeposit ⭐ vào Hũ Niềm Vui!',
+      bodyEn: '$name just deposited $formattedDeposit ⭐ into the Family Pot!',
       type: 'jackpot_deposit',
     ));
+  }
+
+  // Theo dõi nhiệm vụ hằng ngày của Hũ: Cả nhà điểm danh (+10 ⭐ vào Hũ)
+  final Map<String, Set<String>> _dailyCheckIns = {}; // dateKey (YYYY-MM-DD) -> Set<userId>
+  final Set<String> _awardedCheckInDates = {}; // dateKey đã được cộng 10 sao
+
+  bool hasUserCheckedInToday(String userId) {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return _dailyCheckIns[todayKey]?.contains(userId) ?? false;
+  }
+
+  int getTodayCheckInCount() {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return _dailyCheckIns[todayKey]?.length ?? 0;
+  }
+
+  /// Đồng bộ trạng thái điểm danh từ trang Home (FamilyDataService)
+  Future<void> syncCheckInsFromMembers(List<FamilyMemberModel> members) async {
+    if (members.isEmpty) return;
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    final userSet = _dailyCheckIns.putIfAbsent(todayKey, () => <String>{});
+
+    for (final m in members) {
+      if (m.isCheckedInToday) {
+        userSet.add(m.user.id);
+      }
+    }
+
+    final threshold = members.length;
+    if (userSet.length >= threshold && !_awardedCheckInDates.contains(todayKey)) {
+      _awardedCheckInDates.add(todayKey);
+      if (canUseJackpot) {
+        await contributeStars(
+          stars: 10,
+          memberId: 'system_daily_mission',
+          memberName: 'Cả nhà điểm danh',
+          sourceTaskId: 'daily_checkin_$todayKey',
+        );
+        unawaited(NotificationService.instance.addNotification(
+          familyId: _currentFamilyId ?? 'f1',
+          title: '🎉 Hoàn thành nhiệm vụ Cả nhà Điểm Danh!',
+          titleEn: '🎉 Daily Family Check-in Completed!',
+          body: 'Gia đình đã điểm danh đầy đủ hôm nay, +10 ⭐ vừa được cộng vào Hũ Niềm Vui!',
+          bodyEn: 'All family members checked in today, +10 ⭐ added to Family Jackpot!',
+          type: 'daily_checkin_completed',
+        ));
+      } else {
+        debugPrint('FamilyJackpotService: Cả nhà đã điểm danh nhưng chưa có Premium -> Không tăng sao vào hũ.');
+      }
+    }
+    notifyListeners();
+  }
+
+  bool isDailyCheckInCompletedToday() {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return _awardedCheckInDates.contains(todayKey);
+  }
+
+  /// Thành viên điểm danh hôm nay. Nếu toàn bộ thành viên gia đình đã điểm danh đủ,
+  /// tự động thưởng +10 ⭐ vào Hũ Niềm Vui Gia Đình!
+  Future<bool> checkInDaily({
+    required String userId,
+    required String userName,
+    required int totalFamilyMembers,
+  }) async {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    final userSet = _dailyCheckIns.putIfAbsent(todayKey, () => <String>{});
+    userSet.add(userId);
+
+    if (_awardedCheckInDates.contains(todayKey)) {
+      notifyListeners();
+      return false;
+    }
+
+    final threshold = totalFamilyMembers > 0 ? totalFamilyMembers : 1;
+    if (userSet.length >= threshold) {
+      _awardedCheckInDates.add(todayKey);
+      // Chỉ tăng sao vào hũ nếu gia đình đang có Premium
+      if (canUseJackpot) {
+        await contributeStars(
+          stars: 10,
+          memberId: 'system_daily_mission',
+          memberName: 'Cả nhà điểm danh',
+          sourceTaskId: 'daily_checkin_$todayKey',
+        );
+        unawaited(NotificationService.instance.addNotification(
+          familyId: _currentFamilyId ?? 'f1',
+          title: '🎉 Hoàn thành nhiệm vụ Cả nhà Điểm Danh!',
+          titleEn: '🎉 Daily Family Check-in Completed!',
+          body: 'Gia đình đã điểm danh đầy đủ hôm nay, +10 ⭐ vừa được cộng vào Hũ Niềm Vui!',
+          bodyEn: 'All family members checked in today, +10 ⭐ added to Family Jackpot!',
+          type: 'daily_checkin_completed',
+        ));
+      } else {
+        debugPrint('FamilyJackpotService: Cả nhà đã điểm danh nhưng gia đình chưa có Premium -> Đồng bộ thành công nhưng chưa tăng sao vào hũ cho đến khi mở Premium.');
+      }
+      notifyListeners();
+      return true;
+    }
+
+    notifyListeners();
+    return false;
+  }
+
+  /// Tích lũy Sao vào Hũ Sao Gia Đình (từ nhiệm vụ hoàn thành hoặc thành viên đóng góp sao)
+  Future<void> contributeStars({
+    required int stars,
+    String? memberId,
+    String? memberName,
+    String? sourceTaskId,
+  }) async {
+    if (stars <= 0) return;
+    final uid = memberId ?? currentUserId;
+    final name = memberName ?? currentUserName;
+    final updatedContribs = Map<String, int>.from(_jackpot.contributions);
+    updatedContribs[uid] = (updatedContribs[uid] ?? 0) + stars;
+
+    final updatedNames = Map<String, String>.from(_jackpot.memberNames);
+    updatedNames[uid] = name;
+
+    String? topUid;
+    int maxStars = 0;
+    updatedContribs.forEach((k, v) {
+      if (v > maxStars) {
+        maxStars = v;
+        topUid = k;
+      }
+    });
+
+    final newTotal = _jackpot.totalPoolAmount + stars;
+    _jackpot = _jackpot.copyWith(
+      totalPoolAmount: newTotal,
+      status: JackpotStatus.idle,
+      topContributorId: topUid,
+      topContributorName: updatedNames[topUid] ?? name,
+      contributions: updatedContribs,
+      memberNames: updatedNames,
+      clearShakeStartTime: true,
+      clearSuspenseStartTime: true,
+      lostDueToPremiumExpired: false,
+    );
+    notifyListeners();
+
+    await StarEconomyService.instance.contributeStarsToJackpotPool(
+      familyId: _currentFamilyId ?? 'f1',
+      contributorId: uid.isNotEmpty ? uid : 'family_member',
+      contributorName: name,
+      stars: stars,
+      sourceTaskId: sourceTaskId,
+    );
+
+    await _recordTransaction(
+      type: WalletTransactionType.contribute,
+      amount: stars,
+      title: sourceTaskId != null
+          ? (sourceTaskId.startsWith('cashback_')
+              ? 'Tích điểm 10% đổi phúc lợi'
+              : (sourceTaskId.startsWith('daily_checkin')
+                  ? 'Nhiệm vụ: Cả nhà điểm danh'
+                  : 'Tích lũy sao vào Hũ'))
+          : 'Góp sao vào Hũ Sao Gia Đình',
+      description: 'Đóng góp +$stars ⭐ bởi $name',
+      targetUserId: uid,
+      targetUserName: name,
+    );
+  }
+
+  /// Thực thi chia sao Hũ Sao Gia Đình ngay lập tức và cộng vào StarEconomyService
+  Future<JackpotDistributionResult> distributeStarPotNow({
+    Map<String, int>? overrideShakeCounts,
+    List<String>? overrideParticipantIds,
+    String? roundId,
+  }) async {
+    final participants = overrideParticipantIds ??
+        (_jackpot.memberNames.keys.isNotEmpty
+            ? _jackpot.memberNames.keys.toList()
+            : (overrideShakeCounts?.keys.toList() ?? <String>[]));
+    final shakes = overrideShakeCounts ?? _jackpot.shakeCounts;
+    final poolStars = _jackpot.totalPoolAmount;
+
+    final result = JackpotAlgorithm.calculate(
+      totalAmount: poolStars,
+      shakeCounts: shakes,
+      participantIds: participants,
+    );
+
+    if (result.prizes.isEmpty) {
+      return result;
+    }
+
+    final effectiveRoundId =
+        roundId ?? 'round_${DateTime.now().microsecondsSinceEpoch}';
+    final famId = _currentFamilyId ?? 'f1';
+    final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
+
+    for (final entry in result.prizes.entries) {
+      final uid = entry.key;
+      final wonStars = entry.value;
+      if (wonStars > 0) {
+        updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonStars;
+        await StarEconomyService.instance.creditJackpotStarWin(
+          familyId: famId,
+          winnerId: uid,
+          winnerName: _jackpot.memberNames[uid] ?? 'Thành viên',
+          wonStars: wonStars,
+          roundId: effectiveRoundId,
+          isFirstPrize: uid == result.firstPrizeWinnerId,
+        );
+      }
+    }
+
+    _jackpot = _jackpot.copyWith(
+      totalPoolAmount: 0,
+      status: JackpotStatus.finished,
+      shakeCounts: shakes,
+      prizeResults: result.prizes,
+      memberWallets: updatedWallets,
+      topShakerId: result.topShakerId,
+      firstPrizeWinnerId: result.firstPrizeWinnerId,
+    );
+    notifyListeners();
+    return result;
   }
 
   /// Bắt đầu 30s Nổ Hũ (Chỉ người nạp nhiều nhất mới được gọi)
   Future<void> startShakeBattle() async {
     if (!canUseJackpot) {
-      throw Exception('Gói Premium không còn hiệu lực. Hũ đã bị tiêu hủy!');
+      throw Exception('Gia đình cần có gói Premium để bắt đầu Nổ Hũ! Số sao trong hũ vẫn được bảo toàn nguyên vẹn.');
     }
     if (_jackpot.totalPoolAmount <= 0) {
       throw Exception('Hũ hiện đang trống (0 đ). Hãy nạp tiền vào quỹ hũ trước khi bấm Nổ Hũ!');
@@ -1217,15 +1441,27 @@ class FamilyJackpotService extends ChangeNotifier {
         });
 
         if (finalResult != null) {
+          final roundId = 'round_${DateTime.now().microsecondsSinceEpoch}';
+          final famId = _currentFamilyId ?? 'f1';
           finalResult!.prizes.forEach((uid, wonAmount) {
             if (wonAmount > 0) {
               final isTop1 = uid == finalResult!.firstPrizeWinnerId;
               final mName = _jackpot.memberNames[uid] ?? 'Thành viên';
+              unawaited(
+                StarEconomyService.instance.creditJackpotStarWin(
+                  familyId: famId,
+                  winnerId: uid,
+                  winnerName: mName,
+                  wonStars: wonAmount,
+                  roundId: roundId,
+                  isFirstPrize: isTop1,
+                ),
+              );
               _recordTransaction(
                 type: WalletTransactionType.prize,
                 amount: wonAmount,
                 title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
-                description: 'Phần thưởng chia từ quỹ Hũ',
+                description: 'Phần thưởng chia từ quỹ Hũ Sao',
                 targetUserId: uid,
                 targetUserName: mName,
               );
@@ -1280,16 +1516,28 @@ class FamilyJackpotService extends ChangeNotifier {
         }
 
         final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
+        final roundId = 'round_${DateTime.now().microsecondsSinceEpoch}';
+        final famId = _currentFamilyId ?? 'f1';
         result.prizes.forEach((uid, wonAmount) {
           updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonAmount;
           if (wonAmount > 0) {
             final isTop1 = uid == result.firstPrizeWinnerId;
             final mName = _jackpot.memberNames[uid] ?? 'Thành viên';
+            unawaited(
+              StarEconomyService.instance.creditJackpotStarWin(
+                familyId: famId,
+                winnerId: uid,
+                winnerName: mName,
+                wonStars: wonAmount,
+                roundId: roundId,
+                isFirstPrize: isTop1,
+              ),
+            );
             _recordTransaction(
               type: WalletTransactionType.prize,
               amount: wonAmount,
               title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
-              description: 'Phần thưởng chia từ quỹ Hũ',
+              description: 'Phần thưởng chia từ quỹ Hũ Sao',
               targetUserId: uid,
               targetUserName: mName,
             );
@@ -1414,6 +1662,8 @@ class FamilyJackpotService extends ChangeNotifier {
 
   /// Đặt lại Hũ mới sau khi nổ hũ xong (Bảo toàn 100% ví tiền thưởng tích lũy chưa rút của thành viên)
   Future<void> resetJackpot() async {
+    _dailyCheckIns.clear();
+    _awardedCheckInDates.clear();
     _localMyShakeCount = 0;
     _isTransitioningPhase = false;
     _stopCountdownTimer();

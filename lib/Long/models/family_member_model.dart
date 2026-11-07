@@ -40,9 +40,12 @@ class FamilyMemberModel {
   bool get isGrandparent => hierarchyRole == HierarchyRole.grandparent;
   bool get isParent => hierarchyRole == HierarchyRole.parent;
   bool get isChild => hierarchyRole == HierarchyRole.child;
+  bool get isRelative => hierarchyRole == HierarchyRole.relative;
 
   /// Guardian bao gồm: Chủ hộ (Owner), Bố Mẹ (Parent), và Ông Bà (Grandparent)
   bool get isGuardian => isOwner || isParent || isGrandparent;
+
+  int get hierarchyLevel => hierarchyRole.hierarchyLevel;
 
   bool get isCheckedInToday {
     if (!isActive) return false;
@@ -59,6 +62,8 @@ class FamilyMemberModel {
         return LongStrings.t('Ông / Bà', 'Grandparent');
       case HierarchyRole.child:
         return LongStrings.t('Con cái', 'Child');
+      case HierarchyRole.relative:
+        return LongStrings.t('Cô / Dì / Chú / Bác', 'Relative');
       case HierarchyRole.parent:
         return role == Role.owner
             ? LongStrings.t('Chủ nhà', 'Owner')

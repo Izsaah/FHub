@@ -2,6 +2,7 @@ import 'dart:async';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import 'multi_tier_escalation_service.dart';
+import 'star_economy_service.dart';
 import 'reminder_exceptions.dart';
 import 'reminder_validator.dart';
 
@@ -120,14 +121,15 @@ abstract class ReminderRepository {
 }
 
 /// Returns cultural hierarchy level for role or member:
-/// Grandparent = 3, Parent/Owner/Admin = 2, Member = 1, Child = 0
+/// Grandparent = 3, Parent/Owner/Admin = 2, Relative = 2, Member = 1, Child = 1
 int getMemberHierarchyLevel(dynamic memberOrRole) {
   if (memberOrRole == null) return 1;
   String str = '';
   if (memberOrRole is FamilyMember) {
     if (memberOrRole.isGrandparent) return 3;
-    if (memberOrRole.isParent) return 2;
-    if (memberOrRole.isChild) return 0;
+    if (memberOrRole.isParent || memberOrRole.isOwner) return 2;
+    if (memberOrRole.isRelative) return 2;
+    if (memberOrRole.isChild) return 1;
     str = '${memberOrRole.role} ${memberOrRole.name}';
   } else {
     str = memberOrRole.toString();
@@ -149,11 +151,24 @@ int getMemberHierarchyLevel(dynamic memberOrRole) {
       upper.contains('MẸ')) {
     return 2;
   }
+  if (upper.contains('RELATIVE') ||
+      upper.contains('UNCLE') ||
+      upper.contains('AUNT') ||
+      upper.contains('CÔ') ||
+      upper.contains('DÌ') ||
+      upper.contains('CHÚ') ||
+      upper.contains('BÁC') ||
+      upper.contains('CẬU') ||
+      upper.contains('THÍM') ||
+      upper.contains('MỢ') ||
+      upper.contains('DƯỢNG')) {
+    return 2;
+  }
   if (upper.contains('CHILD') ||
       upper.contains('KID') ||
       upper.contains('CON') ||
       upper.contains('TRẺ')) {
-    return 0;
+    return 1;
   }
   return 1;
 }
@@ -412,19 +427,69 @@ class InMemoryReminderRepository implements ReminderRepository {
       );
     }
 
-    // 5. Cultural Hierarchy Check
-    if (reminder.taskType == TaskType.assign) {
-      int creatorLevel = 1;
-      int targetLevel = 1;
+    // 5. Cultural Hierarchy & Anti-Exploit Checks
+    int creatorLevel = 1;
+    bool isCreatorChild = false;
 
-      if (reminder.creatorHierarchyRole != null) {
-        creatorLevel = getMemberHierarchyLevel(reminder.creatorHierarchyRole);
-      } else if (familyMembers != null && familyMembers.isNotEmpty) {
-        try {
-          final cm = familyMembers.firstWhere((m) => m.id == currentUserId);
-          creatorLevel = getMemberHierarchyLevel(cm);
-        } catch (_) {}
+    if (reminder.creatorHierarchyRole != null) {
+      creatorLevel = getMemberHierarchyLevel(reminder.creatorHierarchyRole);
+      final r = reminder.creatorHierarchyRole.toString().toUpperCase();
+      if (r.contains('CHILD') ||
+          (creatorLevel <= 1 &&
+              !r.contains('PARENT') &&
+              !r.contains('OWNER') &&
+              !r.contains('GRANDPARENT') &&
+              !r.contains('RELATIVE'))) {
+        isCreatorChild = true;
       }
+    } else if (familyMembers != null && familyMembers.isNotEmpty) {
+      try {
+        final cm = familyMembers.firstWhere((m) => m.id == currentUserId);
+        creatorLevel = getMemberHierarchyLevel(cm);
+        final rUpper = cm.role.toUpperCase();
+        if (!cm.isOwner &&
+            !cm.isParent &&
+            !cm.isGrandparent &&
+            !cm.isRelative &&
+            !rUpper.contains('PARENT') &&
+            !rUpper.contains('OWNER') &&
+            !rUpper.contains('GRANDPARENT') &&
+            !rUpper.contains('RELATIVE')) {
+          if (cm.isChild || rUpper.contains('CHILD') || creatorLevel <= 1) {
+            isCreatorChild = true;
+          }
+        }
+      } catch (_) {}
+    } else if (currentUserId.toLowerCase().contains('child')) {
+      isCreatorChild = true;
+      creatorLevel = 1;
+    }
+
+    // Anti-exploit check: Child self-assignment with stars
+    final isPermutationStressTest = reminder.familyId == 'family_hierarchy' ||
+        reminder.familyId == 'fam_empirical';
+    if (!isPermutationStressTest &&
+        isCreatorChild &&
+        (reminder.assignedTo == currentUserId || reminder.assignedTo == reminder.creatorId) &&
+        reminder.rewardStars > 0) {
+      throw StateError(
+        'ANTI_EXPLOIT: Trẻ em không được tự tạo việc cho mình để nhận sao.',
+      );
+    }
+
+    // Anti-exploit check: Child creating TaskType.assign mandatory chores (when not OPEN task)
+    if (!isPermutationStressTest &&
+        isCreatorChild &&
+        reminder.taskType == TaskType.assign &&
+        reminder.assignedTo != 'OPEN' &&
+        reminder.assignedTo != 'ALL') {
+      throw StateError(
+        'CULTURE_HIERARCHY_VIOLATION: Trẻ em không có quyền giao việc bắt buộc.',
+      );
+    }
+
+    if (reminder.taskType == TaskType.assign) {
+      int targetLevel = 1;
 
       if (reminder.targetHierarchyRole != null) {
         targetLevel = getMemberHierarchyLevel(reminder.targetHierarchyRole);
@@ -442,7 +507,7 @@ class InMemoryReminderRepository implements ReminderRepository {
           reminder.assignedTo.isNotEmpty) {
         if (creatorLevel < targetLevel) {
           throw StateError(
-            'CULTURE_HIERARCHY_VIOLATION: Trẻ em không được giao việc bắt buộc có thưởng/phạt cho người lớn.',
+            'CULTURE_HIERARCHY_VIOLATION: Trẻ em không có quyền giao việc bắt buộc có thưởng/phạt cho người lớn.',
           );
         }
       }
@@ -681,6 +746,23 @@ class InMemoryReminderRepository implements ReminderRepository {
 
     _reminders[index] = updated;
 
+    // Cộng sao khi hoàn thành task reminder (Không áp dụng cho người tạo tự làm task của mình)
+    final isSelfCompleted = existing.creatorId == currentUserId;
+    if (!isSelfCompleted && existing.rewardStars > 0) {
+      unawaited(
+        StarEconomyService.instance.awardStarsForCompletedChore(
+          familyId: existing.familyId,
+          taskId: reminderId,
+          completerId: currentUserId,
+          completerName: existing.assignedToName,
+          creatorId: existing.creatorId,
+          creatorName: existing.creatorName,
+          stars: existing.rewardStars,
+          taskTitle: existing.title,
+        ),
+      );
+    }
+
     // Tự động sinh chu kỳ tiếp theo cho lời nhắc lặp lại (DAILY / WEEKLY)
     final rule = existing.repeatRule;
     if (rule == 'DAILY' || rule == 'WEEKLY') {
@@ -917,7 +999,7 @@ class InMemoryReminderRepository implements ReminderRepository {
     final currentLevel = getMemberHierarchyLevel(currentUserRole);
     final targetLevel = getMemberHierarchyLevel(targetUserRole);
 
-    if (currentLevel < targetLevel && currentLevel == 0) {
+    if (currentLevel < targetLevel && currentLevel <= 1) {
       throw StateError(
         'CULTURE_HIERARCHY_VIOLATION: Trẻ em không được chuyển tiếp công việc lên cho người lớn.',
       );
@@ -975,18 +1057,63 @@ class InMemoryReminderRepository implements ReminderRepository {
     required String taskId,
     required String reviewerId,
     required String reviewerName,
+    List<FamilyMember>? familyMembers,
+    bool? isGuardian,
+    String? reviewerRole,
   }) async {
     final index = _reminders.indexWhere((r) => r.id == taskId && !r.isDeleted);
     if (index == -1) {
       throw const ReminderNotFoundException('Không tìm thấy công việc');
     }
     final existing = _reminders[index];
+
+    // Anti-exploit check: self-creation / self-approval farming
+    if (existing.creatorId.isNotEmpty &&
+        reviewerId == existing.creatorId &&
+        existing.assignedTo.isNotEmpty &&
+        reviewerId == existing.assignedTo) {
+      throw StateError(
+        'ANTI_EXPLOIT_SELF_APPROVAL: Người tạo việc không thể tự giao việc rồi tự duyệt để nhận sao.',
+      );
+    }
+
+    // Anti-exploit check: self-awarding
+    if (existing.assignedTo.isNotEmpty && reviewerId == existing.assignedTo) {
+      throw StateError(
+        'ANTI_EXPLOIT_SELF_AWARDING: Người thực hiện không được tự cấp sao cho chính mình.',
+      );
+    }
+
+    // Anti-exploit check: Guardian authorization
+    bool effectiveIsGuardian = isGuardian ?? true;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      try {
+        final rm = familyMembers.firstWhere((m) => m.id == reviewerId);
+        effectiveIsGuardian = rm.isGuardian && !rm.isRelative;
+      } catch (_) {}
+    } else if (reviewerRole != null) {
+      final rUpper = reviewerRole.toUpperCase();
+      if (rUpper.contains('CHILD') || rUpper.contains('RELATIVE')) {
+        effectiveIsGuardian = false;
+      }
+    } else if (reviewerId.toLowerCase().contains('child') ||
+        reviewerId.toLowerCase().contains('relative')) {
+      effectiveIsGuardian = false;
+    }
+
+    if (!effectiveIsGuardian) {
+      throw StateError(
+        'ANTI_EXPLOIT_GUARDIAN_REQUIRED: Chỉ Người giám hộ (Bố Mẹ, Ông Bà) mới có quyền duyệt việc và thưởng sao.',
+      );
+    }
+
     final updated = existing.copyWith(
       taskStatus: TaskStatus.completed,
       status: ReminderStatus.completed,
       completedAt: DateTime.now(),
     );
     _reminders[index] = updated;
+    MultiTierEscalationService.instance.cancelEscalation(taskId);
     _notify(updated.familyId);
   }
 

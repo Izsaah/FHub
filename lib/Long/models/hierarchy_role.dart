@@ -1,7 +1,10 @@
+import '../utils/long_strings.dart';
+
 enum HierarchyRole {
   grandparent,
   parent,
-  child;
+  child,
+  relative;
 
   String get displayName {
     switch (this) {
@@ -11,6 +14,8 @@ enum HierarchyRole {
         return 'Bố Mẹ';
       case HierarchyRole.child:
         return 'Con cái';
+      case HierarchyRole.relative:
+        return LongStrings.t('Cô / Dì / Chú / Bác', 'Relative');
     }
   }
 
@@ -22,8 +27,30 @@ enum HierarchyRole {
         return 'PARENT';
       case HierarchyRole.child:
         return 'CHILD';
+      case HierarchyRole.relative:
+        return 'RELATIVE';
     }
   }
+
+  int get hierarchyLevel {
+    switch (this) {
+      case HierarchyRole.grandparent:
+        return 3;
+      case HierarchyRole.parent:
+        return 2;
+      case HierarchyRole.relative:
+        return 2;
+      case HierarchyRole.child:
+        return 1;
+    }
+  }
+
+  bool get isGuardian =>
+      this == HierarchyRole.parent || this == HierarchyRole.grandparent;
+
+  bool get canAssignChores => isGuardian;
+
+  String toJson() => code;
 
   static HierarchyRole fromString(String? value) {
     if (value == null) return HierarchyRole.parent;
@@ -34,6 +61,15 @@ enum HierarchyRole {
     if (upper == 'CHILD' || upper == 'CON_CAI') {
       return HierarchyRole.child;
     }
+    if (upper == 'RELATIVE' ||
+        upper == 'NGUOI_THAN' ||
+        upper == 'CO_DI_CHU_BAC' ||
+        upper == 'UNCLE_AUNT' ||
+        upper == 'UNCLE' ||
+        upper == 'AUNT') {
+      return HierarchyRole.relative;
+    }
     return HierarchyRole.parent;
   }
 }
+

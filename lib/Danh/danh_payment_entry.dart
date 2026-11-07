@@ -1,3 +1,7 @@
+import '../Long/services/family_data_service.dart';
+import '../Long/models/family_member_model.dart';
+import '../Vinh/screens/wishlist_and_ledger_screen.dart';
+import '../Vinh/models/family_member.dart';
 import 'package:flutter/material.dart';
 import 'screens/premium_plan_screen.dart';
 import 'screens/manage_subscription_screen.dart';
@@ -102,6 +106,66 @@ class DanhPaymentEntry {
   /// Xóa ngữ cảnh gia đình khi User chưa có hoặc đã rời hết tất cả gia đình
   static void clearFamilyContext() {
     service.clearFamily();
+  }
+
+  /// Điều hướng tới Cửa Hàng Đổi Sao & Sổ Cái Phúc Lợi Thực Tế
+  static Future<void> openWishlistAndLedger(BuildContext context) async {
+    final familyDataService = FamilyDataService();
+    final family = await familyDataService.getCurrentFamily();
+    final familyId = (family != null && family.id.trim().isNotEmpty)
+        ? family.id
+        : service.currentFamilyId;
+
+    if (familyId.trim().isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                'Vui lòng chọn hoặc tham gia một gia đình trước!',
+                'Please select or join a family first!',
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final user = await familyDataService.getCurrentUser();
+    final members = await familyDataService.getFamilyMembers(familyId: familyId);
+    FamilyMemberModel? me;
+    for (final m in members) {
+      if (m.user.id == user.id) {
+        me = m;
+        break;
+      }
+    }
+    final roleCode = me?.hierarchyRole.code ?? 'PARENT';
+
+    final convertedMembers = members.map((m) {
+      return FamilyMember(
+        id: m.user.id,
+        name: m.user.name,
+        role: m.hierarchyRole.code,
+        familyId: familyId,
+        rewardStarsTotal: m.rewardStarsTotal,
+      );
+    }).toList();
+
+    if (!context.mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WishlistAndLedgerScreen(
+          familyId: familyId,
+          currentUserId: user.id,
+          currentUserName: user.name,
+          currentUserRole: roleCode,
+          familyMembers: convertedMembers,
+        ),
+      ),
+    );
   }
 
   /// Widget hiển thị tiến trình hạn mức và trạng thái gói cho TOÀN BỘ thành viên trong Family
@@ -267,6 +331,61 @@ class DanhPaymentEntry {
                         isPremium ? Icons.arrow_forward_ios_rounded : Icons.lock_outline_rounded,
                         size: 14,
                         color: isPremium ? const Color(0xFFE65100) : DanhColors.brand800,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              InkWell(
+                key: const Key('btn_profile_open_wishlist'),
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => openWishlistAndLedger(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF81C784),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('🎁', style: TextStyle(fontSize: 20)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              AppLanguage.text(
+                                'Cửa Hàng Đổi Sao & Phúc Lợi Thực Tế ⭐',
+                                'Star Reward Shop & Real Wishlist ⭐',
+                              ),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1B5E20),
+                              ),
+                            ),
+                            Text(
+                              AppLanguage.text(
+                                'Đổi sao lấy quà thực tế • Sổ cái minh bạch',
+                                'Redeem stars for real rewards • Transparent ledger',
+                              ),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF388E3C),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                        color: Color(0xFF1B5E20),
                       ),
                     ],
                   ),

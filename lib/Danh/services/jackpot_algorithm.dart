@@ -160,18 +160,27 @@ class JackpotAlgorithm {
     );
   }
 
-  /// Làm tròn số tiền hợp lý mà vẫn chừa đủ phần dư cho những thành viên phía sau
+  /// Làm tròn hợp lý (hỗ trợ cả Hũ Sao nhỏ < 1000 sao và Hũ lớn >= 1000) mà vẫn chừa tối thiểu 1 đơn vị cho mỗi người phía sau
   static int _roundFriendly(int val, int available, int membersLeftAfterThis) {
     int result = val;
-    if (val >= 10000) {
-      result = (val ~/ 500) * 500;
-    } else if (val >= 1000) {
-      result = (val ~/ 100) * 100;
+    if (available >= 1000) {
+      if (val >= 10000) {
+        result = (val ~/ 500) * 500;
+      } else if (val >= 1000) {
+        result = (val ~/ 100) * 100;
+      }
+      final int maxAllowed = available - (membersLeftAfterThis * 100);
+      if (maxAllowed > 0 && result > maxAllowed) {
+        result = maxAllowed;
+      }
+      return max(0, result);
+    } else {
+      // Chế độ Hũ Sao (< 1000 sao): Chừa ít nhất 1 sao cho mỗi thành viên có lắc phía sau nếu quỹ đủ
+      final int maxAllowed = available - membersLeftAfterThis;
+      if (maxAllowed > 0 && result > maxAllowed) {
+        result = maxAllowed;
+      }
+      return max(0, result);
     }
-    final int maxAllowed = available - (membersLeftAfterThis * 100);
-    if (maxAllowed > 0 && result > maxAllowed) {
-      result = maxAllowed;
-    }
-    return max(0, result);
   }
 }

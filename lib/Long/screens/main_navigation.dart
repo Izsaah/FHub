@@ -44,6 +44,7 @@ class _MainNavigationState extends State<MainNavigation> {
             onNavigateToReminders: () => setState(() => _currentIndex = 1),
           ),
           ReminderListScreen(
+            isActive: _currentIndex == 1,
             onNavigateToFamily: () => setState(() => _currentIndex = 2),
           ),
           const FamilyScreen(),

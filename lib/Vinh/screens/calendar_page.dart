@@ -79,6 +79,28 @@ class _CalendarPageState extends State<CalendarPage> {
         }
       }
 
+      if (reminder.requiresProofImage && proofUrl != null) {
+        await widget.repository.submitTaskWithProof(
+          taskId: reminder.id,
+          proofImageUrl: proofUrl,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLanguage.text(
+                  '📸 Đã nộp ảnh nghiệm thu! Đang chờ Bố Mẹ/Ông Bà duyệt sao.',
+                  '📸 Proof submitted! Waiting for Guardian approval and stars.',
+                ),
+              ),
+              backgroundColor: const Color(0xFF0D7A68),
+            ),
+          );
+          setState(() {});
+        }
+        return;
+      }
+
       await widget.repository.completeReminder(
         reminderId: reminder.id,
         currentUserId: widget.currentUserId,
@@ -348,7 +370,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   .toList();
 
               final overdueList = dayReminders
-                  .where((r) => r.isOverdue && !r.isCompleted)
+                  .where((r) => r.isOverdue && !r.isCompleted && !r.isSubmitted)
                   .toList();
 
               final openList = dayReminders
@@ -361,6 +383,10 @@ class _CalendarPageState extends State<CalendarPage> {
                       !r.isOverdue &&
                       !r.isOpen &&
                       !r.isCompleted)
+                  .toList();
+
+              final submittedList = dayReminders
+                  .where((r) => r.isSubmitted && !r.isCompleted)
                   .toList();
 
               final completedList =
@@ -543,6 +569,32 @@ class _CalendarPageState extends State<CalendarPage> {
                                     onClaim: () => _claimReminder(reminder),
                                     onClaimAndComplete: () =>
                                         _claimAndCompleteReminder(reminder),
+                                  ),
+                                ),
+                              ],
+
+                              // 2b. SUBMITTED / PENDING APPROVAL
+                              if (submittedList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: AppLanguage.text(
+                                    'CHỜ DUYỆT NGHIỆM THU',
+                                    'PENDING APPROVAL',
+                                  ),
+                                  count: submittedList.length,
+                                  color: const Color(0xFF6750A4),
+                                  icon: Icons.rate_review_rounded,
+                                ),
+                                ...submittedList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: widget.currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onDelete: (reminder.creatorId ==
+                                                widget.currentUserId ||
+                                            _isParentOrOwner)
+                                        ? () => _confirmAndDelete(reminder)
+                                        : null,
                                   ),
                                 ),
                               ],

@@ -10,6 +10,7 @@ import '../models/reminder_model.dart';
 import '../services/ai_speech_service.dart';
 import '../services/member_color_helper.dart';
 import '../services/reminder_repository.dart';
+import '../services/star_economy_service.dart';
 import '../screens/create_reminder_screen.dart';
 import 'camera_proof_dialog.dart';
 import 'member_picker_bottom_sheet.dart';
@@ -24,6 +25,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   final ReminderRepository repository;
   final List<FamilyMember> familyMembers;
   final VoidCallback? onReminderUpdated;
+  final StarEconomyService? starEconomyService;
 
   const ReminderDetailBottomSheet({
     super.key,
@@ -34,7 +36,11 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     required this.repository,
     this.familyMembers = const [],
     this.onReminderUpdated,
+    this.starEconomyService,
   });
+
+  StarEconomyService get _starEconomyService =>
+      starEconomyService ?? StarEconomyService.instance;
 
   static Future<void> show(
     BuildContext context, {
@@ -45,6 +51,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     required ReminderRepository repository,
     List<FamilyMember> familyMembers = const [],
     VoidCallback? onReminderUpdated,
+    StarEconomyService? starEconomyService,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -58,6 +65,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         repository: repository,
         familyMembers: familyMembers,
         onReminderUpdated: onReminderUpdated,
+        starEconomyService: starEconomyService,
       ),
     );
   }
@@ -105,12 +113,16 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       orElse: () =>
           const FamilyMember(id: '', name: '', role: '', familyId: ''),
     );
+    if (currentMember.id.isNotEmpty) {
+      return currentMember.isGuardian && !currentMember.isRelative;
+    }
     final roleUpper = currentMember.role.toUpperCase();
-    return currentMember.isParent ||
-        currentMember.isGrandparent ||
-        roleUpper.contains('PARENT') ||
-        roleUpper.contains('OWNER') ||
-        roleUpper.contains('GRANDPARENT');
+    return (currentMember.isParent ||
+            currentMember.isGrandparent ||
+            roleUpper.contains('PARENT') ||
+            roleUpper.contains('OWNER') ||
+            roleUpper.contains('GRANDPARENT')) &&
+        !currentMember.isRelative;
   }
 
   Future<void> _showRejectionDialog(BuildContext context) async {
@@ -185,8 +197,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
           reason: controller.text.trim(),
         );
         if (context.mounted) {
+          final messenger = ScaffoldMessenger.of(context);
           Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(
               content: Text(
                 AppLanguage.text(
@@ -226,8 +239,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         proofImageUrl: proofUrl,
       );
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -252,16 +266,94 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   }
 
   Future<void> _handleApproveSubmission(BuildContext context) async {
+    // 1. Pre-flight check: Non-guardian approval
+    if (!isGuardian) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Chỉ Người giám hộ (Bố Mẹ/Ông Bà) mới có quyền duyệt việc và thưởng sao!',
+              'Only Guardians (Parents/Grandparents) can approve tasks and award stars!',
+            ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
+
+    // 2. Pre-flight check: Self-awarding (cannot approve task assigned to oneself)
+    if (reminder.assignedTo == currentUserId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Bạn không thể tự duyệt việc của chính mình!',
+              'You cannot self-approve your own task!',
+            ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
+
+    // 3. Pre-flight check: Self-creation & self-approval farming
+    if (reminder.creatorId == currentUserId && reminder.assignedTo == currentUserId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Người tạo việc không thể tự giao việc rồi tự duyệt để nhận sao!',
+              'Task creators cannot self-assign and self-approve to receive stars!',
+            ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
+
     try {
       HapticFeedback.heavyImpact();
+
+      // Seed task into in-memory star service if not already present (for test resilience)
+      final starService = _starEconomyService;
+      if (starService.reminders[reminder.id] == null) {
+        starService.seedTask(reminder.id, {
+          'familyId': reminder.familyId,
+          'assignedTo': reminder.assignedTo,
+          'creatorId': reminder.creatorId,
+          'status': 'SUBMITTED',
+          'taskStatus': 'SUBMITTED',
+          'rewardStars': reminder.rewardStars,
+        });
+      }
+
+      // 1. Execute atomic approval with idempotent double-award protection
+      await starService.approveTaskWithDoubleAwardProtection(
+        taskId: reminder.id,
+        reviewerId: currentUserId,
+        reviewerName: currentUserName,
+        familyId: reminder.familyId,
+        childId: reminder.assignedTo,
+        stars: reminder.rewardStars,
+        creatorId: reminder.creatorId,
+        isGuardian: isGuardian,
+        familyMembers: familyMembers,
+      );
+
+      // 2. Synchronize reminder repository state
       await repository.approveTaskSubmission(
         taskId: reminder.id,
         reviewerId: currentUserId,
         reviewerName: currentUserName,
       );
+
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               reminder.rewardStars > 0
@@ -277,12 +369,32 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         );
         onReminderUpdated?.call();
       }
+    } on DoubleApprovalException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+        onReminderUpdated?.call();
+      }
+    } on StateError catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(e.toString()),
-              backgroundColor: const Color(0xFFBA1A1A)),
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
         );
       }
     }
@@ -293,8 +405,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       HapticFeedback.mediumImpact();
       await repository.acceptFavorTask(reminder.id);
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -321,8 +434,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       HapticFeedback.lightImpact();
       await repository.declineFavorTask(reminder.id);
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -376,8 +490,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         targetUserRole: 'Child',
       );
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -438,8 +553,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       );
 
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -526,8 +642,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
         currentUserName: currentUserName,
       );
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -595,8 +712,9 @@ class ReminderDetailBottomSheet extends StatelessWidget {
       );
 
       if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(
               AppLanguage.text(
@@ -1714,7 +1832,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                             ),
                           )
                         else if (reminder.taskStatus == TaskStatus.submitted) ...[
-                          if (isGuardian)
+                          if (isGuardian && reminder.assignedTo != currentUserId)
                             Row(
                               children: [
                                 Expanded(
@@ -1758,6 +1876,20 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                                   ),
                                 ),
                               ],
+                            )
+                          else if (reminder.assignedTo == currentUserId)
+                            Container(
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade50,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.amber.shade300),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                AppLanguage.text('Bạn không thể tự duyệt việc của chính mình', 'You cannot self-approve your own task'),
+                                style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.w600),
+                              ),
                             )
                           else
                             Container(
