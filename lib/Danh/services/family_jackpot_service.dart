@@ -952,6 +952,66 @@ class FamilyJackpotService extends ChangeNotifier {
     ));
   }
 
+  // Theo dõi nhiệm vụ hằng ngày của Hũ: Cả nhà điểm danh (+10 ⭐ vào Hũ)
+  final Map<String, Set<String>> _dailyCheckIns = {}; // dateKey (YYYY-MM-DD) -> Set<userId>
+  final Set<String> _awardedCheckInDates = {}; // dateKey đã được cộng 10 sao
+
+  bool hasUserCheckedInToday(String userId) {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return _dailyCheckIns[todayKey]?.contains(userId) ?? false;
+  }
+
+  int getTodayCheckInCount() {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return _dailyCheckIns[todayKey]?.length ?? 0;
+  }
+
+  bool isDailyCheckInCompletedToday() {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return _awardedCheckInDates.contains(todayKey);
+  }
+
+  /// Thành viên điểm danh hôm nay. Nếu toàn bộ thành viên gia đình đã điểm danh đủ,
+  /// tự động thưởng +10 ⭐ vào Hũ Niềm Vui Gia Đình!
+  Future<bool> checkInDaily({
+    required String userId,
+    required String userName,
+    required int totalFamilyMembers,
+  }) async {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    final userSet = _dailyCheckIns.putIfAbsent(todayKey, () => <String>{});
+    userSet.add(userId);
+
+    if (_awardedCheckInDates.contains(todayKey)) {
+      notifyListeners();
+      return false;
+    }
+
+    final threshold = totalFamilyMembers > 0 ? totalFamilyMembers : 1;
+    if (userSet.length >= threshold) {
+      _awardedCheckInDates.add(todayKey);
+      await contributeStars(
+        stars: 10,
+        memberId: 'system_daily_mission',
+        memberName: 'Cả nhà điểm danh',
+        sourceTaskId: 'daily_checkin_$todayKey',
+      );
+      unawaited(NotificationService.instance.addNotification(
+        familyId: _currentFamilyId ?? 'f1',
+        title: '🎉 Hoàn thành nhiệm vụ Cả nhà Điểm Danh!',
+        titleEn: '🎉 Daily Family Check-in Completed!',
+        body: 'Gia đình đã điểm danh đầy đủ hôm nay, +10 ⭐ vừa được cộng vào Hũ Niềm Vui!',
+        bodyEn: 'All family members checked in today, +10 ⭐ added to Family Jackpot!',
+        type: 'daily_checkin_completed',
+      ));
+      notifyListeners();
+      return true;
+    }
+
+    notifyListeners();
+    return false;
+  }
+
   /// Tích lũy Sao vào Hũ Sao Gia Đình (từ nhiệm vụ hoàn thành hoặc thành viên đóng góp sao)
   Future<void> contributeStars({
     required int stars,
@@ -1002,7 +1062,13 @@ class FamilyJackpotService extends ChangeNotifier {
     await _recordTransaction(
       type: WalletTransactionType.contribute,
       amount: stars,
-      title: sourceTaskId != null ? 'Tích lũy sao từ việc nhà' : 'Góp sao vào Hũ Sao Gia Đình',
+      title: sourceTaskId != null
+          ? (sourceTaskId.startsWith('cashback_')
+              ? 'Tích điểm 10% đổi phúc lợi'
+              : (sourceTaskId.startsWith('daily_checkin')
+                  ? 'Nhiệm vụ: Cả nhà điểm danh'
+                  : 'Tích lũy sao vào Hũ'))
+          : 'Góp sao vào Hũ Sao Gia Đình',
       description: 'Đóng góp +$stars ⭐ bởi $name',
       targetUserId: uid,
       targetUserName: name,
@@ -1541,6 +1607,8 @@ class FamilyJackpotService extends ChangeNotifier {
 
   /// Đặt lại Hũ mới sau khi nổ hũ xong (Bảo toàn 100% ví tiền thưởng tích lũy chưa rút của thành viên)
   Future<void> resetJackpot() async {
+    _dailyCheckIns.clear();
+    _awardedCheckInDates.clear();
     _localMyShakeCount = 0;
     _isTransitioningPhase = false;
     _stopCountdownTimer();

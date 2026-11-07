@@ -525,7 +525,25 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          if (_isGuardian) ...[
+            IconButton(
+              key: Key('btn_edit_reward_${item.id}'),
+              icon: const Icon(Icons.edit_outlined, size: 20, color: Color(0xFF005F50)),
+              tooltip: 'Sửa phúc lợi',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () => _showEditRewardDialog(item),
+            ),
+            IconButton(
+              key: Key('btn_delete_reward_${item.id}'),
+              icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Color(0xFFBA1A1A)),
+              tooltip: 'Xóa phúc lợi',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () => _confirmDeleteReward(item),
+            ),
+            const SizedBox(width: 4),
+          ],
           ElevatedButton(
             key: Key('btn_redeem_${item.id}'),
             style: ElevatedButton.styleFrom(
@@ -754,6 +772,150 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
         ),
       );
     }
+  }
+
+  void _showEditRewardDialog(WishlistRewardItem item) {
+    final titleCtrl = TextEditingController(text: item.title);
+    final descCtrl = TextEditingController(text: item.description);
+    final costCtrl = TextEditingController(text: item.starCost.toString());
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Chỉnh Sửa Phúc Lợi'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                key: const Key('input_edit_reward_title'),
+                controller: titleCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Tên phần thưởng',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                key: const Key('input_edit_reward_cost'),
+                controller: costCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Số sao cần đổi (⭐)',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                key: const Key('input_edit_reward_desc'),
+                controller: descCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Mô tả chi tiết',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            key: const Key('btn_save_edit_reward'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF005F50),
+            ),
+            onPressed: () async {
+              final newTitle = titleCtrl.text.trim();
+              final newCost = int.tryParse(costCtrl.text.trim()) ?? item.starCost;
+              final newDesc = descCtrl.text.trim();
+              if (newTitle.isEmpty || newCost <= 0) return;
+
+              try {
+                await _starService.updateWishlistRewardItem(
+                  familyId: widget.familyId,
+                  itemId: item.id,
+                  editorId: widget.currentUserId,
+                  editorName: widget.currentUserName,
+                  editorRole: _effectiveRole,
+                  isGuardian: _isGuardian,
+                  title: newTitle,
+                  description: newDesc,
+                  starCost: newCost,
+                );
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (!mounted) return;
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('✅ Đã cập nhật phúc lợi "$newTitle"!'),
+                    backgroundColor: const Color(0xFF005F50),
+                  ),
+                );
+              } catch (e) {
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.toString()), backgroundColor: const Color(0xFFC62828)),
+                );
+              }
+            },
+            child: const Text('Lưu Thay Đổi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteReward(WishlistRewardItem item) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Xóa Phúc Lợi Thực Tế?'),
+        content: Text(
+          'Bạn có chắc chắn muốn xóa "${item.title}" (${item.starCost} ⭐) khỏi danh mục đổi quà của gia đình không?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            key: const Key('btn_confirm_delete_reward'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFBA1A1A),
+            ),
+            onPressed: () async {
+              try {
+                await _starService.removeWishlistRewardItem(
+                  familyId: widget.familyId,
+                  itemId: item.id,
+                  removerId: widget.currentUserId,
+                  removerName: widget.currentUserName,
+                  removerRole: _effectiveRole,
+                  isGuardian: _isGuardian,
+                );
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (!mounted) return;
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('🗑️ Đã xóa phúc lợi "${item.title}"!'),
+                    backgroundColor: const Color(0xFFE65100),
+                  ),
+                );
+              } catch (e) {
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.toString()), backgroundColor: const Color(0xFFC62828)),
+                );
+              }
+            },
+            child: const Text('Xóa Phúc Lợi'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCreateRewardDialog() {

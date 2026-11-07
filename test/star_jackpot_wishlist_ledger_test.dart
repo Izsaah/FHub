@@ -24,7 +24,7 @@ void main() {
     // R1 (M3): STAR JACKPOT POOL ACCUMULATION & SHAKE DISTRIBUTION
     // -------------------------------------------------------------------------
     group('R1 (M3): Star Jackpot Pool Accumulation & Shake Distribution', () {
-      test('1.1 Approving a chore with rewardStars > 0 automatically accumulates bonus stars into Family Star Pool', () async {
+      test('1.1 Approving a chore with rewardStars > 0 rewards child only and does NOT auto accumulate stars into Family Star Pool', () async {
         starService.seedMemberBalance('fam_star', 'child_bo', 10);
         starService.seedTask('task_clean_kitchen', {
           'familyId': 'fam_star',
@@ -44,8 +44,55 @@ void main() {
 
         // Child gets +10 stars (10 + 10 = 20)
         expect(starService.getBalance('fam_star', 'child_bo'), 20);
-        // Family star pool automatically receives 20% bonus (2 stars)
-        expect(starService.getFamilyStarPool('fam_star'), 2);
+        // Chores do NOT auto-contribute to the Family Star Pool
+        expect(starService.getFamilyStarPool('fam_star'), 0);
+      });
+
+      test('1.1b Daily check-in mission awards +10 ⭐ to Family Star Pot when all members check in', () async {
+        final jackpotSvc = FamilyJackpotService.instance;
+        await jackpotSvc.resetJackpot();
+        expect(jackpotSvc.isDailyCheckInCompletedToday(), isFalse);
+
+        // Member 1 checks in (1/2 members)
+        final r1 = await jackpotSvc.checkInDaily(
+          userId: 'parent_dad',
+          userName: 'Bố Tuấn',
+          totalFamilyMembers: 2,
+        );
+        expect(r1, isFalse);
+        expect(jackpotSvc.getTodayCheckInCount(), 1);
+        expect(jackpotSvc.isDailyCheckInCompletedToday(), isFalse);
+
+        // Member 2 checks in (2/2 members) -> triggers +10 stars
+        final r2 = await jackpotSvc.checkInDaily(
+          userId: 'child_bo',
+          userName: 'Cu Bo',
+          totalFamilyMembers: 2,
+        );
+        expect(r2, isTrue);
+        expect(jackpotSvc.isDailyCheckInCompletedToday(), isTrue);
+        expect(jackpotSvc.jackpot.totalPoolStars, 10);
+      });
+
+      test('1.1c Wishlist redemption contributes 10% cashback of starCost to Family Star Pot', () async {
+        starService.seedMemberBalance('fam_cashback', 'child_bo', 100);
+        final catalog = starService.getWishlistCatalog('fam_cashback');
+        final comicItem = catalog.firstWhere((i) => i.starCost == 50);
+
+        final initialPot = FamilyJackpotService.instance.jackpot.totalPoolStars;
+        await starService.submitWishlistRedemption(
+          familyId: 'fam_cashback',
+          childId: 'child_bo',
+          childName: 'Cu Bo',
+          item: comicItem,
+          claimId: 'claim_cashback_test',
+        );
+
+        // 10% of 50 stars = 5 stars cashback contributed to jackpot
+        expect(
+          FamilyJackpotService.instance.jackpot.totalPoolStars,
+          initialPot + 5,
+        );
       });
 
       test('1.2 JackpotAlgorithm distributes small star pool (e.g. 50 stars) accurately among active shakers', () {
@@ -229,6 +276,68 @@ void main() {
           starService.starLedger['refund_claim_movie_reject']!['amount'],
           15,
         );
+      });
+
+      test('2.4 Guardian can edit WishlistRewardItem; non-guardian is blocked with StateError', () async {
+        final catalog = starService.getWishlistCatalog('fam_edit_test');
+        final item = catalog.first;
+
+        // Guardian can edit title, description, starCost
+        final updated = await starService.updateWishlistRewardItem(
+          familyId: 'fam_edit_test',
+          itemId: item.id,
+          editorId: 'parent_dad',
+          editorName: 'Bố Tuấn',
+          editorRole: 'PARENT',
+          title: 'Xem hoạt hình 45 phút cuối tuần',
+          starCost: 25,
+        );
+
+        expect(updated.title, 'Xem hoạt hình 45 phút cuối tuần');
+        expect(updated.starCost, 25);
+        expect(starService.wishlistCatalog[item.id]?.starCost, 25);
+
+        // Non-guardian (CHILD) is blocked
+        expect(
+          () => starService.updateWishlistRewardItem(
+            familyId: 'fam_edit_test',
+            itemId: item.id,
+            editorId: 'child_bo',
+            editorName: 'Cu Bo',
+            editorRole: 'CHILD',
+            title: 'Hacker reward',
+            starCost: 1,
+          ),
+          throwsStateError,
+        );
+      });
+
+      test('2.5 Guardian can remove WishlistRewardItem; non-guardian is blocked with StateError', () async {
+        final catalog = starService.getWishlistCatalog('fam_remove_test');
+        final item = catalog.last;
+
+        // Non-guardian (CHILD) is blocked
+        expect(
+          () => starService.removeWishlistRewardItem(
+            familyId: 'fam_remove_test',
+            itemId: item.id,
+            removerId: 'child_bo',
+            removerName: 'Cu Bo',
+            removerRole: 'CHILD',
+          ),
+          throwsStateError,
+        );
+
+        // Guardian can remove
+        await starService.removeWishlistRewardItem(
+          familyId: 'fam_remove_test',
+          itemId: item.id,
+          removerId: 'parent_dad',
+          removerName: 'Bố Tuấn',
+          removerRole: 'PARENT',
+        );
+
+        expect(starService.wishlistCatalog.containsKey(item.id), isFalse);
       });
     });
 

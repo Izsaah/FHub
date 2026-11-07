@@ -1,3 +1,4 @@
+import '../../Danh/services/family_jackpot_service.dart';
 // lib/Vinh/services/star_economy_service.dart
 
 import 'dart:async';
@@ -892,6 +893,97 @@ class StarEconomyService {
     return item;
   }
 
+  /// Cập nhật Phúc lợi đổi sao thực tế (Edit Wishlist Reward Item)
+  /// Chỉ Người giám hộ (`PARENT`, `GRANDPARENT`) mới có quyền chỉnh sửa
+  Future<WishlistRewardItem> updateWishlistRewardItem({
+    required String familyId,
+    required String itemId,
+    required String editorId,
+    required String editorName,
+    required String editorRole,
+    bool? isGuardian,
+    String? title,
+    String? description,
+    int? starCost,
+    String? iconEmoji,
+  }) async {
+    final effectiveGuardian = isGuardian ??
+        (editorRole.toUpperCase() == 'PARENT' ||
+            editorRole.toUpperCase() == 'GRANDPARENT');
+    if (!effectiveGuardian) {
+      throw StateError(
+        'ANTI_EXPLOIT_GUARDIAN_REQUIRED: Chỉ Phụ huynh / Người giám hộ mới có quyền chỉnh sửa phúc lợi thực tế!',
+      );
+    }
+
+    final existing = wishlistCatalog[itemId];
+    if (existing == null) {
+      throw StateError('Không tìm thấy phúc lợi cần chỉnh sửa ($itemId)!');
+    }
+
+    if (starCost != null && starCost <= 0) {
+      throw ArgumentError('Số sao đổi thưởng phải lớn hơn 0!');
+    }
+
+    final updated = existing.copyWith(
+      title: title != null && title.trim().isNotEmpty ? title.trim() : existing.title,
+      description: description != null ? description.trim() : existing.description,
+      starCost: starCost ?? existing.starCost,
+      iconEmoji: iconEmoji ?? existing.iconEmoji,
+    );
+
+    wishlistCatalog[itemId] = updated;
+
+    if (_firestore != null) {
+      try {
+        await _firestore!
+            .collection('families')
+            .doc(familyId)
+            .collection('wishlist_rewards')
+            .doc(itemId)
+            .update(updated.toMap());
+      } catch (e) {
+        debugPrint('updateWishlistRewardItem firestore error: $e');
+      }
+    }
+    return updated;
+  }
+
+  /// Xóa Phúc lợi đổi sao thực tế (Remove / Delete Wishlist Reward Item)
+  /// Chỉ Người giám hộ (`PARENT`, `GRANDPARENT`) mới có quyền xóa
+  Future<void> removeWishlistRewardItem({
+    required String familyId,
+    required String itemId,
+    required String removerId,
+    required String removerName,
+    required String removerRole,
+    bool? isGuardian,
+  }) async {
+    final effectiveGuardian = isGuardian ??
+        (removerRole.toUpperCase() == 'PARENT' ||
+            removerRole.toUpperCase() == 'GRANDPARENT');
+    if (!effectiveGuardian) {
+      throw StateError(
+        'ANTI_EXPLOIT_GUARDIAN_REQUIRED: Chỉ Phụ huynh / Người giám hộ mới có quyền xóa phúc lợi thực tế!',
+      );
+    }
+
+    wishlistCatalog.remove(itemId);
+
+    if (_firestore != null) {
+      try {
+        await _firestore!
+            .collection('families')
+            .doc(familyId)
+            .collection('wishlist_rewards')
+            .doc(itemId)
+            .delete();
+      } catch (e) {
+        debugPrint('removeWishlistRewardItem firestore error: $e');
+      }
+    }
+  }
+
   /// Con cái nhấn Đổi Quà (Redeem): Trừ sao ngay lập tức, tạo bản ghi `PENDING` và bắn thông báo cho Phụ huynh
   Future<WishlistClaimRecord> submitWishlistRedemption({
     required String familyId,
@@ -911,6 +1003,21 @@ class StarEconomyService {
       cost: item.starCost,
       itemName: item.title,
     );
+
+    // Tích điểm 10% tổng số sao đổi phúc lợi vào Hũ Niềm Vui Gia Đình
+    final cashbackToPot = (item.starCost * 0.1).round();
+    final effectiveCashback =
+        cashbackToPot > 0 ? cashbackToPot : (item.starCost > 0 ? 1 : 0);
+    if (effectiveCashback > 0) {
+      unawaited(
+        FamilyJackpotService.instance.contributeStars(
+          stars: effectiveCashback,
+          memberId: childId,
+          memberName: childName,
+          sourceTaskId: 'cashback_$effectiveClaimId',
+        ),
+      );
+    }
 
     // 2. Lưu trạng thái yêu cầu đổi quà PENDING
     final claimRecord = WishlistClaimRecord(
@@ -1257,12 +1364,7 @@ class StarEconomyService {
     memberBalances[memberKey] =
         (memberBalances[memberKey] ?? 0) + resolvedStars;
 
-    // Tự động tích lũy thêm sao thưởng bonus vào Hũ Sao Gia Đình khi công việc có thưởng sao
-    if (resolvedStars > 0 && resolvedFamilyId.isNotEmpty) {
-      final bonusForPot = resolvedStars >= 5 ? (resolvedStars * 0.2).ceil() : 1;
-      familyStarPools[resolvedFamilyId] =
-          (familyStarPools[resolvedFamilyId] ?? 0) + bonusForPot;
-    }
+
   }
 
   Future<void> _claimWishlistItemInMemory({
