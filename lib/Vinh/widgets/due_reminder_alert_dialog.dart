@@ -37,10 +37,12 @@ class DueReminderAlertDialog extends StatefulWidget {
       if (nav != null) {
         final targetCtx =
             nav.overlay?.context ?? (context.mounted ? context : nav.context);
+        final themes = InheritedTheme.capture(from: targetCtx, to: nav.context);
         await nav.push<void>(
           DialogRoute<void>(
             context: targetCtx,
             barrierDismissible: false,
+            themes: themes,
             builder: (ctx) => DueReminderAlertDialog(
               reminder: reminder,
               isSnoozeFollowUp: isSnoozeFollowUp,

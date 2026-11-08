@@ -132,15 +132,15 @@ class AlarmSoundService {
   }
 
   void _playSingleRing() {
-    // 1. Rung máy điện thoại vật lý
-    try {
-      HapticFeedback.heavyImpact();
-    } catch (_) {}
-
-    // 2. Phát âm thanh cảnh báo hệ thống
-    try {
-      SystemSound.play(SystemSoundType.alert);
-    } catch (_) {}
+    // 1. Rung máy điện thoại vật lý & âm báo hệ thống (trên thiết bị di động)
+    if (!kIsWeb) {
+      try {
+        HapticFeedback.heavyImpact();
+      } catch (_) {}
+      try {
+        SystemSound.play(SystemSoundType.alert);
+      } catch (_) {}
+    }
 
     // 3. Phát tiếng chuông reo tổng hợp WAV (chạy mượt trên Web Chrome, Android, iOS, Windows)
     final player = _getAudioPlayer();

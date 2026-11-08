@@ -114,6 +114,11 @@ class MultiTierEscalationService {
       _alertedDueReminderIds ??= <String>{};
   String? _currentlyRingingReminderId;
 
+  /// Tập hợp các reminderId đã được đồng bộ trạng thái quá hạn lên Firestore
+  Set<String>? _syncedOverdueReminderIds;
+  Set<String> get _safeSyncedOverdueReminderIds =>
+      _syncedOverdueReminderIds ??= <String>{};
+
   /// Quản lý nhắc lại 1 lần nữa sau 30 phút khi người dùng bấm "Biết rồi / Bỏ qua"
   Set<String>? _snoozedOnceReminderIds;
   Set<String> get snoozedOnceReminderIds =>
@@ -554,6 +559,15 @@ class MultiTierEscalationService {
   void _syncOverdueToFirestore(ReminderModel reminder) {
     if (reminder.isCompleted || reminder.isDeleted || reminder.isSubmitted) return;
     if (reminder.status == ReminderStatus.overdue) return;
+    if (_safeSyncedOverdueReminderIds.contains(reminder.id)) return;
+    _safeSyncedOverdueReminderIds.add(reminder.id);
+
+    // Cập nhật ngay trong bộ nhớ để UI không bị trễ hoặc spam
+    final idx = _trackedReminders.indexWhere((r) => r.id == reminder.id);
+    if (idx != -1) {
+      _trackedReminders[idx] = reminder.copyWith(status: ReminderStatus.overdue);
+    }
+
     if (Firebase.apps.isNotEmpty) {
       try {
         FirebaseFirestore.instance
@@ -696,6 +710,7 @@ class MultiTierEscalationService {
     _safeSnoozeTimers.remove(reminderId)?.cancel();
     snoozeDueAt.remove(reminderId);
     _safeFollowUpActiveIds.remove(reminderId);
+    _safeSyncedOverdueReminderIds.remove(reminderId);
     _safePendingAlertQueue.removeWhere((r) => r.id == reminderId);
     if (_currentlyRingingReminderId == reminderId) {
       _currentlyRingingReminderId = null;
@@ -719,6 +734,7 @@ class MultiTierEscalationService {
     snoozedOnceReminderIds.clear();
     _safeFollowUpActiveIds.clear();
     alertedDueReminderIds.clear();
+    _safeSyncedOverdueReminderIds.clear();
     _safePreviouslyPendingIds.clear();
     _safePendingAlertQueue.clear();
     _currentlyRingingReminderId = null;
