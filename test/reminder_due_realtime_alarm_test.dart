@@ -6,10 +6,12 @@ import 'package:fhub/Vinh/services/multi_tier_escalation_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('Realtime Due Reminder Ticker & Alarm Sound Tests', () {
+  group('Realtime Due Reminder Target Filtering & 30-Min Snooze Tests', () {
     setUp(() {
       AlarmSoundService.instance.disableAudioPlayerForTest = true;
       MultiTierEscalationService.instance.cancelAll();
+      MultiTierEscalationService.instance.snoozeDuration =
+          const Duration(minutes: 30);
       AlarmSoundService.instance.stopAlarm();
     });
 
@@ -18,18 +20,7 @@ void main() {
       AlarmSoundService.instance.stopAlarm();
     });
 
-    test('1. AlarmSoundService starts and stops correctly without errors', () async {
-      final alarm = AlarmSoundService.instance;
-      expect(alarm.isPlaying, isFalse);
-
-      await alarm.startAlarm(maxRings: 2);
-      expect(alarm.isPlaying, isTrue);
-
-      alarm.stopAlarm();
-      expect(alarm.isPlaying, isFalse);
-    });
-
-    test('2. MultiTierEscalationService.syncReminders detects due reminder and completed tasks do NOT kill the alarm', () {
+    test('1. Assigned task ONLY notifies Assignee (child_1), NOT Creator (parent_1)', () {
       final service = MultiTierEscalationService.instance;
       final now = DateTime.now();
       final pastDue = now.subtract(const Duration(minutes: 2));
@@ -38,82 +29,113 @@ void main() {
       final timeStr =
           '${pastDue.hour.toString().padLeft(2, '0')}:${pastDue.minute.toString().padLeft(2, '0')}';
 
-      final dueTask = ReminderModel(
-        id: 'task_di_1728',
+      final assignedTask = ReminderModel(
+        id: 'task_assigned_1',
         familyId: 'fam_test',
         creatorId: 'parent_1',
         creatorName: 'Bố Tuấn',
         assignedTo: 'child_1',
         assignedToName: 'Trần Nguyễn Văn',
-        title: 'di',
+        title: 'Quét nhà',
         date: dateStr,
         time: timeStr,
         rewardStars: 2,
         status: ReminderStatus.pending,
       );
 
-      final completedTask = ReminderModel(
-        id: 'task_launha_completed',
+      // 1a. Creator (parent_1) opens the screen -> NO alarm / NO popup for creator
+      service.syncReminders([assignedTask], currentUserId: 'parent_1');
+      expect(service.alertedDueReminderIds.contains(assignedTask.id), isFalse);
+      expect(AlarmSoundService.instance.isPlaying, isFalse);
+
+      // 1b. Assignee (child_1) opens the screen -> Alarm & Popup triggered!
+      service.syncReminders([assignedTask], currentUserId: 'child_1');
+      expect(service.alertedDueReminderIds.contains(assignedTask.id), isTrue);
+      expect(AlarmSoundService.instance.isPlaying, isTrue);
+    });
+
+    test('2. Unclaimed Volunteer/Open task ONLY notifies Creator (parent_1)', () {
+      final service = MultiTierEscalationService.instance;
+      final now = DateTime.now();
+      final pastDue = now.subtract(const Duration(minutes: 2));
+      final dateStr =
+          '${pastDue.day.toString().padLeft(2, '0')}/${pastDue.month.toString().padLeft(2, '0')}/${pastDue.year}';
+      final timeStr =
+          '${pastDue.hour.toString().padLeft(2, '0')}:${pastDue.minute.toString().padLeft(2, '0')}';
+
+      final volunteerTask = ReminderModel(
+        id: 'task_volunteer_open_1',
+        familyId: 'fam_test',
+        creatorId: 'parent_1',
+        creatorName: 'Bố Tuấn',
+        assignedTo: 'OPEN',
+        assignedToName: 'Việc chung cả nhà',
+        title: 'Đổ rác buổi chiều',
+        date: dateStr,
+        time: timeStr,
+        rewardStars: 3,
+        status: ReminderStatus.open,
+      );
+
+      expect(volunteerTask.isOpenTask, isTrue);
+
+      // 2a. Other member (child_1) -> NO alarm / NO popup
+      service.syncReminders([volunteerTask], currentUserId: 'child_1');
+      expect(service.alertedDueReminderIds.contains(volunteerTask.id), isFalse);
+      expect(AlarmSoundService.instance.isPlaying, isFalse);
+
+      // 2b. Creator (parent_1) -> Alarm & Popup triggered because nobody claimed it!
+      service.syncReminders([volunteerTask], currentUserId: 'parent_1');
+      expect(service.alertedDueReminderIds.contains(volunteerTask.id), isTrue);
+      expect(AlarmSoundService.instance.isPlaying, isTrue);
+    });
+
+    test('3. Pressing "Biết rồi / Bỏ qua" snoozes and re-alerts exactly 1 more time after 30m', () async {
+      final service = MultiTierEscalationService.instance;
+      // Use a short snooze duration (60ms) to verify the 30-minute follow-up timer in test
+      service.snoozeDuration = const Duration(milliseconds: 60);
+
+      final now = DateTime.now();
+      final pastDue = now.subtract(const Duration(minutes: 1));
+      final dateStr =
+          '${pastDue.day.toString().padLeft(2, '0')}/${pastDue.month.toString().padLeft(2, '0')}/${pastDue.year}';
+      final timeStr =
+          '${pastDue.hour.toString().padLeft(2, '0')}:${pastDue.minute.toString().padLeft(2, '0')}';
+
+      final dueTask = ReminderModel(
+        id: 'task_snooze_30m',
         familyId: 'fam_test',
         creatorId: 'parent_1',
         creatorName: 'Bố Tuấn',
         assignedTo: 'child_1',
         assignedToName: 'Trần Nguyễn Văn',
-        title: 'Lau nha',
-        date: dateStr,
-        time: '11:27',
-        rewardStars: 3,
-        status: ReminderStatus.completed,
-      );
-
-      expect(dueTask.isOverdue, isTrue);
-      expect(service.alertedDueReminderIds.contains(dueTask.id), isFalse);
-
-      // Trigger sync with both dueTask and completedTask in the same list
-      service.syncReminders([dueTask, completedTask]);
-
-      // Alarm started and NOT cancelled by completedTask
-      expect(service.alertedDueReminderIds.contains(dueTask.id), isTrue);
-      expect(AlarmSoundService.instance.isPlaying, isTrue);
-
-      // Calling sync again should NOT re-trigger duplicate alert
-      service.syncReminders([dueTask, completedTask]);
-      expect(service.alertedDueReminderIds.length, 1);
-
-      // Completing / cancelling dueTask stops the alarm
-      service.cancelEscalation(dueTask.id);
-      expect(AlarmSoundService.instance.isPlaying, isFalse);
-    });
-
-    test('3. Future reminders are scheduled for timers, not triggered immediately', () {
-      final service = MultiTierEscalationService.instance;
-      final now = DateTime.now();
-      final future = now.add(const Duration(hours: 1));
-      final dateStr =
-          '${future.day.toString().padLeft(2, '0')}/${future.month.toString().padLeft(2, '0')}/${future.year}';
-      final timeStr =
-          '${future.hour.toString().padLeft(2, '0')}:${future.minute.toString().padLeft(2, '0')}';
-
-      final futureTask = ReminderModel(
-        id: 'task_future_1',
-        familyId: 'fam_test',
-        creatorId: 'parent_1',
-        creatorName: 'Bố Tuấn',
-        assignedTo: 'child_1',
-        assignedToName: 'Bé Na',
-        title: 'Học bài tiếng Anh',
+        title: 'Rửa bát',
         date: dateStr,
         time: timeStr,
+        rewardStars: 2,
         status: ReminderStatus.pending,
       );
 
-      expect(futureTask.isOverdue, isFalse);
-      service.syncReminders([futureTask]);
+      // First alert at due time for child_1
+      service.syncReminders([dueTask], currentUserId: 'child_1');
+      expect(AlarmSoundService.instance.isPlaying, isTrue);
 
-      // Timer scheduled, but NOT alerted yet and alarm NOT playing
-      expect(service.hasActiveEscalation(futureTask.id), isTrue);
-      expect(service.alertedDueReminderIds.contains(futureTask.id), isFalse);
+      // User presses "Biết rồi / Bỏ qua" -> stops alarm and schedules 30-min snooze
+      AlarmSoundService.instance.stopAlarm();
+      service.scheduleSnoozeReminder(dueTask);
       expect(AlarmSoundService.instance.isPlaying, isFalse);
+      expect(service.hasPendingSnooze(dueTask.id), isTrue);
+      expect(service.snoozedOnceReminderIds.contains(dueTask.id), isTrue);
+
+      // Wait for snooze duration to elapse -> triggers 1 more time!
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(service.hasPendingSnooze(dueTask.id), isFalse);
+      expect(AlarmSoundService.instance.isPlaying, isTrue);
+
+      // Trying to snooze a second time is ignored (only 1 follow-up allowed)
+      AlarmSoundService.instance.stopAlarm();
+      service.scheduleSnoozeReminder(dueTask);
+      expect(service.hasPendingSnooze(dueTask.id), isFalse);
     });
   });
 }

@@ -94,6 +94,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     if (_lastLoadedReminders.isEmpty || !mounted) return;
     MultiTierEscalationService.instance.syncReminders(
       _lastLoadedReminders,
+      currentUserId: _currentUserId,
       context: context,
       onOpenDetail: _showDetailBottomSheet,
     );
@@ -1764,6 +1765,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 _lastLoadedReminders = allReminders;
                 MultiTierEscalationService.instance.syncReminders(
                   allReminders,
+                  currentUserId: _currentUserId,
                   context: context,
                   onOpenDetail: _showDetailBottomSheet,
                 );

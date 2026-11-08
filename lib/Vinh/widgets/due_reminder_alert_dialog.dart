@@ -6,12 +6,16 @@ import '../services/alarm_sound_service.dart';
 /// Hộp thoại khung thông báo nổi bật kèm Chuông reo & Rung khi Lời nhắc đến giờ hẹn / quá hạn
 class DueReminderAlertDialog extends StatefulWidget {
   final ReminderModel reminder;
+  final bool isSnoozeFollowUp;
   final void Function(ReminderModel reminder)? onOpenDetail;
+  final void Function(ReminderModel reminder)? onSnoozeDismiss;
 
   const DueReminderAlertDialog({
     super.key,
     required this.reminder,
+    this.isSnoozeFollowUp = false,
     this.onOpenDetail,
+    this.onSnoozeDismiss,
   });
 
   static bool _isShowing = false;
@@ -20,7 +24,9 @@ class DueReminderAlertDialog extends StatefulWidget {
   static Future<void> show(
     BuildContext context, {
     required ReminderModel reminder,
+    bool isSnoozeFollowUp = false,
     void Function(ReminderModel reminder)? onOpenDetail,
+    void Function(ReminderModel reminder)? onSnoozeDismiss,
   }) async {
     if (_isShowing) return;
     _isShowing = true;
@@ -31,7 +37,9 @@ class DueReminderAlertDialog extends StatefulWidget {
         barrierDismissible: false,
         builder: (ctx) => DueReminderAlertDialog(
           reminder: reminder,
+          isSnoozeFollowUp: isSnoozeFollowUp,
           onOpenDetail: onOpenDetail,
+          onSnoozeDismiss: onSnoozeDismiss,
         ),
       );
     } finally {
@@ -76,6 +84,43 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
   Widget build(BuildContext context) {
     final reminder = widget.reminder;
     final isProof = reminder.requiresProofImage;
+    final isUnclaimedOpenTask = reminder.isOpenTask;
+    final canSnooze30m = !widget.isSnoozeFollowUp;
+
+    final String headerTitle;
+    final String headerSubtitle;
+
+    if (isUnclaimedOpenTask) {
+      headerTitle = AppLanguage.text(
+        widget.isSnoozeFollowUp
+            ? '⏰ NHẮC LẠI (30P): CHƯA AI NHẬN VIỆC!'
+            : '⏰ VIỆC XUNG PHONG CHƯA AI LÀM!',
+        widget.isSnoozeFollowUp
+            ? '⏰ 30M REMINDER: STILL UNCLAIMED!'
+            : '⏰ VOLUNTEER TASK UNCLAIMED!',
+      );
+      headerSubtitle = AppLanguage.text(
+        'Nhiệm vụ xung phong bạn tạo đã tới hạn nhưng chưa có thành viên nào nhận làm:',
+        'The volunteer task you created is due, but no one has claimed or completed it yet:',
+      );
+    } else {
+      headerTitle = AppLanguage.text(
+        widget.isSnoozeFollowUp
+            ? '⏰ NHẮC LẠI SAU 30 PHÚT!'
+            : '⏰ ĐÃ ĐẾN GIỜ THỰC HIỆN!',
+        widget.isSnoozeFollowUp
+            ? '⏰ 30-MINUTE FOLLOW-UP REMINDER!'
+            : '⏰ TIME TO DO YOUR TASK!',
+      );
+      headerSubtitle = AppLanguage.text(
+        widget.isSnoozeFollowUp
+            ? 'Đã qua 30 phút từ lần nhắc trước, nhiệm vụ của bạn vẫn chưa hoàn thành:'
+            : 'Nhiệm vụ được giao cho bạn đã đến giờ hẹn cần làm ngay:',
+        widget.isSnoozeFollowUp
+            ? '30 minutes have passed since the last reminder and your task is still pending:'
+            : 'The task assigned to you has reached its due time:',
+      );
+    }
 
     return PopScope(
       canPop: true,
@@ -104,7 +149,8 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFE65100).withValues(alpha: 0.25),
+                          color:
+                              const Color(0xFFE65100).withValues(alpha: 0.25),
                           blurRadius: 16,
                           spreadRadius: 2,
                         ),
@@ -123,24 +169,18 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
 
             // Tiêu đề cảnh báo
             Text(
-              AppLanguage.text(
-                '⏰ ĐÃ ĐẾN GIỜ THỰC HIỆN!',
-                '⏰ TIME TO DO YOUR TASK!',
-              ),
+              headerTitle,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 17,
                 fontWeight: FontWeight.w900,
                 color: Color(0xFFBA1A1A),
-                letterSpacing: 0.5,
+                letterSpacing: 0.4,
               ),
             ),
             const SizedBox(height: 6),
             Text(
-              AppLanguage.text(
-                'Nhiệm vụ của bạn đã đến giờ hẹn cần làm ngay:',
-                'Your scheduled task has reached its due time:',
-              ),
+              headerSubtitle,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 13,
@@ -156,7 +196,8 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
               decoration: BoxDecoration(
                 color: const Color(0xFFF3FBF8),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF005F50).withValues(alpha: 0.25)),
+                border: Border.all(
+                    color: const Color(0xFF005F50).withValues(alpha: 0.25)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -164,7 +205,8 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.assignment_rounded, size: 20, color: Color(0xFF005F50)),
+                      const Icon(Icons.assignment_rounded,
+                          size: 20, color: Color(0xFF005F50)),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -186,7 +228,8 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.access_time_rounded, size: 16, color: Color(0xFFE65100)),
+                          const Icon(Icons.access_time_rounded,
+                              size: 16, color: Color(0xFFE65100)),
                           const SizedBox(width: 4),
                           Text(
                             reminder.time,
@@ -200,7 +243,8 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
                       ),
                       if (reminder.rewardStars > 0)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFF8E1),
                             borderRadius: BorderRadius.circular(8),
@@ -217,25 +261,37 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
                         ),
                     ],
                   ),
-                  if (reminder.assignedToName.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(Icons.person_outline_rounded, size: 15, color: Color(0xFF5D6B66)),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${AppLanguage.text("Giao cho", "Assigned to")}: ${reminder.assignedToName}',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF5D6B66)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        isUnclaimedOpenTask
+                            ? Icons.volunteer_activism_rounded
+                            : Icons.person_outline_rounded,
+                        size: 15,
+                        color: const Color(0xFF5D6B66),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          isUnclaimedOpenTask
+                              ? AppLanguage.text(
+                                  'Trạng thái: Việc xung phong (Chưa ai nhận)',
+                                  'Status: Volunteer task (Unclaimed)',
+                                )
+                              : '${AppLanguage.text("Người nhận", "Assigned to")}: ${reminder.assignedToName}',
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF5D6B66)),
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 20),
 
-            // Nút 1: Làm việc & Nộp ảnh ngay
+            // Nút 1: Làm việc / Xem chi tiết ngay
             SizedBox(
               width: double.infinity,
               height: 48,
@@ -244,18 +300,31 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
                   backgroundColor: const Color(0xFF005F50),
                   foregroundColor: Colors.white,
                   elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
                 ),
                 icon: Icon(
-                  isProof ? Icons.camera_alt_outlined : Icons.check_circle_outline_rounded,
+                  isUnclaimedOpenTask
+                      ? Icons.visibility_outlined
+                      : (isProof
+                          ? Icons.camera_alt_outlined
+                          : Icons.check_circle_outline_rounded),
                   size: 20,
                 ),
                 label: Text(
-                  AppLanguage.text(
-                    isProof ? 'Chụp ảnh & Hoàn thành ngay' : 'Xem & Hoàn thành ngay',
-                    isProof ? 'Take photo & Complete' : 'View & Complete now',
-                  ),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  isUnclaimedOpenTask
+                      ? AppLanguage.text(
+                          'Xem & Giao lại việc ngay', 'View & Reassign task')
+                      : AppLanguage.text(
+                          isProof
+                              ? 'Chụp ảnh & Hoàn thành ngay'
+                              : 'Xem & Hoàn thành ngay',
+                          isProof
+                              ? 'Take photo & Complete'
+                              : 'View & Complete now',
+                        ),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 onPressed: () {
                   AlarmSoundService.instance.stopAlarm();
@@ -266,7 +335,7 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
             ),
             const SizedBox(height: 10),
 
-            // Nút 2: Đã rõ / Tắt chuông
+            // Nút 2: Biết rồi / Bỏ qua (Nhắc lại sau 30 phút thêm 1 lần nữa)
             SizedBox(
               width: double.infinity,
               height: 44,
@@ -274,16 +343,34 @@ class _DueReminderAlertDialogState extends State<DueReminderAlertDialog>
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Color(0xFFBAC5C1)),
                   foregroundColor: const Color(0xFF3E4946),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
                 ),
-                icon: const Icon(Icons.volume_off_rounded, size: 18),
+                icon: Icon(
+                  canSnooze30m
+                      ? Icons.snooze_rounded
+                      : Icons.volume_off_rounded,
+                  size: 18,
+                ),
                 label: Text(
-                  AppLanguage.text('Đã rõ / Tắt chuông', 'Dismiss / Stop alarm'),
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  canSnooze30m
+                      ? AppLanguage.text(
+                          'Biết rồi / Bỏ qua (Nhắc lại sau 30p)',
+                          'Got it / Ignore (Remind again in 30m)',
+                        )
+                      : AppLanguage.text(
+                          'Biết rồi / Tắt chuông',
+                          'Got it / Stop alarm',
+                        ),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 12.5),
                 ),
                 onPressed: () {
                   AlarmSoundService.instance.stopAlarm();
                   Navigator.of(context).pop();
+                  if (canSnooze30m) {
+                    widget.onSnoozeDismiss?.call(reminder);
+                  }
                 },
               ),
             ),

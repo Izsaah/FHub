@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../main.dart';
 import '../../Danh/services/notification_service.dart';
+import '../../Thinh/theme/app_language.dart';
 import '../models/reminder_model.dart';
 import '../widgets/due_reminder_alert_dialog.dart';
 import 'alarm_sound_service.dart';
@@ -64,8 +67,20 @@ class EscalationAlert {
   }
 }
 
+class _QueuedDueAlert {
+  final ReminderModel reminder;
+  final bool isSnoozeFollowUp;
+
+  const _QueuedDueAlert({
+    required this.reminder,
+    required this.isSnoozeFollowUp,
+  });
+}
+
 /// Dịch vụ quản lý Cơ chế Nhắc lịch Đa tầng (0h -> 6h -> 12h),
 /// Đồng hồ Realtime tự động chuyển trạng thái Quá hạn mỗi giây,
+/// Phân quyền thông báo đúng đối tượng (Người được giao / Người tạo khi việc xung phong ế),
+/// Nhắc lại thêm 1 lần sau 30 phút khi bấm "Biết rồi / Bỏ qua",
 /// & Bộ mô phỏng Demo 10 giây (10-Second Simulation Mode).
 class MultiTierEscalationService {
   MultiTierEscalationService._();
@@ -77,25 +92,72 @@ class MultiTierEscalationService {
   Timer? _demoTimer;
   StreamController<EscalationAlert>? _demoAlertController;
 
+  /// Thời gian nhắc lại khi người dùng bấm "Biết rồi / Bỏ qua" (mặc định 30 phút)
+  Duration snoozeDuration = const Duration(minutes: 30);
+
   /// Bộ đếm nhịp đồng hồ thời gian thực (cập nhật mỗi 1 giây) để UI tự động chuyển từ "còn 1p" sang "QUÁ HẠN"
   /// ngay tại giây :00 mà không cần tạo lại Firestore Stream hay bấm lại icon Lời nhắc.
   final ValueNotifier<DateTime> clockTick =
       ValueNotifier<DateTime>(DateTime.now());
   Timer? _globalClockTimer;
   List<ReminderModel> _trackedReminders = [];
+  String? _lastCurrentUserId;
   BuildContext? _lastContext;
   void Function(ReminderModel)? _lastOnOpenDetail;
 
   /// Tập hợp các reminderId đã được thấy ở trạng thái CHỜ THỰC HIỆN (chưa quá hạn)
   final Set<String> _previouslyPendingIds = {};
 
-  /// Tập hợp các reminderId đã được phát chuông & hiện popup khi đến hạn (tránh hiện lặp lại liên tục)
+  /// Tập hợp các reminderId đã được phát chuông & hiện popup khi đến hạn
   final Set<String> _alertedDueReminderIds = {};
   Set<String> get alertedDueReminderIds => _alertedDueReminderIds;
   String? _currentlyRingingReminderId;
 
+  /// Quản lý nhắc lại 1 lần nữa sau 30 phút khi người dùng bấm "Biết rồi / Bỏ qua"
+  final Set<String> _snoozedOnceReminderIds = {};
+  Set<String> get snoozedOnceReminderIds => _snoozedOnceReminderIds;
+  final Map<String, Timer> _snoozeTimers = {};
+  final Map<String, DateTime> _snoozeDueAt = {};
+  Map<String, DateTime> get snoozeDueAt => _snoozeDueAt;
+
   /// Hàng đợi các lời nhắc đến hạn chờ hiển thị popup tuần tự
-  final List<ReminderModel> _pendingAlertQueue = [];
+  final List<_QueuedDueAlert> _pendingAlertQueue = [];
+
+  String? _resolveCurrentUserId([String? explicitUserId]) {
+    if (explicitUserId != null && explicitUserId.isNotEmpty) {
+      _lastCurrentUserId = explicitUserId;
+      return explicitUserId;
+    }
+    if (_lastCurrentUserId != null && _lastCurrentUserId!.isNotEmpty) {
+      return _lastCurrentUserId;
+    }
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null && uid.isNotEmpty) {
+          _lastCurrentUserId = uid;
+          return uid;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Kiểm tra xem người dùng hiện tại (`currentUserId`) có phải là đối tượng nhận thông báo & chuông reo hay không:
+  /// 1. Nếu là nhiệm vụ xung phong chưa ai nhận (`reminder.isOpenTask == true`):
+  ///    -> CHỈ hiện thông báo & chuông cho NGƯỜI TẠO (`reminder.creatorId == currentUserId`).
+  /// 2. Nếu là nhiệm vụ đã giao cho thành viên cụ thể (`reminder.isOpenTask == false`):
+  ///    -> CHỈ hiện thông báo & chuông cho NGƯỜI ĐƯỢC GIAO (`reminder.assignedTo == currentUserId`).
+  bool shouldNotifyUser(ReminderModel reminder, String? currentUserId) {
+    final uid = _resolveCurrentUserId(currentUserId);
+    if (uid == null || uid.isEmpty) {
+      return false;
+    }
+    if (reminder.isOpenTask) {
+      return reminder.creatorId == uid;
+    }
+    return reminder.assignedTo == uid;
+  }
 
   /// Khởi động bộ đếm đồng hồ 1 giây toàn cục nếu chưa chạy
   void ensureClockRunning() {
@@ -107,6 +169,7 @@ class MultiTierEscalationService {
         _evaluateDueReminders(
           _trackedReminders,
           now: now,
+          currentUserId: _lastCurrentUserId,
           context: _lastContext,
           onOpenDetail: _lastOnOpenDetail,
         );
@@ -166,41 +229,157 @@ class MultiTierEscalationService {
     }
   }
 
-  /// Kích hoạt chuông reo báo thức và hiển thị Khung Thông Báo Nổi (Due Alert Dialog)
-  /// Luôn chạy hiển thị Dialog trong PostFrameCallback để an toàn tuyệt đối kể cả khi gọi từ build().
-  void triggerDueAlarmAndPopup(
+  /// Đặt lịch nhắc lại thêm đúng 1 lần nữa sau 30 phút khi người dùng bấm "Biết rồi / Bỏ qua"
+  void scheduleSnoozeReminder(
     ReminderModel reminder, {
     BuildContext? context,
-    void Function(ReminderModel)? onOpenDetail,
   }) {
-    if (_alertedDueReminderIds.contains(reminder.id)) return;
-    _alertedDueReminderIds.add(reminder.id);
+    // Chỉ đặt lại thêm tối đa 1 lần sau 30 phút cho nhiệm vụ này
+    if (_snoozedOnceReminderIds.contains(reminder.id)) return;
+    _snoozedOnceReminderIds.add(reminder.id);
 
+    _snoozeTimers[reminder.id]?.cancel();
+    final targetTime = DateTime.now().add(snoozeDuration);
+    _snoozeDueAt[reminder.id] = targetTime;
+
+    _snoozeTimers[reminder.id] = Timer(snoozeDuration, () {
+      _fireSnoozeFollowUpIfStillPending(reminder.id, fallbackReminder: reminder);
+    });
+
+    final ctx = context ?? _lastContext ?? navigatorKey.currentContext;
+    if (ctx != null && ctx.mounted) {
+      try {
+        final mins = snoozeDuration.inMinutes > 0
+            ? '${snoozeDuration.inMinutes} phút'
+            : '${snoozeDuration.inSeconds} giây';
+        final minsEn = snoozeDuration.inMinutes > 0
+            ? '${snoozeDuration.inMinutes} minutes'
+            : '${snoozeDuration.inSeconds} seconds';
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                '🔔 Đã tạm ẩn. Sẽ nhắc lại "${reminder.title}" thêm 1 lần nữa sau $mins!',
+                '🔔 Snoozed. Will remind "${reminder.title}" 1 more time in $minsEn!',
+              ),
+            ),
+            duration: const Duration(seconds: 3),
+            backgroundColor: const Color(0xFF005F50),
+          ),
+        );
+      } catch (_) {}
+    }
+  }
+
+  void _fireSnoozeFollowUpIfStillPending(
+    String reminderId, {
+    ReminderModel? fallbackReminder,
+  }) {
+    _snoozeTimers.remove(reminderId)?.cancel();
+    _snoozeDueAt.remove(reminderId);
+
+    ReminderModel? latest = _trackedReminders
+        .where((r) => r.id == reminderId)
+        .firstOrNull ??
+        fallbackReminder;
+
+    if (latest == null) return;
+    if (latest.isCompleted || latest.isDeleted || latest.isSubmitted) return;
+    if (!shouldNotifyUser(latest, _lastCurrentUserId)) return;
+
+    // Cho phép phát thông báo + chuông lần thứ 2 (sau 30 phút)
+    _alertedDueReminderIds.remove(latest.id);
+    triggerDueAlarmAndPopup(
+      latest,
+      currentUserId: _lastCurrentUserId,
+      context: _lastContext,
+      onOpenDetail: _lastOnOpenDetail,
+      isSnoozeFollowUp: true,
+    );
+  }
+
+  /// Kích hoạt chuông reo báo thức và hiển thị Khung Thông Báo Nổi (Due Alert Dialog)
+  /// Chỉ phát cho đúng đối tượng:
+  /// - Việc giao cá nhân -> chỉ phát cho Người được giao (`assignedTo`).
+  /// - Việc xung phong chưa ai nhận -> chỉ phát cho Người tạo (`creatorId`).
+  void triggerDueAlarmAndPopup(
+    ReminderModel reminder, {
+    String? currentUserId,
+    BuildContext? context,
+    void Function(ReminderModel)? onOpenDetail,
+    bool isSnoozeFollowUp = false,
+  }) {
+    if (currentUserId != null && currentUserId.isNotEmpty) {
+      _lastCurrentUserId = currentUserId;
+    }
     if (context != null) _lastContext = context;
     if (onOpenDetail != null) _lastOnOpenDetail = onOpenDetail;
+
+    // Kiểm tra đúng người nhận thông báo
+    if (!shouldNotifyUser(reminder, _lastCurrentUserId)) {
+      return;
+    }
+
+    if (_alertedDueReminderIds.contains(reminder.id)) return;
+    _alertedDueReminderIds.add(reminder.id);
 
     // 1. Kích hoạt chuông reo báo thức (Bell Chime) & rung ngay lập tức
     _currentlyRingingReminderId = reminder.id;
     AlarmSoundService.instance.startAlarm();
 
-    // 2. Bắn thông báo In-app vào Notification Hub
+    // 2. Bắn thông báo In-app vào Notification Hub cho đúng người nhận
+    final bool isUnclaimedOpen = reminder.isOpenTask;
+    final String targetUid =
+        isUnclaimedOpen ? reminder.creatorId : reminder.assignedTo;
+
+    final String notifTitle = isUnclaimedOpen
+        ? (isSnoozeFollowUp
+            ? '⏰ Nhắc lại (30p): Việc xung phong "${reminder.title}" chưa ai nhận!'
+            : '⏰ Việc xung phong tới hạn: ${reminder.title}!')
+        : (isSnoozeFollowUp
+            ? '⏰ Nhắc lại (30p): ${reminder.title}!'
+            : '⏰ Đến giờ: ${reminder.title}!');
+
+    final String notifTitleEn = isUnclaimedOpen
+        ? (isSnoozeFollowUp
+            ? '⏰ 30m Follow-up: Volunteer task "${reminder.title}" still unclaimed!'
+            : '⏰ Volunteer Task Due: ${reminder.title}!')
+        : (isSnoozeFollowUp
+            ? '⏰ 30m Follow-up: ${reminder.title}!'
+            : '⏰ Task Due: ${reminder.title}!');
+
+    final String notifBody = isUnclaimedOpen
+        ? 'Nhiệm vụ xung phong "${reminder.title}" (${reminder.time}) bạn tạo đã đến hạn nhưng chưa có ai nhận làm. Hãy kiểm tra hoặc giao trực tiếp nhé!'
+        : (isSnoozeFollowUp
+            ? 'Đã qua 30 phút từ lần nhắc trước, nhiệm vụ "${reminder.title}" (${reminder.time}) của bạn vẫn chưa hoàn thành!'
+            : 'Nhiệm vụ "${reminder.title}" giao cho bạn đã đến giờ thực hiện (${reminder.time}). Hãy hoàn tất ngay nhé!');
+
+    final String notifBodyEn = isUnclaimedOpen
+        ? 'Volunteer task "${reminder.title}" (${reminder.time}) you created is due but nobody has claimed it yet!'
+        : (isSnoozeFollowUp
+            ? '30 minutes have passed and your task "${reminder.title}" (${reminder.time}) is still not completed!'
+            : 'Task "${reminder.title}" assigned to you is due now (${reminder.time}). Please complete it!');
+
     unawaited(
       NotificationService.instance.addNotification(
         familyId: reminder.familyId,
-        targetUserId: reminder.assignedTo,
-        title: '⏰ Đến giờ: ${reminder.title}!',
-        titleEn: '⏰ Task Due: ${reminder.title}!',
-        body:
-            'Nhiệm vụ "${reminder.title}" giao cho ${reminder.assignedToName} đã đến giờ thực hiện (${reminder.time}). Hãy hoàn tất ngay nhé!',
-        bodyEn:
-            'Task "${reminder.title}" assigned to ${reminder.assignedToName} is due now (${reminder.time}). Please complete it!',
-        type: 'task_due',
+        targetUserId: targetUid,
+        title: notifTitle,
+        titleEn: notifTitleEn,
+        body: notifBody,
+        bodyEn: notifBodyEn,
+        type: isSnoozeFollowUp ? 'task_due_snooze_30m' : 'task_due',
       ),
     );
 
     // 3. Đưa vào hàng đợi hiển thị Khung Thông Báo Nổi sau khi frame render xong
-    if (!_pendingAlertQueue.any((r) => r.id == reminder.id)) {
-      _pendingAlertQueue.add(reminder);
+    if (!_pendingAlertQueue.any((item) => item.reminder.id == reminder.id)) {
+      _pendingAlertQueue.add(
+        _QueuedDueAlert(
+          reminder: reminder,
+          isSnoozeFollowUp: isSnoozeFollowUp,
+        ),
+      );
     }
     _scheduleProcessAlertQueue();
   }
@@ -228,11 +407,15 @@ class MultiTierEscalationService {
       return;
     }
 
-    final nextReminder = _pendingAlertQueue.removeAt(0);
+    final nextAlert = _pendingAlertQueue.removeAt(0);
     await DueReminderAlertDialog.show(
       targetContext,
-      reminder: nextReminder,
+      reminder: nextAlert.reminder,
+      isSnoozeFollowUp: nextAlert.isSnoozeFollowUp,
       onOpenDetail: _lastOnOpenDetail,
+      onSnoozeDismiss: (rem) {
+        scheduleSnoozeReminder(rem, context: targetContext);
+      },
     );
 
     // Nếu còn task khác cũng đến hạn trong hàng đợi thì hiển thị tiếp
@@ -244,10 +427,14 @@ class MultiTierEscalationService {
   /// Quét đồng bộ danh sách lời nhắc để tự động hẹn giờ và kiểm tra nhiệm vụ đến hạn
   void syncReminders(
     List<ReminderModel> reminders, {
+    String? currentUserId,
     BuildContext? context,
     void Function(ReminderModel)? onOpenDetail,
   }) {
     _trackedReminders = reminders;
+    if (currentUserId != null && currentUserId.isNotEmpty) {
+      _lastCurrentUserId = currentUserId;
+    }
     if (context != null) _lastContext = context;
     if (onOpenDetail != null) _lastOnOpenDetail = onOpenDetail;
 
@@ -255,6 +442,7 @@ class MultiTierEscalationService {
     _evaluateDueReminders(
       reminders,
       now: DateTime.now(),
+      currentUserId: _lastCurrentUserId,
       context: context,
       onOpenDetail: onOpenDetail,
     );
@@ -263,13 +451,23 @@ class MultiTierEscalationService {
   void _evaluateDueReminders(
     List<ReminderModel> reminders, {
     required DateTime now,
+    String? currentUserId,
     BuildContext? context,
     void Function(ReminderModel)? onOpenDetail,
   }) {
+    final effectiveUserId = _resolveCurrentUserId(currentUserId);
+
     for (final r in reminders) {
       if (r.isCompleted || r.isDeleted || r.isSubmitted) {
         _previouslyPendingIds.remove(r.id);
         cancelEscalation(r.id);
+        continue;
+      }
+
+      // Kiểm tra nếu nhiệm vụ này đang có lịch snooze 30 phút và đã tới giờ nhắc lại
+      final snoozeTarget = _snoozeDueAt[r.id];
+      if (snoozeTarget != null && !snoozeTarget.isAfter(now)) {
+        _fireSnoozeFollowUpIfStillPending(r.id, fallbackReminder: r);
         continue;
       }
 
@@ -282,15 +480,19 @@ class MultiTierEscalationService {
         final justTransitionedFromPending =
             _previouslyPendingIds.remove(r.id);
 
-        // Nếu task vừa chuyển từ Chờ thực hiện -> Quá hạn ngay trước mắt người dùng,
-        // hoặc vừa mới đến hạn trong vòng 15 phút gần nhất:
-        if ((justTransitionedFromPending || diff.inMinutes < 15) &&
-            !_alertedDueReminderIds.contains(r.id)) {
-          triggerDueAlarmAndPopup(
-            r,
-            context: context ?? _lastContext,
-            onOpenDetail: onOpenDetail ?? _lastOnOpenDetail,
-          );
+        // Chỉ thông báo & đổ chuông nếu người dùng hiện tại đúng là đối tượng nhận:
+        // - Người được giao (với task thường)
+        // - Hoặc Người tạo (với task xung phong chưa ai nhận)
+        if (shouldNotifyUser(r, effectiveUserId)) {
+          if ((justTransitionedFromPending || diff.inMinutes < 15) &&
+              !_alertedDueReminderIds.contains(r.id)) {
+            triggerDueAlarmAndPopup(
+              r,
+              currentUserId: effectiveUserId,
+              context: context ?? _lastContext,
+              onOpenDetail: onOpenDetail ?? _lastOnOpenDetail,
+            );
+          }
         }
       } else {
         // Task vẫn đang ở tương lai (Chờ thực hiện) -> ghi nhận để khi vừa điểm giờ sẽ báo ngay
@@ -302,7 +504,7 @@ class MultiTierEscalationService {
     }
   }
 
-  /// Tự động hủy toàn bộ các mốc hẹn giờ rung (+6h và +12h) khi bấm Complete
+  /// Tự động hủy toàn bộ các mốc hẹn giờ rung (+6h, +12h, và snooze 30p) khi bấm Complete hoặc Delete
   void cancelEscalation(String reminderId) {
     final timers = _activeTimers.remove(reminderId);
     if (timers != null) {
@@ -310,7 +512,9 @@ class MultiTierEscalationService {
         t.cancel();
       }
     }
-    _pendingAlertQueue.removeWhere((r) => r.id == reminderId);
+    _snoozeTimers.remove(reminderId)?.cancel();
+    _snoozeDueAt.remove(reminderId);
+    _pendingAlertQueue.removeWhere((item) => item.reminder.id == reminderId);
     if (_currentlyRingingReminderId == reminderId) {
       _currentlyRingingReminderId = null;
       AlarmSoundService.instance.stopAlarm();
@@ -324,11 +528,18 @@ class MultiTierEscalationService {
         t.cancel();
       }
     }
+    for (final t in _snoozeTimers.values) {
+      t.cancel();
+    }
     _activeTimers.clear();
+    _snoozeTimers.clear();
+    _snoozeDueAt.clear();
+    _snoozedOnceReminderIds.clear();
     _alertedDueReminderIds.clear();
     _previouslyPendingIds.clear();
     _pendingAlertQueue.clear();
     _currentlyRingingReminderId = null;
+    _lastCurrentUserId = null;
     _trackedReminders = [];
     _globalClockTimer?.cancel();
     _globalClockTimer = null;
@@ -339,15 +550,23 @@ class MultiTierEscalationService {
   bool hasActiveEscalation(String reminderId) =>
       _activeTimers.containsKey(reminderId);
 
+  /// Kiểm tra xem lời nhắc có đang trong thời gian chờ nhắc lại 30 phút không
+  bool hasPendingSnooze(String reminderId) =>
+      _snoozeDueAt.containsKey(reminderId);
+
   /// Kích hoạt rung và phát thông báo theo từng tầng
   void _triggerTierAlert(ReminderModel reminder, EscalationTier tier) {
     try {
       switch (tier) {
         case EscalationTier.tier1Due:
-          triggerDueAlarmAndPopup(reminder);
+          triggerDueAlarmAndPopup(
+            reminder,
+            currentUserId: _lastCurrentUserId,
+          );
           break;
 
         case EscalationTier.tier2SixHours:
+          if (!shouldNotifyUser(reminder, _lastCurrentUserId)) break;
           // Quá hạn 6h: Rung mạnh 2 nhịp dồn dập
           HapticFeedback.heavyImpact();
           Future.delayed(const Duration(milliseconds: 250), () {
@@ -360,7 +579,8 @@ class MultiTierEscalationService {
           unawaited(
             NotificationService.instance.addNotification(
               familyId: reminder.familyId,
-              targetUserId: reminder.assignedTo,
+              targetUserId:
+                  reminder.isOpenTask ? reminder.creatorId : reminder.assignedTo,
               title: '⚠️ Quá hạn 6 tiếng: ${reminder.title}!',
               titleEn: '⚠️ 6h Overdue: ${reminder.title}!',
               body:
@@ -385,6 +605,7 @@ class MultiTierEscalationService {
           unawaited(
             NotificationService.instance.addNotification(
               familyId: reminder.familyId,
+              targetUserId: reminder.creatorId,
               title: '🚨 Báo động quá hạn 12 tiếng: ${reminder.title}!',
               titleEn: '🚨 12h Overdue Alert: ${reminder.title}!',
               body:

@@ -65,7 +65,9 @@ class _CalendarPageState extends State<CalendarPage> {
     if (_lastLoadedReminders.isEmpty || !mounted) return;
     MultiTierEscalationService.instance.syncReminders(
       _lastLoadedReminders,
+      currentUserId: widget.currentUserId,
       context: context,
+      onOpenDetail: _showDetailBottomSheet,
     );
   }
 
@@ -400,7 +402,9 @@ class _CalendarPageState extends State<CalendarPage> {
               _lastLoadedReminders = allReminders;
               MultiTierEscalationService.instance.syncReminders(
                 allReminders,
+                currentUserId: widget.currentUserId,
                 context: context,
+                onOpenDetail: _showDetailBottomSheet,
               );
               return ValueListenableBuilder<DateTime>(
                 valueListenable: MultiTierEscalationService.instance.clockTick,
