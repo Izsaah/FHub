@@ -755,6 +755,7 @@ class StarEconomyService {
     required String contributorName,
     required int stars,
     String? sourceTaskId,
+    String? note,
   }) async {
     if (stars <= 0) {
       throw ArgumentError('Số sao nạp vào Hũ phải lớn hơn 0.');
@@ -765,6 +766,11 @@ class StarEconomyService {
     final txKey = sourceTaskId != null
         ? 'jackpot_contrib_task_$sourceTaskId'
         : 'jackpot_contrib_${contributorId}_${DateTime.now().microsecondsSinceEpoch}';
+
+    final effectiveNote = note ??
+        (sourceTaskId != null
+            ? 'Tích lũy tự động từ nhiệm vụ hoàn thành'
+            : 'Góp sao vào Hũ Niềm Vui Gia Đình');
 
     if (_firestore == null) {
       starLedger[txKey] = {
@@ -778,9 +784,7 @@ class StarEconomyService {
         'sourceId': sourceTaskId ?? txKey,
         'actorId': contributorId,
         'actorName': contributorName,
-        'note': sourceTaskId != null
-            ? 'Tích lũy tự động từ nhiệm vụ hoàn thành'
-            : 'Góp sao vào Hũ Niềm Vui Gia Đình',
+        'note': effectiveNote,
         'createdAt': DateTime.now(),
       };
       return nextPool;
@@ -798,9 +802,7 @@ class StarEconomyService {
         'sourceId': sourceTaskId ?? txKey,
         'actorId': contributorId,
         'actorName': contributorName,
-        'note': sourceTaskId != null
-            ? 'Tích lũy tự động từ nhiệm vụ hoàn thành'
-            : 'Góp sao vào Hũ Niềm Vui Gia Đình',
+        'note': effectiveNote,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -1331,16 +1333,35 @@ class StarEconomyService {
     );
 
     // Tích điểm 10% tổng số sao đổi phúc lợi vào Hũ Niềm Vui Gia Đình
-    final cashbackToPot = (item.starCost * 0.1).round();
+    // Quy tắc: Nếu phần lẻ >= 0.5 thì làm tròn lên (ceil), dưới 0.5 thì làm tròn xuống (floor)
+    // Nếu quà có giá trị (> 0) mà làm tròn ra 0 thì luôn làm tròn lên tối thiểu 1 ⭐
+    final double rawCashback = item.starCost * 0.1;
+    final double remainder = rawCashback - rawCashback.floor();
+    int roundedCashback;
+    if (remainder >= 0.5) {
+      roundedCashback = rawCashback.ceil();
+    } else {
+      roundedCashback = rawCashback.floor();
+    }
     final effectiveCashback =
-        cashbackToPot > 0 ? cashbackToPot : (item.starCost > 0 ? 1 : 0);
+        roundedCashback > 0 ? roundedCashback : (item.starCost > 0 ? 1 : 0);
+
+    final rawStr = (rawCashback == rawCashback.toInt())
+        ? rawCashback.toInt().toString()
+        : rawCashback.toStringAsFixed(1);
+    final cashbackNote =
+        'Tích điểm 10% đổi phúc lợi (${item.title}): Gốc $rawStr ⭐ -> Làm tròn: +$effectiveCashback ⭐';
+
     if (effectiveCashback > 0) {
       unawaited(
         FamilyJackpotService.instance.contributeStars(
           stars: effectiveCashback,
+          familyId: familyId,
           memberId: childId,
           memberName: childName,
           sourceTaskId: 'cashback_$effectiveClaimId',
+          rawStars: rawCashback,
+          note: cashbackNote,
         ),
       );
     }

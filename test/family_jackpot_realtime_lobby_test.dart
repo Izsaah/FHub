@@ -347,5 +347,73 @@ void main() {
       expect(restored.isDailyCheckInAwardedForDate('2026-11-08'), isTrue);
       expect(restored.isDailyCheckInAwardedForDate('2026-11-09'), isFalse);
     });
+
+    test('13. 10% Cashback rounding logic & detailed ledger description: >= 0.5 rounds up, < 0.5 rounds down, records raw and rounded', () async {
+      final service = FamilyJackpotService.instance;
+      service.overrideCanUseJackpotForTest = true;
+      service.resetDailyMissionStateForTesting();
+      await service.resetJackpot();
+
+      // Case A: 15 stars -> 10% = 1.5 -> remainder 0.5 >= 0.5 -> rounds up to 2
+      final rawCashbackA = 15 * 0.1; // 1.5
+      final remainderA = rawCashbackA - rawCashbackA.floor();
+      final roundedA = remainderA >= 0.5 ? rawCashbackA.ceil() : rawCashbackA.floor();
+      expect(roundedA, 2);
+
+      await service.contributeStars(
+        stars: roundedA,
+        familyId: 'f1',
+        memberId: 'child_1',
+        memberName: 'Bé Na',
+        sourceTaskId: 'cashback_claim_01',
+        rawStars: rawCashbackA,
+      );
+      expect(service.jackpot.totalPoolStars, 2);
+
+      final txA = service.localWalletTransactions.firstWhere((t) => t.title.contains('Tích điểm 10%'));
+      expect(txA.amount, 2);
+      expect(txA.description, contains('Gốc 10%: 1.5 ⭐, làm tròn: +2 ⭐'));
+
+      // Case B: 14 stars -> 10% = 1.4 -> remainder 0.4 < 0.5 -> rounds down to 1
+      final rawCashbackB = 14 * 0.1; // 1.4
+      final remainderB = rawCashbackB - rawCashbackB.floor();
+      final roundedB = remainderB >= 0.5 ? rawCashbackB.ceil() : rawCashbackB.floor();
+      expect(roundedB, 1);
+
+      await service.contributeStars(
+        stars: roundedB,
+        familyId: 'f1',
+        memberId: 'child_2',
+        memberName: 'Bé Bi',
+        sourceTaskId: 'cashback_claim_02',
+        rawStars: rawCashbackB,
+      );
+      expect(service.jackpot.totalPoolStars, 3); // 2 + 1 = 3
+
+      final txB = service.localWalletTransactions.firstWhere((t) => t.description?.contains('1.4') == true);
+      expect(txB.amount, 1);
+      expect(txB.description, contains('Gốc 10%: 1.4 ⭐, làm tròn: +1 ⭐'));
+
+      // Case C: 3 stars -> 10% = 0.3 -> remainder 0.3 < 0.5 -> floor = 0 -> minimum 1 star
+      final rawCashbackC = 3 * 0.1; // 0.3
+      final remainderC = rawCashbackC - rawCashbackC.floor();
+      final roundedC = remainderC >= 0.5 ? rawCashbackC.ceil() : rawCashbackC.floor();
+      final effectiveC = roundedC > 0 ? roundedC : 1;
+      expect(effectiveC, 1);
+
+      await service.contributeStars(
+        stars: effectiveC,
+        familyId: 'f1',
+        memberId: 'child_3',
+        memberName: 'Bé Bắp',
+        sourceTaskId: 'cashback_claim_03',
+        rawStars: rawCashbackC,
+      );
+      expect(service.jackpot.totalPoolStars, 4); // 3 + 1 = 4
+
+      final txC = service.localWalletTransactions.firstWhere((t) => t.description?.contains('0.3') == true);
+      expect(txC.amount, 1);
+      expect(txC.description, contains('Gốc 10%: 0.3 ⭐, làm tròn: +1 ⭐'));
+    });
   });
 }

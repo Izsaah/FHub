@@ -1094,6 +1094,9 @@ class FamilyJackpotService extends ChangeNotifier {
     }
   }
 
+  final List<WalletTransactionModel> _localWalletTransactions = [];
+  List<WalletTransactionModel> get localWalletTransactions => List.unmodifiable(_localWalletTransactions);
+
   /// Ghi lại giao dịch vào Sổ cái Biến động Ví của Gia đình (Family-scoped Ledger)
   Future<void> _recordTransaction({
     required WalletTransactionType type,
@@ -1105,28 +1108,31 @@ class FamilyJackpotService extends ChangeNotifier {
     String? targetUserId,
     String? targetUserName,
   }) async {
-    final fId = _currentFamilyId;
-    if (fId == null || fId.isEmpty || amount <= 0 || _firestore == null) return;
+    final fId = _currentFamilyId ?? 'f1';
+    if (amount <= 0) return;
+
+    final tx = WalletTransactionModel(
+      id: 'tx_${DateTime.now().microsecondsSinceEpoch}',
+      familyId: fId,
+      userId: targetUserId ?? currentUserId,
+      userName: targetUserName ?? currentUserName,
+      type: type,
+      amount: amount,
+      title: title,
+      description: description,
+      bankShortName: bankShortName,
+      accountNumber: accountNumber,
+      createdAt: DateTime.now(),
+    );
+    _localWalletTransactions.insert(0, tx);
+
+    if (_firestore == null) return;
     try {
       final txDoc = _firestore!
           .collection('families')
           .doc(fId)
           .collection('wallet_transactions')
-          .doc();
-
-      final tx = WalletTransactionModel(
-        id: txDoc.id,
-        familyId: fId,
-        userId: targetUserId ?? currentUserId,
-        userName: targetUserName ?? currentUserName,
-        type: type,
-        amount: amount,
-        title: title,
-        description: description,
-        bankShortName: bankShortName,
-        accountNumber: accountNumber,
-        createdAt: DateTime.now(),
-      );
+          .doc(tx.id);
 
       await txDoc.set(tx.toMap());
     } catch (e) {
@@ -1140,7 +1146,7 @@ class FamilyJackpotService extends ChangeNotifier {
         ? familyId
         : (_currentFamilyId ?? 'f1');
     final cutoffDate = DateTime.now().subtract(const Duration(days: 15));
-    if (_firestore == null) return Stream.value(const []);
+    if (_firestore == null) return Stream.value(_localWalletTransactions);
     return _firestore!
         .collection('families')
         .doc(targetFamilyId)
@@ -1299,6 +1305,7 @@ class FamilyJackpotService extends ChangeNotifier {
   void resetDailyMissionStateForTesting() {
     _dailyCheckIns.clear();
     _awardedCheckInDates.clear();
+    _localWalletTransactions.clear();
     _jackpot = _jackpot.copyWith(
       clearLastDailyCheckInAwardedDate: true,
       dailyCheckInAwardedDates: const [],
@@ -1373,14 +1380,6 @@ class FamilyJackpotService extends ChangeNotifier {
           memberName: 'Cả nhà điểm danh',
           sourceTaskId: 'daily_checkin_$todayKey',
         );
-        unawaited(NotificationService.instance.addNotification(
-          familyId: _currentFamilyId ?? 'f1',
-          title: '✨ Hoàn thành nhiệm vụ Cả nhà Điểm Danh!',
-          titleEn: '✨ Daily Family Check-in Completed!',
-          body: 'Gia đình đã điểm danh đầy đủ hôm nay, +10 ⭐ vừa được cộng vào Hũ Niềm Vui!',
-          bodyEn: 'All family members checked in today, +10 ⭐ added to Family Jackpot!',
-          type: 'daily_checkin_completed',
-        ));
       } else {
         debugPrint('FamilyJackpotService: Cả nhà đã điểm danh nhưng chưa có Premium -> Không tăng sao vào hũ.');
       }
@@ -1464,14 +1463,6 @@ class FamilyJackpotService extends ChangeNotifier {
           memberName: 'Cả nhà điểm danh',
           sourceTaskId: 'daily_checkin_$todayKey',
         );
-        unawaited(NotificationService.instance.addNotification(
-          familyId: _currentFamilyId ?? 'f1',
-          title: '✨ Hoàn thành nhiệm vụ Cả nhà Điểm Danh!',
-          titleEn: '✨ Daily Family Check-in Completed!',
-          body: 'Gia đình đã điểm danh đầy đủ hôm nay, +10 ⭐ vừa được cộng vào Hũ Niềm Vui!',
-          bodyEn: 'All family members checked in today, +10 ⭐ added to Family Jackpot!',
-          type: 'daily_checkin_completed',
-        ));
       } else {
         debugPrint('FamilyJackpotService: Cả nhà đã điểm danh nhưng gia đình chưa có Premium -> Đồng bộ thành công nhưng chưa tăng sao vào hũ cho đến khi mở Premium.');
       }
@@ -1484,15 +1475,81 @@ class FamilyJackpotService extends ChangeNotifier {
   }
 
   /// Tích lũy Sao vào Hũ Sao Gia Đình (từ nhiệm vụ hoàn thành hoặc thành viên đóng góp sao)
+  /// Đồng bộ trực tiếp lên Cloud Firestore để toàn bộ thành viên trong gia đình đều nhận được snapshot tức thời
   Future<void> contributeStars({
     required int stars,
+    String? familyId,
     String? memberId,
     String? memberName,
     String? sourceTaskId,
+    double? rawStars,
+    String? note,
   }) async {
     if (stars <= 0) return;
     final uid = memberId ?? currentUserId;
     final name = memberName ?? currentUserName;
+    final effectiveFamId = (familyId != null && familyId.isNotEmpty)
+        ? familyId
+        : (_currentFamilyId ?? 'f1');
+
+    // 1. Cập nhật giao dịch nguyên tử lên Cloud Firestore (Real-time Sync qua Firestore Stream)
+    // Tương tự cơ chế của folder Vinh tạo remind lưu vào collection và broadcast snapshot
+    if (_firestore != null && effectiveFamId.isNotEmpty) {
+      final docRef = _firestore!
+          .collection('families')
+          .doc(effectiveFamId)
+          .collection('jackpot')
+          .doc('current');
+
+      try {
+        await _firestore!.runTransaction((transaction) async {
+          final snap = await transaction.get(docRef);
+          int currentPool = 0;
+          Map<String, int> contribs = {};
+          Map<String, String> names = {};
+
+          if (snap.exists && snap.data() != null) {
+            final data = snap.data()!;
+            currentPool = (data['totalPoolAmount'] as num?)?.toInt() ?? 0;
+            final rawContribs = (data['contributions'] as Map<String, dynamic>?) ?? {};
+            contribs = rawContribs.map((k, v) => MapEntry(k, (v as num).toInt()));
+            final rawNames = (data['memberNames'] as Map<String, dynamic>?) ?? {};
+            names = rawNames.map((k, v) => MapEntry(k, v.toString()));
+          }
+
+          contribs[uid] = (contribs[uid] ?? 0) + stars;
+          names[uid] = name;
+
+          String? topUid;
+          int maxStars = 0;
+          contribs.forEach((k, v) {
+            if (v > maxStars) {
+              maxStars = v;
+              topUid = k;
+            }
+          });
+
+          final newTotal = currentPool + stars;
+
+          transaction.set(docRef, {
+            'totalPoolAmount': newTotal,
+            'status': JackpotStatus.idle.name,
+            'topContributorId': topUid,
+            'topContributorName': names[topUid] ?? name,
+            'contributions': contribs,
+            'memberNames': names,
+            'shakeStartTime': null,
+            'suspenseStartTime': null,
+            'lostDueToPremiumExpired': false,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        });
+      } catch (e) {
+        debugPrint('FamilyJackpotService.contributeStars Firestore error: $e');
+      }
+    }
+
+    // 2. Cập nhật local memory state
     final updatedContribs = Map<String, int>.from(_jackpot.contributions);
     updatedContribs[uid] = (updatedContribs[uid] ?? 0) + stars;
 
@@ -1522,13 +1579,26 @@ class FamilyJackpotService extends ChangeNotifier {
     );
     notifyListeners();
 
+    // 3. Ghi vào StarEconomyService (ghi sổ cái `star_ledger`)
     await StarEconomyService.instance.contributeStarsToJackpotPool(
-      familyId: _currentFamilyId ?? 'f1',
+      familyId: effectiveFamId,
       contributorId: uid.isNotEmpty ? uid : 'family_member',
       contributorName: name,
       stars: stars,
       sourceTaskId: sourceTaskId,
+      note: note,
     );
+
+    // 4. Mô tả chi tiết ghi vào Sổ cái biến động ví: ghi rõ cộng gốc bao nhiêu và làm tròn bao nhiêu
+    String txDescription = 'Đóng góp +$stars ⭐ bởi $name';
+    if (rawStars != null) {
+      final rawStr = (rawStars == rawStars.toInt())
+          ? rawStars.toInt().toString()
+          : rawStars.toStringAsFixed(1);
+      txDescription = 'Đóng góp +$stars ⭐ bởi $name (Gốc 10%: $rawStr ⭐, làm tròn: +$stars ⭐)';
+    } else if (note != null && note.isNotEmpty) {
+      txDescription = '$note • Đóng góp bởi $name';
+    }
 
     await _recordTransaction(
       type: WalletTransactionType.contribute,
@@ -1540,10 +1610,42 @@ class FamilyJackpotService extends ChangeNotifier {
                   ? 'Nhiệm vụ: Cả nhà điểm danh'
                   : 'Tích lũy sao vào Hũ'))
           : 'Góp sao vào Hũ Sao Gia Đình',
-      description: 'Đóng góp +$stars ⭐ bởi $name',
+      description: txDescription,
       targetUserId: uid,
       targetUserName: name,
     );
+
+    // 5. Bắn thông báo Realtime cho các thành viên trong gia đình
+    String notifTitle = '✨ Hũ Niềm Vui nhận thêm sao!';
+    String notifTitleEn = '✨ Family Pot Received Stars!';
+    String notifBody = '$name vừa tích lũy +$stars ⭐ vào Hũ Niềm Vui!';
+    String notifBodyEn = '$name deposited +$stars ⭐ into Family Jackpot!';
+
+    if (sourceTaskId != null && sourceTaskId.startsWith('cashback_')) {
+      final rawStr = rawStars != null
+          ? ((rawStars == rawStars.toInt()) ? rawStars.toInt().toString() : rawStars.toStringAsFixed(1))
+          : null;
+      notifTitle = '✨ Tích lũy 10% sao đổi phúc lợi vào Hũ!';
+      notifTitleEn = '✨ 10% Cashback added to Family Pot!';
+      notifBody = rawStr != null
+          ? '$name vừa đổi phúc lợi, Hũ được tích lũy +$stars ⭐ (Gốc 10%: $rawStr ⭐, làm tròn: +$stars ⭐)!'
+          : '$name vừa đổi phúc lợi, Hũ được tích lũy +$stars ⭐!';
+      notifBodyEn = '$name claimed a reward, Family Pot received +$stars ⭐!';
+    } else if (sourceTaskId != null && sourceTaskId.startsWith('daily_checkin')) {
+      notifTitle = '✨ Hoàn thành nhiệm vụ Cả nhà Điểm Danh!';
+      notifTitleEn = '✨ Daily Family Check-in Completed!';
+      notifBody = 'Gia đình đã điểm danh đầy đủ hôm nay, +10 ⭐ vừa được cộng vào Hũ Niềm Vui!';
+      notifBodyEn = 'All family members checked in today, +10 ⭐ added to Family Jackpot!';
+    }
+
+    unawaited(NotificationService.instance.addNotification(
+      familyId: effectiveFamId,
+      title: notifTitle,
+      titleEn: notifTitleEn,
+      body: notifBody,
+      bodyEn: notifBodyEn,
+      type: 'daily_checkin_completed',
+    ));
   }
 
   /// Thực thi chia sao Hũ Sao Gia Đình ngay lập tức và cộng vào StarEconomyService
@@ -1603,6 +1705,7 @@ class FamilyJackpotService extends ChangeNotifier {
       firstPrizeWinnerId: result.firstPrizeWinnerId,
     );
     notifyListeners();
+    await _saveToFirestore();
     return result;
   }
 
