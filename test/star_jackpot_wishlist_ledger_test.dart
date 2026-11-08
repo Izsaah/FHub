@@ -80,21 +80,56 @@ void main() {
         expect(jackpotSvc.jackpot.totalPoolStars, 10);
       });
 
-      test('1.1c Wishlist redemption contributes 10% cashback of starCost to Family Star Pot', () async {
-        starService.seedMemberBalance('fam_cashback', 'child_bo', 100);
+      test('1.1c Wishlist redemption contributes 10% cashback to Family Star Pot ONLY when Guardian approves', () async {
+        starService.seedMemberBalance('fam_cashback', 'child_bo', 150);
         final catalog = starService.seedDefaultWishlistRewardsForTest('fam_cashback');
         final comicItem = catalog.firstWhere((i) => i.starCost == 50);
 
         final initialPot = FamilyJackpotService.instance.jackpot.totalPoolStars;
-        await starService.submitWishlistRedemption(
+
+        // 1. Con đổi quà -> PENDING -> Hũ CHƯA nhận sao tích lũy
+        final claim = await starService.submitWishlistRedemption(
           familyId: 'fam_cashback',
           childId: 'child_bo',
           childName: 'Cu Bo',
           item: comicItem,
           claimId: 'claim_cashback_test',
         );
+        expect(claim.status, WishlistClaimStatus.pending);
+        expect(
+          FamilyJackpotService.instance.jackpot.totalPoolStars,
+          initialPot,
+        );
 
-        // 10% of 50 stars = 5 stars cashback contributed to jackpot
+        // 2. Phụ huynh duyệt (APPROVED) -> Bây giờ Hũ mới nhận 10% (50 * 10% = 5 sao)
+        await starService.approveWishlistRedemption(
+          claimId: claim.id,
+          guardianId: 'parent_dad',
+          guardianName: 'Bố Tuấn',
+          guardianRole: 'PARENT',
+        );
+
+        // 10% of 50 stars = 5 stars cashback contributed to jackpot AFTER guardian approval
+        expect(
+          FamilyJackpotService.instance.jackpot.totalPoolStars,
+          initialPot + 5,
+        );
+
+        // 3. Nếu từ chối (REJECTED) một claim khác -> Hũ không bị tăng sao
+        final rejectClaim = await starService.submitWishlistRedemption(
+          familyId: 'fam_cashback',
+          childId: 'child_bo',
+          childName: 'Cu Bo',
+          item: comicItem,
+          claimId: 'claim_cashback_reject_test',
+        );
+        await starService.rejectWishlistRedemption(
+          claimId: rejectClaim.id,
+          guardianId: 'parent_dad',
+          guardianName: 'Bố Tuấn',
+          guardianRole: 'PARENT',
+        );
+        // Vẫn giữ nguyên initialPot + 5, không bị tăng thêm
         expect(
           FamilyJackpotService.instance.jackpot.totalPoolStars,
           initialPot + 5,

@@ -1628,9 +1628,9 @@ class FamilyJackpotService extends ChangeNotifier {
       notifTitle = '✨ Tích lũy 10% sao đổi phúc lợi vào Hũ!';
       notifTitleEn = '✨ 10% Cashback added to Family Pot!';
       notifBody = rawStr != null
-          ? '$name vừa đổi phúc lợi, Hũ được tích lũy +$stars ⭐ (Gốc 10%: $rawStr ⭐, làm tròn: +$stars ⭐)!'
-          : '$name vừa đổi phúc lợi, Hũ được tích lũy +$stars ⭐!';
-      notifBodyEn = '$name claimed a reward, Family Pot received +$stars ⭐!';
+          ? '$name vừa được duyệt đổi phúc lợi, Hũ được tích lũy +$stars ⭐ (Gốc 10%: $rawStr ⭐, làm tròn: +$stars ⭐)!'
+          : '$name vừa được duyệt đổi phúc lợi, Hũ được tích lũy +$stars ⭐!';
+      notifBodyEn = '$name\'s reward was approved, Family Pot received +$stars ⭐!';
     } else if (sourceTaskId != null && sourceTaskId.startsWith('daily_checkin')) {
       notifTitle = '✨ Hoàn thành nhiệm vụ Cả nhà Điểm Danh!';
       notifTitleEn = '✨ Daily Family Check-in Completed!';

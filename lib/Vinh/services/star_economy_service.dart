@@ -1332,41 +1332,7 @@ class StarEconomyService {
       itemName: item.title,
     );
 
-    // Tích điểm 10% tổng số sao đổi phúc lợi vào Hũ Niềm Vui Gia Đình
-    // Quy tắc: Nếu phần lẻ >= 0.5 thì làm tròn lên (ceil), dưới 0.5 thì làm tròn xuống (floor)
-    // Nếu quà có giá trị (> 0) mà làm tròn ra 0 thì luôn làm tròn lên tối thiểu 1 ⭐
-    final double rawCashback = item.starCost * 0.1;
-    final double remainder = rawCashback - rawCashback.floor();
-    int roundedCashback;
-    if (remainder >= 0.5) {
-      roundedCashback = rawCashback.ceil();
-    } else {
-      roundedCashback = rawCashback.floor();
-    }
-    final effectiveCashback =
-        roundedCashback > 0 ? roundedCashback : (item.starCost > 0 ? 1 : 0);
-
-    final rawStr = (rawCashback == rawCashback.toInt())
-        ? rawCashback.toInt().toString()
-        : rawCashback.toStringAsFixed(1);
-    final cashbackNote =
-        'Tích điểm 10% đổi phúc lợi (${item.title}): Gốc $rawStr ⭐ -> Làm tròn: +$effectiveCashback ⭐';
-
-    if (effectiveCashback > 0) {
-      unawaited(
-        FamilyJackpotService.instance.contributeStars(
-          stars: effectiveCashback,
-          familyId: familyId,
-          memberId: childId,
-          memberName: childName,
-          sourceTaskId: 'cashback_$effectiveClaimId',
-          rawStars: rawCashback,
-          note: cashbackNote,
-        ),
-      );
-    }
-
-    // 2. Lưu trạng thái yêu cầu đổi quà PENDING
+    // 2. Lưu trạng thái yêu cầu đổi quà PENDING (Chưa cộng 10% vào Hũ cho tới khi Phụ huynh duyệt)
     final claimRecord = WishlistClaimRecord(
       id: effectiveClaimId,
       familyId: familyId,
@@ -1458,14 +1424,50 @@ class StarEconomyService {
       }
     }
 
+    // Tích điểm 10% tổng số sao đổi phúc lợi vào Hũ Niềm Vui Gia Đình (CHỈ CỘNG KHI PHỤ HUYNH CHẤP NHẬN)
+    // Quy tắc: Nếu phần lẻ >= 0.5 thì làm tròn lên (ceil), dưới 0.5 thì làm tròn xuống (floor)
+    // Nếu quà có giá trị (> 0) mà làm tròn ra 0 thì luôn làm tròn lên tối thiểu 1 ⭐
+    final double rawCashback = existing.starCost * 0.1;
+    final double remainder = rawCashback - rawCashback.floor();
+    int roundedCashback;
+    if (remainder >= 0.5) {
+      roundedCashback = rawCashback.ceil();
+    } else {
+      roundedCashback = rawCashback.floor();
+    }
+    final effectiveCashback =
+        roundedCashback > 0 ? roundedCashback : (existing.starCost > 0 ? 1 : 0);
+
+    final rawStr = (rawCashback == rawCashback.toInt())
+        ? rawCashback.toInt().toString()
+        : rawCashback.toStringAsFixed(1);
+    final cashbackNote =
+        'Tích điểm 10% đổi phúc lợi (${existing.itemName}): Gốc $rawStr ⭐ -> Làm tròn: +$effectiveCashback ⭐ (Phụ huynh $guardianName duyệt)';
+
+    if (effectiveCashback > 0) {
+      unawaited(
+        FamilyJackpotService.instance.contributeStars(
+          stars: effectiveCashback,
+          familyId: existing.familyId,
+          memberId: existing.childId,
+          memberName: existing.childName,
+          sourceTaskId: 'cashback_${existing.id}',
+          rawStars: rawCashback,
+          note: cashbackNote,
+        ),
+      );
+    }
+
     unawaited(
       NotificationService.instance.addNotification(
         familyId: existing.familyId,
         targetUserId: existing.childId,
         title: '🎉 Bố/Mẹ đã duyệt quà "${existing.itemName}"!',
         titleEn: '🎉 Your reward "${existing.itemName}" was approved!',
-        body: '$guardianName đã đồng ý trao phần thưởng "${existing.itemName}" cho ${existing.childName}!',
-        bodyEn: '$guardianName approved your reward "${existing.itemName}"!',
+        body:
+            '$guardianName đã đồng ý trao phần thưởng "${existing.itemName}" cho ${existing.childName}! ${effectiveCashback > 0 ? "+$effectiveCashback ⭐ đã tích lũy vào Hũ Niềm Vui!" : ""}',
+        bodyEn:
+            '$guardianName approved your reward "${existing.itemName}"! ${effectiveCashback > 0 ? "+$effectiveCashback ⭐ added to Family Pot!" : ""}',
         type: 'wishlist_approved',
       ),
     );

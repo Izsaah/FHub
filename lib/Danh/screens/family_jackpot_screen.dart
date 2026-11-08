@@ -521,9 +521,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                               Text(
                                 AppLanguage.text(
                                   '• Cả nhà hoàn thành điểm danh mỗi ngày: +10 ⭐ vào hũ.\n'
-                                  '• Đổi phúc lợi từ shop: Tích điểm 10% tổng số sao vào hũ.',
+                                  '• Đổi phúc lợi từ shop: Tích điểm 10% tổng số sao vào hũ khi phụ huynh duyệt quà.',
                                   '• Daily family check-in completed: +10 ⭐ to pot.\n'
-                                  '• Wishlist reward redeemed: 10% cashback added to pot.',
+                                  '• Wishlist reward redeemed: 10% cashback added to pot once approved by parents.',
                                 ),
                                 style: const TextStyle(fontSize: 12, height: 1.4, color: Color(0xFF5D4037)),
                               ),
@@ -897,8 +897,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 SnackBar(
                   content: Text(
                     AppLanguage.text(
-                      'Quỹ Hũ hiện đang là 0 ⭐! Cả nhà cùng hoàn thành Điểm danh mỗi ngày (+10 ⭐) hoặc Đổi phúc lợi trong Shop (+10% sao tích lũy) để làm đầy Hũ trước khi Nổ Hũ nhé!',
-                      'Family Pot currently has 0 ⭐! Complete daily check-in (+10 ⭐) or redeem shop items (+10% stars) to fill the pot before shaking!',
+                      'Quỹ Hũ hiện đang là 0 ⭐! Cả nhà cùng hoàn thành Điểm danh mỗi ngày (+10 ⭐) hoặc Đổi phúc lợi trong Shop (được phụ huynh duyệt +10% sao) để làm đầy Hũ trước khi Nổ Hũ nhé!',
+                      'Family Pot currently has 0 ⭐! Complete daily check-in (+10 ⭐) or redeem shop items (once approved +10% stars) to fill the pot before shaking!',
                     ),
                   ),
                   backgroundColor: const Color(0xFFE65100),
@@ -3435,7 +3435,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               const Flexible(
                 child: SingleChildScrollView(
                   child: Text(
-                    '1. Quỹ Hũ Sao được tích lũy tự động từ: Nhiệm vụ điểm danh hằng ngày (+10 ⭐) và tích điểm 10% sao khi đổi quà phúc lợi.\n'
+                    '1. Quỹ Hũ Sao được tích lũy tự động từ: Nhiệm vụ điểm danh hằng ngày (+10 ⭐) và tích điểm 10% sao khi phụ huynh duyệt quà phúc lợi.\n'
                     '2. Người đóng góp nhiều sao nhất cho gia đình trở thành "Trưởng Ban Lễ Hội" và có quyền phát lệnh Nổ Hũ.\n'
                     '3. Trận chiến Lắc 30s: Cả nhà cùng lắc điện thoại (hoặc bấm Lắc Ngay). Mỗi lần lắc = +1 vé may mắn!\n'
                     '4. Vừa hết 30s: Lộ diện ngay "Quán Quân Lắc Tay", sau đó 10s thần may mắn công bố kết quả trao thưởng.\n'
