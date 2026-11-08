@@ -179,5 +179,41 @@ void main() {
       expect(service.alertedDueReminderIds.contains(task.id), isTrue);
       expect(AlarmSoundService.instance.isPlaying, isTrue);
     });
+
+    test('5. Matches assignee via family member ID and family name mapping', () {
+      final service = MultiTierEscalationService.instance;
+      final now = DateTime.now();
+      final pastDue = now.subtract(const Duration(minutes: 2));
+      final dateStr =
+          '${pastDue.day.toString().padLeft(2, '0')}/${pastDue.month.toString().padLeft(2, '0')}/${pastDue.year}';
+      final timeStr =
+          '${pastDue.hour.toString().padLeft(2, '0')}:${pastDue.minute.toString().padLeft(2, '0')}';
+
+      final task = ReminderModel(
+        id: 'task_member_mapping_1',
+        familyId: 'fam_test',
+        creatorId: 'uid_luong_dieu_vinh',
+        creatorName: 'Lương Diệu Vinh',
+        assignedTo: 'mem_doc_tran_vinh_999',
+        assignedToName: 'Trần Nguyễn Văn Vinh',
+        title: 'tim o ga',
+        date: dateStr,
+        time: timeStr,
+        rewardStars: 2,
+        status: ReminderStatus.pending,
+      );
+
+      // Current user has auth UID 'auth_user_123', but in family has member doc ID 'mem_doc_tran_vinh_999'
+      service.syncReminders(
+        [task],
+        currentUserId: 'auth_user_123',
+        currentUserName: 'vinh123@gmail.com',
+        currentUserMemberId: 'mem_doc_tran_vinh_999',
+        currentUserFamilyName: 'Trần Nguyễn Văn Vinh',
+      );
+
+      expect(service.alertedDueReminderIds.contains(task.id), isTrue);
+      expect(AlarmSoundService.instance.isPlaying, isTrue);
+    });
   });
 }

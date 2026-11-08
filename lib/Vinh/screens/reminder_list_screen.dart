@@ -60,7 +60,8 @@ class ReminderListScreen extends StatefulWidget {
   State<ReminderListScreen> createState() => _ReminderListScreenState();
 }
 
-class _ReminderListScreenState extends State<ReminderListScreen> {
+class _ReminderListScreenState extends State<ReminderListScreen>
+    with WidgetsBindingObserver {
   String _familyId = '';
   List<FamilyOption> _families = [];
   Map<String, String> _familyNamesById = {};
@@ -110,12 +111,41 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     return _remindersStream!;
   }
 
+  String _normalizeName(String s) {
+    var res = s.trim().toLowerCase();
+    const accents = {
+      'à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ': 'a',
+      'è|é|ề|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ': 'e',
+      'ì|í|ị|ỉ|ĩ': 'i',
+      'ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ': 'o',
+      'ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ': 'u',
+      'ỳ|ý|ỵ|ỷ|ỹ': 'y',
+      'đ': 'd',
+    };
+    for (final entry in accents.entries) {
+      res = res.replaceAll(RegExp(entry.key), entry.value);
+    }
+    return res.replaceAll(RegExp(r'\s+'), ' ');
+  }
+
   void _checkDueReminders() {
     if (_lastLoadedReminders.isEmpty || !mounted) return;
+    String memberId = '';
+    String memberName = '';
+    for (final m in _familyMembers) {
+      if (m.id == _currentUserId ||
+          _normalizeName(m.name) == _normalizeName(_currentUserName)) {
+        memberId = m.id;
+        memberName = m.name;
+        break;
+      }
+    }
     MultiTierEscalationService.instance.syncReminders(
       _lastLoadedReminders,
       currentUserId: _currentUserId,
       currentUserName: _currentUserName,
+      currentUserMemberId: memberId,
+      currentUserFamilyName: memberName,
       context: context,
       onOpenDetail: _showDetailBottomSheet,
     );
@@ -195,7 +225,11 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     // 3. Đăng ký lắng nghe sự kiện thay đổi family_members từ Firestore theo thời gian thực (Realtime)
     _listenToFirestoreFamilyMembers();
 
-    // 4. Ticker đồng hồ thời gian thực mỗi 1 giây: Tự động đổi trạng thái Quá hạn và Bật chuông/thông báo khi tới giờ
+    // 4. Lắng nghe Lifecycle và sự kiện Ticker toàn cục
+    WidgetsBinding.instance.addObserver(this);
+    MultiTierEscalationService.instance.clockTick.addListener(_onClockTick);
+
+    // 5. Ticker đồng hồ thời gian thực mỗi 1 giây: Tự động đổi trạng thái Quá hạn và Bật chuông/thông báo khi tới giờ
     _startClockTicker();
   }
 
@@ -204,9 +238,32 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     MultiTierEscalationService.instance.ensureClockRunning();
     _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      _checkDueReminders();
-      setState(() {});
+      try {
+        _checkDueReminders();
+      } catch (e) {
+        debugPrint('ReminderListScreen clock ticker error: $e');
+      }
+      if (mounted) {
+        setState(() {});
+      }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      MultiTierEscalationService.instance.ensureClockRunning(forceRestart: true);
+      _checkDueReminders();
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _onClockTick() {
+    if (!mounted) return;
+    try {
+      _checkDueReminders();
+    } catch (_) {}
+    if (mounted) setState(() {});
   }
 
   @override
@@ -229,6 +286,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    MultiTierEscalationService.instance.clockTick.removeListener(_onClockTick);
     FamilyDataService().selectedFamilyIdNotifier.removeListener(_onGlobalFamilyNotifierChanged);
     _clockTicker?.cancel();
     _familyMembersSub?.cancel();
@@ -1779,10 +1838,22 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
               builder: (context, snapshot) {
                 final allReminders = snapshot.data ?? [];
                 _lastLoadedReminders = allReminders;
+                String memberId = '';
+                String memberName = '';
+                for (final m in _familyMembers) {
+                  if (m.id == _currentUserId ||
+                      _normalizeName(m.name) == _normalizeName(_currentUserName)) {
+                    memberId = m.id;
+                    memberName = m.name;
+                    break;
+                  }
+                }
                 MultiTierEscalationService.instance.syncReminders(
                   allReminders,
                   currentUserId: _currentUserId,
                   currentUserName: _currentUserName,
+                  currentUserMemberId: memberId,
+                  currentUserFamilyName: memberName,
                   context: context,
                   onOpenDetail: _showDetailBottomSheet,
                 );

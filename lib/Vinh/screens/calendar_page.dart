@@ -32,7 +32,7 @@ class CalendarPage extends StatefulWidget {
   State<CalendarPage> createState() => _CalendarPageState();
 }
 
-class _CalendarPageState extends State<CalendarPage> {
+class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver {
   DateTime _currentMonth =
       DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
@@ -50,9 +50,28 @@ class _CalendarPageState extends State<CalendarPage> {
     return _remindersStream!;
   }
 
+  String _normalizeName(String s) {
+    var res = s.trim().toLowerCase();
+    const accents = {
+      'à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ': 'a',
+      'è|é|ề|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ': 'e',
+      'ì|í|ị|ỉ|ĩ': 'i',
+      'ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ': 'o',
+      'ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ': 'u',
+      'ỳ|ý|ỵ|ỷ|ỹ': 'y',
+      'đ': 'd',
+    };
+    for (final entry in accents.entries) {
+      res = res.replaceAll(RegExp(entry.key), entry.value);
+    }
+    return res.replaceAll(RegExp(r'\s+'), ' ');
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    MultiTierEscalationService.instance.clockTick.addListener(_onClockTick);
     _startClockTicker();
   }
 
@@ -61,9 +80,32 @@ class _CalendarPageState extends State<CalendarPage> {
     MultiTierEscalationService.instance.ensureClockRunning();
     _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      _checkDueReminders();
-      setState(() {});
+      try {
+        _checkDueReminders();
+      } catch (e) {
+        debugPrint('CalendarPage clock ticker error: $e');
+      }
+      if (mounted) {
+        setState(() {});
+      }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      MultiTierEscalationService.instance.ensureClockRunning(forceRestart: true);
+      _checkDueReminders();
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _onClockTick() {
+    if (!mounted) return;
+    try {
+      _checkDueReminders();
+    } catch (_) {}
+    if (mounted) setState(() {});
   }
 
   @override
@@ -74,10 +116,22 @@ class _CalendarPageState extends State<CalendarPage> {
 
   void _checkDueReminders() {
     if (_lastLoadedReminders.isEmpty || !mounted) return;
+    String memberId = '';
+    String memberName = '';
+    for (final m in widget.familyMembers) {
+      if (m.id == widget.currentUserId ||
+          _normalizeName(m.name) == _normalizeName(widget.currentUserName)) {
+        memberId = m.id;
+        memberName = m.name;
+        break;
+      }
+    }
     MultiTierEscalationService.instance.syncReminders(
       _lastLoadedReminders,
       currentUserId: widget.currentUserId,
       currentUserName: widget.currentUserName,
+      currentUserMemberId: memberId,
+      currentUserFamilyName: memberName,
       context: context,
       onOpenDetail: _showDetailBottomSheet,
     );
@@ -85,6 +139,8 @@ class _CalendarPageState extends State<CalendarPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    MultiTierEscalationService.instance.clockTick.removeListener(_onClockTick);
     _clockTicker?.cancel();
     _deleteSnackBarTimer?.cancel();
     super.dispose();
@@ -412,10 +468,22 @@ class _CalendarPageState extends State<CalendarPage> {
             builder: (context, snapshot) {
               final allReminders = snapshot.data ?? [];
               _lastLoadedReminders = allReminders;
+              String memberId = '';
+              String memberName = '';
+              for (final m in widget.familyMembers) {
+                if (m.id == widget.currentUserId ||
+                    _normalizeName(m.name) == _normalizeName(widget.currentUserName)) {
+                  memberId = m.id;
+                  memberName = m.name;
+                  break;
+                }
+              }
               MultiTierEscalationService.instance.syncReminders(
                 allReminders,
                 currentUserId: widget.currentUserId,
                 currentUserName: widget.currentUserName,
+                currentUserMemberId: memberId,
+                currentUserFamilyName: memberName,
                 context: context,
                 onOpenDetail: _showDetailBottomSheet,
               );

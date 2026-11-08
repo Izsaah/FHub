@@ -96,7 +96,15 @@ class AlarmSoundService {
     if (disableAudioPlayerForTest) return null;
     if (_player == null) {
       try {
-        _player = AudioPlayer();
+        final p = AudioPlayer();
+        p.eventStream.listen(
+          (_) {},
+          onError: (e) {
+            debugPrint('AudioPlayer eventStream handled: $e');
+          },
+          cancelOnError: false,
+        );
+        _player = p;
       } catch (e) {
         debugPrint('AudioPlayer init error (e.g. in test env): $e');
       }
@@ -139,7 +147,9 @@ class AlarmSoundService {
     if (player != null) {
       try {
         final wavBytes = _getBellChimeWavBytes();
-        player.play(BytesSource(wavBytes)).catchError((_) {});
+        player.play(BytesSource(wavBytes, mimeType: 'audio/wav')).catchError((e) {
+          debugPrint('AlarmSoundService audio player error (safely handled): $e');
+        });
       } catch (e) {
         debugPrint('AlarmSoundService audio player error (safely handled): $e');
       }

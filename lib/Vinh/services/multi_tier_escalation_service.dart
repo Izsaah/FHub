@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -97,6 +98,8 @@ class MultiTierEscalationService {
   List<ReminderModel> _trackedReminders = [];
   String? _lastCurrentUserId;
   String? _lastCurrentUserName;
+  String? _lastCurrentUserMemberId;
+  String? _lastCurrentUserFamilyName;
   BuildContext? _lastContext;
   void Function(ReminderModel)? _lastOnOpenDetail;
 
@@ -165,6 +168,39 @@ class MultiTierEscalationService {
     return false;
   }
 
+  String _normalizeName(String s) {
+    var res = s.trim().toLowerCase();
+    const accents = {
+      'à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ': 'a',
+      'è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ': 'e',
+      'ì|í|ị|ỉ|ĩ': 'i',
+      'ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ': 'o',
+      'ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ': 'u',
+      'ỳ|ý|ỵ|ỷ|ỹ': 'y',
+      'đ': 'd',
+    };
+    for (final entry in accents.entries) {
+      res = res.replaceAll(RegExp(entry.key), entry.value);
+    }
+    return res.replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  bool _matchesUserName(String nameA, String nameB) {
+    if (nameA.trim().isEmpty || nameB.trim().isEmpty) return false;
+    final a = _normalizeName(nameA);
+    final b = _normalizeName(nameB);
+    if (a == b) return true;
+    if (a.contains(b) || b.contains(a)) return true;
+    final wordsA = a.split(' ').where((w) => w.isNotEmpty).toList();
+    final wordsB = b.split(' ').where((w) => w.isNotEmpty).toList();
+    if (wordsA.length >= 2 && wordsB.length >= 2) {
+      if (wordsA.first == wordsB.first && wordsA.last == wordsB.last) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Kiểm tra xem người dùng hiện tại có phải là đối tượng nhận thông báo & chuông reo hay không:
   /// 1. Nếu là nhiệm vụ xung phong chưa ai nhận (`reminder.isOpenTask == true`):
   ///    -> CHỈ hiện thông báo & chuông cho NGƯỜI TẠO (`reminder.creatorId == currentUserId` hoặc tên người tạo khớp).
@@ -174,28 +210,35 @@ class MultiTierEscalationService {
     ReminderModel reminder, {
     String? currentUserId,
     String? currentUserName,
+    String? currentUserMemberId,
+    String? currentUserFamilyName,
   }) {
     final uid = _resolveCurrentUserId(currentUserId);
-    final uname = (currentUserName ?? _lastCurrentUserName ?? '')
-        .trim()
-        .toLowerCase();
+    final uname = (currentUserName ?? _lastCurrentUserName ?? '').trim();
+    final memberId = (currentUserMemberId ?? _lastCurrentUserMemberId ?? '').trim();
+    final memberName = (currentUserFamilyName ?? _lastCurrentUserFamilyName ?? '').trim();
 
-    if (uid == null || uid.isEmpty) {
+    if ((uid == null || uid.isEmpty) &&
+        uname.isEmpty &&
+        memberId.isEmpty &&
+        memberName.isEmpty) {
       return true;
     }
 
     if (reminder.isOpenTask) {
-      final creatorMatch = _matchesUserId(reminder.creatorId, uid) ||
-          (uname.isNotEmpty &&
-              reminder.creatorName != null &&
-              reminder.creatorName!.trim().toLowerCase() == uname);
+      final creatorMatch = (uid != null && uid.isNotEmpty && _matchesUserId(reminder.creatorId, uid)) ||
+          (memberId.isNotEmpty && _matchesUserId(reminder.creatorId, memberId)) ||
+          (reminder.creatorName != null &&
+              (_matchesUserName(reminder.creatorName!, uname) ||
+                  _matchesUserName(reminder.creatorName!, memberName)));
       return creatorMatch;
     }
 
-    final assigneeMatch = _matchesUserId(reminder.assignedTo, uid) ||
-        (uname.isNotEmpty &&
-            reminder.assignedToName.isNotEmpty &&
-            reminder.assignedToName.trim().toLowerCase() == uname);
+    final assigneeMatch = (uid != null && uid.isNotEmpty && _matchesUserId(reminder.assignedTo, uid)) ||
+        (memberId.isNotEmpty && _matchesUserId(reminder.assignedTo, memberId)) ||
+        (reminder.assignedToName.isNotEmpty &&
+            (_matchesUserName(reminder.assignedToName, uname) ||
+                _matchesUserName(reminder.assignedToName, memberName)));
     return assigneeMatch;
   }
 
@@ -216,6 +259,8 @@ class MultiTierEscalationService {
             now: now,
             currentUserId: _lastCurrentUserId,
             currentUserName: _lastCurrentUserName,
+            currentUserMemberId: _lastCurrentUserMemberId,
+            currentUserFamilyName: _lastCurrentUserFamilyName,
             context: _lastContext,
             onOpenDetail: _lastOnOpenDetail,
           );
@@ -251,6 +296,7 @@ class MultiTierEscalationService {
     if (!diff0h.isNegative) {
       timers.add(Timer(diff0h, () {
         clockTick.value = DateTime.now();
+        _syncOverdueToFirestore(reminder);
         _triggerTierAlert(reminder, EscalationTier.tier1Due);
       }));
     }
@@ -358,6 +404,8 @@ class MultiTierEscalationService {
     ReminderModel reminder, {
     String? currentUserId,
     String? currentUserName,
+    String? currentUserMemberId,
+    String? currentUserFamilyName,
     BuildContext? context,
     void Function(ReminderModel)? onOpenDetail,
     bool isSnoozeFollowUp = false,
@@ -368,6 +416,12 @@ class MultiTierEscalationService {
     if (currentUserName != null && currentUserName.isNotEmpty) {
       _lastCurrentUserName = currentUserName;
     }
+    if (currentUserMemberId != null && currentUserMemberId.isNotEmpty) {
+      _lastCurrentUserMemberId = currentUserMemberId;
+    }
+    if (currentUserFamilyName != null && currentUserFamilyName.isNotEmpty) {
+      _lastCurrentUserFamilyName = currentUserFamilyName;
+    }
     if (context != null) _lastContext = context;
     if (onOpenDetail != null) _lastOnOpenDetail = onOpenDetail;
 
@@ -375,6 +429,8 @@ class MultiTierEscalationService {
       reminder,
       currentUserId: _lastCurrentUserId,
       currentUserName: _lastCurrentUserName,
+      currentUserMemberId: _lastCurrentUserMemberId,
+      currentUserFamilyName: _lastCurrentUserFamilyName,
     )) {
       return;
     }
@@ -481,11 +537,30 @@ class MultiTierEscalationService {
     }
   }
 
+  /// Đồng bộ trạng thái quá hạn lên Firestore thời gian thực để các tab/thiết bị khác nhận WebSocket event
+  void _syncOverdueToFirestore(ReminderModel reminder) {
+    if (reminder.isCompleted || reminder.isDeleted || reminder.isSubmitted) return;
+    if (reminder.status == ReminderStatus.overdue) return;
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        FirebaseFirestore.instance
+            .collection('reminders')
+            .doc(reminder.id)
+            .update({
+          'status': ReminderStatus.overdue,
+          'isOverdue': true,
+        }).catchError((_) {});
+      } catch (_) {}
+    }
+  }
+
   /// Quét đồng bộ danh sách lời nhắc để tự động hẹn giờ và kiểm tra nhiệm vụ đến hạn
   void syncReminders(
     List<ReminderModel> reminders, {
     String? currentUserId,
     String? currentUserName,
+    String? currentUserMemberId,
+    String? currentUserFamilyName,
     BuildContext? context,
     void Function(ReminderModel)? onOpenDetail,
   }) {
@@ -497,6 +572,12 @@ class MultiTierEscalationService {
       if (currentUserName != null && currentUserName.isNotEmpty) {
         _lastCurrentUserName = currentUserName;
       }
+      if (currentUserMemberId != null && currentUserMemberId.isNotEmpty) {
+        _lastCurrentUserMemberId = currentUserMemberId;
+      }
+      if (currentUserFamilyName != null && currentUserFamilyName.isNotEmpty) {
+        _lastCurrentUserFamilyName = currentUserFamilyName;
+      }
       if (context != null) _lastContext = context;
       if (onOpenDetail != null) _lastOnOpenDetail = onOpenDetail;
 
@@ -506,6 +587,8 @@ class MultiTierEscalationService {
         now: DateTime.now(),
         currentUserId: _lastCurrentUserId,
         currentUserName: _lastCurrentUserName,
+        currentUserMemberId: _lastCurrentUserMemberId,
+        currentUserFamilyName: _lastCurrentUserFamilyName,
         context: context,
         onOpenDetail: onOpenDetail,
       );
@@ -519,11 +602,15 @@ class MultiTierEscalationService {
     required DateTime now,
     String? currentUserId,
     String? currentUserName,
+    String? currentUserMemberId,
+    String? currentUserFamilyName,
     BuildContext? context,
     void Function(ReminderModel)? onOpenDetail,
   }) {
     final effectiveUserId = _resolveCurrentUserId(currentUserId);
     final effectiveUserName = currentUserName ?? _lastCurrentUserName;
+    final effectiveMemberId = currentUserMemberId ?? _lastCurrentUserMemberId;
+    final effectiveFamilyName = currentUserFamilyName ?? _lastCurrentUserFamilyName;
 
     for (final r in reminders) {
       if (r.isCompleted || r.isDeleted || r.isSubmitted) {
@@ -546,10 +633,16 @@ class MultiTierEscalationService {
         final justTransitionedFromPending =
             _safePreviouslyPendingIds.remove(r.id);
 
+        if (justTransitionedFromPending) {
+          _syncOverdueToFirestore(r);
+        }
+
         if (shouldNotifyUser(
           r,
           currentUserId: effectiveUserId,
           currentUserName: effectiveUserName,
+          currentUserMemberId: effectiveMemberId,
+          currentUserFamilyName: effectiveFamilyName,
         )) {
           if ((justTransitionedFromPending || diff.inMinutes < 15) &&
               !alertedDueReminderIds.contains(r.id)) {
@@ -557,6 +650,8 @@ class MultiTierEscalationService {
               r,
               currentUserId: effectiveUserId,
               currentUserName: effectiveUserName,
+              currentUserMemberId: effectiveMemberId,
+              currentUserFamilyName: effectiveFamilyName,
               context: context ?? _lastContext,
               onOpenDetail: onOpenDetail ?? _lastOnOpenDetail,
             );
@@ -610,6 +705,8 @@ class MultiTierEscalationService {
     _currentlyRingingReminderId = null;
     _lastCurrentUserId = null;
     _lastCurrentUserName = null;
+    _lastCurrentUserMemberId = null;
+    _lastCurrentUserFamilyName = null;
     _trackedReminders = [];
     _globalClockTimer?.cancel();
     _globalClockTimer = null;
@@ -630,6 +727,8 @@ class MultiTierEscalationService {
             reminder,
             currentUserId: _lastCurrentUserId,
             currentUserName: _lastCurrentUserName,
+            currentUserMemberId: _lastCurrentUserMemberId,
+            currentUserFamilyName: _lastCurrentUserFamilyName,
           );
           break;
 
@@ -638,6 +737,8 @@ class MultiTierEscalationService {
             reminder,
             currentUserId: _lastCurrentUserId,
             currentUserName: _lastCurrentUserName,
+            currentUserMemberId: _lastCurrentUserMemberId,
+            currentUserFamilyName: _lastCurrentUserFamilyName,
           )) {
             break;
           }
