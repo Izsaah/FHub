@@ -65,10 +65,10 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   List<FamilyOption> _families = [];
   Map<String, String> _familyNamesById = {};
   Map<String, List<FamilyMember>> _membersByFamilyId = {};
-  late String _currentUserId;
-  late String _currentUserName;
-  late List<FamilyMember> _familyMembers;
-  late ReminderRepository _repository;
+  String _currentUserId = '';
+  String _currentUserName = '';
+  List<FamilyMember> _familyMembers = [];
+  ReminderRepository _repository = FirebaseReminderRepository();
   bool _isLoading = true;
   bool _hasFamily = false;
 
@@ -180,7 +180,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
   void _startClockTicker() {
     _clockTicker?.cancel();
-    MultiTierEscalationService.instance.ensureClockRunning();
+    MultiTierEscalationService.instance.ensureClockRunning(forceRestart: true);
     _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       _checkDueReminders();
@@ -1770,6 +1770,9 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   onOpenDetail: _showDetailBottomSheet,
                 );
 
+                return ValueListenableBuilder<DateTime>(
+                  valueListenable: MultiTierEscalationService.instance.clockTick,
+                  builder: (context, nowTick, _) {
                 // 1. Lọc theo Scope:
                 // - Cả nhà (!_filterOnlyMine): Chỉ hiện lời nhắc thuộc family đang được chọn (_familyId)
                 // - Việc của tôi (_filterOnlyMine): Hiện việc cá nhân của tôi trên các family kèm nhãn family
@@ -1960,6 +1963,8 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                       ],
                     ),
                   ),
+                );
+                  },
                 );
               },
             ),

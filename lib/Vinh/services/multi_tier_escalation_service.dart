@@ -67,16 +67,6 @@ class EscalationAlert {
   }
 }
 
-class _QueuedDueAlert {
-  final ReminderModel reminder;
-  final bool isSnoozeFollowUp;
-
-  const _QueuedDueAlert({
-    required this.reminder,
-    required this.isSnoozeFollowUp,
-  });
-}
-
 /// Dịch vụ quản lý Cơ chế Nhắc lịch Đa tầng (0h -> 6h -> 12h),
 /// Đồng hồ Realtime tự động chuyển trạng thái Quá hạn mỗi giây,
 /// Phân quyền thông báo đúng đối tượng (Người được giao / Người tạo khi việc xung phong ế),
@@ -93,7 +83,11 @@ class MultiTierEscalationService {
   StreamController<EscalationAlert>? _demoAlertController;
 
   /// Thời gian nhắc lại khi người dùng bấm "Biết rồi / Bỏ qua" (mặc định 30 phút)
-  Duration snoozeDuration = const Duration(minutes: 30);
+  /// Dùng nullable + getter/setter để an toàn tuyệt đối khi Hot Reload trên Flutter Web.
+  Duration? _snoozeDuration;
+  Duration get snoozeDuration =>
+      _snoozeDuration ?? const Duration(minutes: 30);
+  set snoozeDuration(Duration value) => _snoozeDuration = value;
 
   /// Bộ đếm nhịp đồng hồ thời gian thực (cập nhật mỗi 1 giây) để UI tự động chuyển từ "còn 1p" sang "QUÁ HẠN"
   /// ngay tại giây :00 mà không cần tạo lại Firestore Stream hay bấm lại icon Lời nhắc.
@@ -106,22 +100,37 @@ class MultiTierEscalationService {
   void Function(ReminderModel)? _lastOnOpenDetail;
 
   /// Tập hợp các reminderId đã được thấy ở trạng thái CHỜ THỰC HIỆN (chưa quá hạn)
-  final Set<String> _previouslyPendingIds = {};
+  Set<String>? _previouslyPendingIds;
+  Set<String> get _safePreviouslyPendingIds =>
+      _previouslyPendingIds ??= <String>{};
 
   /// Tập hợp các reminderId đã được phát chuông & hiện popup khi đến hạn
-  final Set<String> _alertedDueReminderIds = {};
-  Set<String> get alertedDueReminderIds => _alertedDueReminderIds;
+  Set<String>? _alertedDueReminderIds;
+  Set<String> get alertedDueReminderIds =>
+      _alertedDueReminderIds ??= <String>{};
   String? _currentlyRingingReminderId;
 
   /// Quản lý nhắc lại 1 lần nữa sau 30 phút khi người dùng bấm "Biết rồi / Bỏ qua"
-  final Set<String> _snoozedOnceReminderIds = {};
-  Set<String> get snoozedOnceReminderIds => _snoozedOnceReminderIds;
-  final Map<String, Timer> _snoozeTimers = {};
-  final Map<String, DateTime> _snoozeDueAt = {};
-  Map<String, DateTime> get snoozeDueAt => _snoozeDueAt;
+  Set<String>? _snoozedOnceReminderIds;
+  Set<String> get snoozedOnceReminderIds =>
+      _snoozedOnceReminderIds ??= <String>{};
 
-  /// Hàng đợi các lời nhắc đến hạn chờ hiển thị popup tuần tự
-  final List<_QueuedDueAlert> _pendingAlertQueue = [];
+  Map<String, Timer>? _snoozeTimers;
+  Map<String, Timer> get _safeSnoozeTimers =>
+      _snoozeTimers ??= <String, Timer>{};
+
+  Map<String, DateTime>? _snoozeDueAt;
+  Map<String, DateTime> get snoozeDueAt =>
+      _snoozeDueAt ??= <String, DateTime>{};
+
+  Set<String>? _followUpActiveIds;
+  Set<String> get _safeFollowUpActiveIds =>
+      _followUpActiveIds ??= <String>{};
+
+  /// Hàng đợi các lời nhắc đến hạn chờ hiển thị popup tuần tự (giữ nguyên kiểu List<ReminderModel> để tương thích Hot Reload)
+  List<ReminderModel>? _pendingAlertQueue;
+  List<ReminderModel> get _safePendingAlertQueue =>
+      _pendingAlertQueue ??= <ReminderModel>[];
 
   String? _resolveCurrentUserId([String? explicitUserId]) {
     if (explicitUserId != null && explicitUserId.isNotEmpty) {
@@ -143,6 +152,15 @@ class MultiTierEscalationService {
     return null;
   }
 
+  bool _matchesUserId(String targetField, String uid) {
+    if (targetField.isEmpty || uid.isEmpty) return false;
+    if (targetField == uid) return true;
+    if (targetField.endsWith('_$uid') || uid.endsWith('_$targetField')) {
+      return true;
+    }
+    return false;
+  }
+
   /// Kiểm tra xem người dùng hiện tại (`currentUserId`) có phải là đối tượng nhận thông báo & chuông reo hay không:
   /// 1. Nếu là nhiệm vụ xung phong chưa ai nhận (`reminder.isOpenTask == true`):
   ///    -> CHỈ hiện thông báo & chuông cho NGƯỜI TẠO (`reminder.creatorId == currentUserId`).
@@ -151,28 +169,37 @@ class MultiTierEscalationService {
   bool shouldNotifyUser(ReminderModel reminder, String? currentUserId) {
     final uid = _resolveCurrentUserId(currentUserId);
     if (uid == null || uid.isEmpty) {
-      return false;
+      // Nếu môi trường không truyền currentUserId (ví dụ test độc lập), cho phép thông báo
+      return true;
     }
     if (reminder.isOpenTask) {
-      return reminder.creatorId == uid;
+      return _matchesUserId(reminder.creatorId, uid);
     }
-    return reminder.assignedTo == uid;
+    return _matchesUserId(reminder.assignedTo, uid);
   }
 
   /// Khởi động bộ đếm đồng hồ 1 giây toàn cục nếu chưa chạy
-  void ensureClockRunning() {
+  void ensureClockRunning({bool forceRestart = false}) {
+    if (forceRestart) {
+      _globalClockTimer?.cancel();
+      _globalClockTimer = null;
+    }
     if (_globalClockTimer != null && _globalClockTimer!.isActive) return;
     _globalClockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final now = DateTime.now();
-      clockTick.value = now;
-      if (_trackedReminders.isNotEmpty) {
-        _evaluateDueReminders(
-          _trackedReminders,
-          now: now,
-          currentUserId: _lastCurrentUserId,
-          context: _lastContext,
-          onOpenDetail: _lastOnOpenDetail,
-        );
+      try {
+        final now = DateTime.now();
+        clockTick.value = now;
+        if (_trackedReminders.isNotEmpty) {
+          _evaluateDueReminders(
+            _trackedReminders,
+            now: now,
+            currentUserId: _lastCurrentUserId,
+            context: _lastContext,
+            onOpenDetail: _lastOnOpenDetail,
+          );
+        }
+      } catch (e) {
+        debugPrint('MultiTierEscalationService clock tick error: $e');
       }
     });
   }
@@ -235,14 +262,14 @@ class MultiTierEscalationService {
     BuildContext? context,
   }) {
     // Chỉ đặt lại thêm tối đa 1 lần sau 30 phút cho nhiệm vụ này
-    if (_snoozedOnceReminderIds.contains(reminder.id)) return;
-    _snoozedOnceReminderIds.add(reminder.id);
+    if (snoozedOnceReminderIds.contains(reminder.id)) return;
+    snoozedOnceReminderIds.add(reminder.id);
 
-    _snoozeTimers[reminder.id]?.cancel();
+    _safeSnoozeTimers[reminder.id]?.cancel();
     final targetTime = DateTime.now().add(snoozeDuration);
-    _snoozeDueAt[reminder.id] = targetTime;
+    snoozeDueAt[reminder.id] = targetTime;
 
-    _snoozeTimers[reminder.id] = Timer(snoozeDuration, () {
+    _safeSnoozeTimers[reminder.id] = Timer(snoozeDuration, () {
       _fireSnoozeFollowUpIfStillPending(reminder.id, fallbackReminder: reminder);
     });
 
@@ -275,12 +302,12 @@ class MultiTierEscalationService {
     String reminderId, {
     ReminderModel? fallbackReminder,
   }) {
-    _snoozeTimers.remove(reminderId)?.cancel();
-    _snoozeDueAt.remove(reminderId);
+    _safeSnoozeTimers.remove(reminderId)?.cancel();
+    snoozeDueAt.remove(reminderId);
 
-    ReminderModel? latest = _trackedReminders
-        .where((r) => r.id == reminderId)
-        .firstOrNull ??
+    final ReminderModel? latest = _trackedReminders
+            .where((r) => r.id == reminderId)
+            .firstOrNull ??
         fallbackReminder;
 
     if (latest == null) return;
@@ -288,7 +315,8 @@ class MultiTierEscalationService {
     if (!shouldNotifyUser(latest, _lastCurrentUserId)) return;
 
     // Cho phép phát thông báo + chuông lần thứ 2 (sau 30 phút)
-    _alertedDueReminderIds.remove(latest.id);
+    alertedDueReminderIds.remove(latest.id);
+    _safeFollowUpActiveIds.add(latest.id);
     triggerDueAlarmAndPopup(
       latest,
       currentUserId: _lastCurrentUserId,
@@ -320,8 +348,11 @@ class MultiTierEscalationService {
       return;
     }
 
-    if (_alertedDueReminderIds.contains(reminder.id)) return;
-    _alertedDueReminderIds.add(reminder.id);
+    if (alertedDueReminderIds.contains(reminder.id)) return;
+    alertedDueReminderIds.add(reminder.id);
+    if (isSnoozeFollowUp) {
+      _safeFollowUpActiveIds.add(reminder.id);
+    }
 
     // 1. Kích hoạt chuông reo báo thức (Bell Chime) & rung ngay lập tức
     _currentlyRingingReminderId = reminder.id;
@@ -373,13 +404,8 @@ class MultiTierEscalationService {
     );
 
     // 3. Đưa vào hàng đợi hiển thị Khung Thông Báo Nổi sau khi frame render xong
-    if (!_pendingAlertQueue.any((item) => item.reminder.id == reminder.id)) {
-      _pendingAlertQueue.add(
-        _QueuedDueAlert(
-          reminder: reminder,
-          isSnoozeFollowUp: isSnoozeFollowUp,
-        ),
-      );
+    if (!_safePendingAlertQueue.any((r) => r.id == reminder.id)) {
+      _safePendingAlertQueue.add(reminder);
     }
     _scheduleProcessAlertQueue();
   }
@@ -395,7 +421,7 @@ class MultiTierEscalationService {
   }
 
   Future<void> _processNextAlertInQueue() async {
-    if (DueReminderAlertDialog.isShowing || _pendingAlertQueue.isEmpty) {
+    if (DueReminderAlertDialog.isShowing || _safePendingAlertQueue.isEmpty) {
       return;
     }
 
@@ -407,11 +433,12 @@ class MultiTierEscalationService {
       return;
     }
 
-    final nextAlert = _pendingAlertQueue.removeAt(0);
+    final nextReminder = _safePendingAlertQueue.removeAt(0);
+    final isFollowUp = _safeFollowUpActiveIds.contains(nextReminder.id);
     await DueReminderAlertDialog.show(
       targetContext,
-      reminder: nextAlert.reminder,
-      isSnoozeFollowUp: nextAlert.isSnoozeFollowUp,
+      reminder: nextReminder,
+      isSnoozeFollowUp: isFollowUp,
       onOpenDetail: _lastOnOpenDetail,
       onSnoozeDismiss: (rem) {
         scheduleSnoozeReminder(rem, context: targetContext);
@@ -419,7 +446,7 @@ class MultiTierEscalationService {
     );
 
     // Nếu còn task khác cũng đến hạn trong hàng đợi thì hiển thị tiếp
-    if (_pendingAlertQueue.isNotEmpty) {
+    if (_safePendingAlertQueue.isNotEmpty) {
       _scheduleProcessAlertQueue();
     }
   }
@@ -431,21 +458,25 @@ class MultiTierEscalationService {
     BuildContext? context,
     void Function(ReminderModel)? onOpenDetail,
   }) {
-    _trackedReminders = reminders;
-    if (currentUserId != null && currentUserId.isNotEmpty) {
-      _lastCurrentUserId = currentUserId;
-    }
-    if (context != null) _lastContext = context;
-    if (onOpenDetail != null) _lastOnOpenDetail = onOpenDetail;
+    try {
+      _trackedReminders = reminders;
+      if (currentUserId != null && currentUserId.isNotEmpty) {
+        _lastCurrentUserId = currentUserId;
+      }
+      if (context != null) _lastContext = context;
+      if (onOpenDetail != null) _lastOnOpenDetail = onOpenDetail;
 
-    ensureClockRunning();
-    _evaluateDueReminders(
-      reminders,
-      now: DateTime.now(),
-      currentUserId: _lastCurrentUserId,
-      context: context,
-      onOpenDetail: onOpenDetail,
-    );
+      ensureClockRunning();
+      _evaluateDueReminders(
+        reminders,
+        now: DateTime.now(),
+        currentUserId: _lastCurrentUserId,
+        context: context,
+        onOpenDetail: onOpenDetail,
+      );
+    } catch (e) {
+      debugPrint('MultiTierEscalationService syncReminders error: $e');
+    }
   }
 
   void _evaluateDueReminders(
@@ -459,13 +490,13 @@ class MultiTierEscalationService {
 
     for (final r in reminders) {
       if (r.isCompleted || r.isDeleted || r.isSubmitted) {
-        _previouslyPendingIds.remove(r.id);
+        _safePreviouslyPendingIds.remove(r.id);
         cancelEscalation(r.id);
         continue;
       }
 
       // Kiểm tra nếu nhiệm vụ này đang có lịch snooze 30 phút và đã tới giờ nhắc lại
-      final snoozeTarget = _snoozeDueAt[r.id];
+      final snoozeTarget = snoozeDueAt[r.id];
       if (snoozeTarget != null && !snoozeTarget.isAfter(now)) {
         _fireSnoozeFollowUpIfStillPending(r.id, fallbackReminder: r);
         continue;
@@ -478,14 +509,14 @@ class MultiTierEscalationService {
         // Task đã chạm hoặc vượt mốc giờ hẹn (now >= dt)
         final diff = now.difference(dt);
         final justTransitionedFromPending =
-            _previouslyPendingIds.remove(r.id);
+            _safePreviouslyPendingIds.remove(r.id);
 
         // Chỉ thông báo & đổ chuông nếu người dùng hiện tại đúng là đối tượng nhận:
         // - Người được giao (với task thường)
         // - Hoặc Người tạo (với task xung phong chưa ai nhận)
         if (shouldNotifyUser(r, effectiveUserId)) {
           if ((justTransitionedFromPending || diff.inMinutes < 15) &&
-              !_alertedDueReminderIds.contains(r.id)) {
+              !alertedDueReminderIds.contains(r.id)) {
             triggerDueAlarmAndPopup(
               r,
               currentUserId: effectiveUserId,
@@ -496,7 +527,7 @@ class MultiTierEscalationService {
         }
       } else {
         // Task vẫn đang ở tương lai (Chờ thực hiện) -> ghi nhận để khi vừa điểm giờ sẽ báo ngay
-        _previouslyPendingIds.add(r.id);
+        _safePreviouslyPendingIds.add(r.id);
         if (!hasActiveEscalation(r.id)) {
           scheduleMultiTierEscalation(r);
         }
@@ -512,9 +543,10 @@ class MultiTierEscalationService {
         t.cancel();
       }
     }
-    _snoozeTimers.remove(reminderId)?.cancel();
-    _snoozeDueAt.remove(reminderId);
-    _pendingAlertQueue.removeWhere((item) => item.reminder.id == reminderId);
+    _safeSnoozeTimers.remove(reminderId)?.cancel();
+    snoozeDueAt.remove(reminderId);
+    _safeFollowUpActiveIds.remove(reminderId);
+    _safePendingAlertQueue.removeWhere((r) => r.id == reminderId);
     if (_currentlyRingingReminderId == reminderId) {
       _currentlyRingingReminderId = null;
       AlarmSoundService.instance.stopAlarm();
@@ -528,16 +560,17 @@ class MultiTierEscalationService {
         t.cancel();
       }
     }
-    for (final t in _snoozeTimers.values) {
+    for (final t in _safeSnoozeTimers.values) {
       t.cancel();
     }
     _activeTimers.clear();
-    _snoozeTimers.clear();
-    _snoozeDueAt.clear();
-    _snoozedOnceReminderIds.clear();
-    _alertedDueReminderIds.clear();
-    _previouslyPendingIds.clear();
-    _pendingAlertQueue.clear();
+    _safeSnoozeTimers.clear();
+    snoozeDueAt.clear();
+    snoozedOnceReminderIds.clear();
+    _safeFollowUpActiveIds.clear();
+    alertedDueReminderIds.clear();
+    _safePreviouslyPendingIds.clear();
+    _safePendingAlertQueue.clear();
     _currentlyRingingReminderId = null;
     _lastCurrentUserId = null;
     _trackedReminders = [];
@@ -552,7 +585,7 @@ class MultiTierEscalationService {
 
   /// Kiểm tra xem lời nhắc có đang trong thời gian chờ nhắc lại 30 phút không
   bool hasPendingSnooze(String reminderId) =>
-      _snoozeDueAt.containsKey(reminderId);
+      snoozeDueAt.containsKey(reminderId);
 
   /// Kích hoạt rung và phát thông báo theo từng tầng
   void _triggerTierAlert(ReminderModel reminder, EscalationTier tier) {

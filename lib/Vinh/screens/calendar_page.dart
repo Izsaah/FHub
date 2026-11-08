@@ -48,7 +48,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
   void _startClockTicker() {
     _clockTicker?.cancel();
-    MultiTierEscalationService.instance.ensureClockRunning();
+    MultiTierEscalationService.instance.ensureClockRunning(forceRestart: true);
     _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       _checkDueReminders();
