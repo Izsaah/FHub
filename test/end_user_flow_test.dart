@@ -5,6 +5,7 @@ import 'package:fhub/Danh/screens/family_jackpot_screen.dart';
 import 'package:fhub/Danh/screens/payment_checkout_screen.dart';
 import 'package:fhub/Danh/services/family_jackpot_service.dart';
 import 'package:fhub/Danh/services/payment_service.dart';
+import 'package:fhub/Danh/services/payment_config.dart';
 
 void main() {
   group('End-User Simulation Tests (Mobile 360px & Virtual 3-Button Navigation Bar)', () {
@@ -247,7 +248,7 @@ void main() {
       expect(find.text('Ngân hàng:'), findsOneWidget);
       expect(find.text('MBBank'), findsOneWidget);
       expect(find.text('Số tài khoản:'), findsOneWidget);
-      expect(find.text('0000000001'), findsOneWidget);
+      expect(find.text(PaymentConfig.accountNo), findsOneWidget);
 
       // Verify SePay Realtime status card
       expect(find.text('Đang tự động lắng nghe SePay (mỗi 2s)...'), findsOneWidget);

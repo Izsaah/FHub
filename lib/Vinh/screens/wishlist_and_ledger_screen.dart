@@ -139,7 +139,10 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF005F50);
 
-    return StreamBuilder<List<WishlistRewardItem>>(
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppLanguage.isEnglish,
+      builder: (context, isEn, child) {
+        return StreamBuilder<List<WishlistRewardItem>>(
       stream: _starService.watchWishlistCatalog(widget.familyId),
       initialData: _starService.getWishlistCatalog(widget.familyId),
       builder: (context, catalogSnap) {
@@ -262,6 +265,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
         );
       },
     );
+      },
+    );
   }
 
   Widget _buildWishlistShopTab(
@@ -336,9 +341,9 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                       ),
                       child: Column(
                         children: [
-                          const Text(
-                            'Hũ Sao Gia Đình',
-                            style: TextStyle(
+                          Text(
+                            AppLanguage.text('Hũ Sao Gia Đình', 'Family Star Pot'),
+                            style: const TextStyle(
                               fontSize: 10.5,
                               color: Colors.black54,
                             ),
@@ -373,7 +378,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                           ),
                         ),
                         icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('Thêm phúc lợi thực tế'),
+                        label: Text(AppLanguage.text('Thêm phúc lợi thực tế', 'Add Real Reward')),
                         onPressed: _showCreateRewardDialog,
                       ),
                     if (_isRelative || _isGuardian)
@@ -390,8 +395,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                         icon: const Icon(Icons.card_giftcard_rounded, size: 18),
                         label: Text(
                           _isRelative
-                              ? '🎁 Cô/Chú/Bác lì xì Sao cho cháu'
-                              : '🎁 Tặng / Lì xì Sao khích lệ',
+                              ? AppLanguage.text('🎁 Cô/Chú/Bác lì xì Sao cho cháu', '🎁 Gift Stars to Child')
+                              : AppLanguage.text('🎁 Tặng / Lì xì Sao khích lệ', '🎁 Gift / Sponsor Stars'),
                         ),
                         onPressed: _showSponsorStarsDialog,
                       ),
@@ -576,14 +581,20 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${claim.childName} muốn đổi: ${claim.itemName}',
+                      AppLanguage.text(
+                        '${claim.childName} muốn đổi: ${claim.itemName}',
+                        '${claim.childName} requests: ${claim.itemName}',
+                      ),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
                     ),
                     Text(
-                      'Đã trừ tạm giữ: ${claim.starCost} ⭐ • Trạng thái: Chờ duyệt',
+                      AppLanguage.text(
+                        'Đã trừ tạm giữ: ${claim.starCost} ⭐ • Trạng thái: Chờ duyệt',
+                        'Held: ${claim.starCost} ⭐ • Status: Pending approval',
+                      ),
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFFE65100),
@@ -606,7 +617,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                     side: const BorderSide(color: Color(0xFFC62828)),
                   ),
                   icon: const Icon(Icons.replay_rounded, size: 16),
-                  label: const Text('Từ chối & Hoàn sao'),
+                  label: Text(AppLanguage.text('Từ chối & Hoàn sao', 'Reject & Refund')),
                   onPressed: () => _handleRejectClaim(claim),
                 ),
                 const SizedBox(width: 8),
@@ -617,7 +628,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                     foregroundColor: Colors.white,
                   ),
                   icon: const Icon(Icons.check_circle_rounded, size: 16),
-                  label: const Text('Đồng ý trao quà'),
+                  label: Text(AppLanguage.text('Đồng ý trao quà', 'Approve & Grant')),
                   onPressed: () => _handleApproveClaim(claim),
                 ),
               ],
@@ -703,7 +714,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 IconButton(
                   key: Key('btn_edit_reward_${item.id}'),
                   icon: const Icon(Icons.edit_outlined, size: 19, color: Color(0xFF005F50)),
-                  tooltip: 'Sửa phúc lợi',
+                  tooltip: AppLanguage.text('Sửa phúc lợi', 'Edit reward'),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   onPressed: () => _showEditRewardDialog(item),
@@ -711,7 +722,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 IconButton(
                   key: Key('btn_delete_reward_${item.id}'),
                   icon: const Icon(Icons.delete_outline_rounded, size: 19, color: Color(0xFFBA1A1A)),
-                  tooltip: 'Xóa phúc lợi',
+                  tooltip: AppLanguage.text('Xóa phúc lợi', 'Delete reward'),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   onPressed: () => _confirmDeleteReward(item),
@@ -831,17 +842,17 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              _buildFilterChip('ALL', 'Tất cả'),
+              _buildFilterChip('ALL', AppLanguage.text('Tất cả', 'All')),
               const SizedBox(width: 8),
-              _buildFilterChip('TASK_REWARD', 'Việc nhà (+⭐)'),
+              _buildFilterChip('TASK_REWARD', AppLanguage.text('Việc nhà (+⭐)', 'Chores (+⭐)')),
               const SizedBox(width: 8),
-              _buildFilterChip('JACKPOT_WIN', 'Nổ Hũ Sao (⭐)'),
+              _buildFilterChip('JACKPOT_WIN', AppLanguage.text('Nổ Hũ Sao (⭐)', 'Jackpot Pot (⭐)')),
               const SizedBox(width: 8),
-              _buildFilterChip('RELATIVE_SPONSOR', 'Lì xì Sao (🎁)'),
+              _buildFilterChip('RELATIVE_SPONSOR', AppLanguage.text('Lì xì Sao (🎁)', 'Gifts / Sponsor (🎁)')),
               const SizedBox(width: 8),
-              _buildFilterChip('WISHLIST_CLAIM', 'Đổi quà (-⭐)'),
+              _buildFilterChip('WISHLIST_CLAIM', AppLanguage.text('Đổi quà (-⭐)', 'Redemption (-⭐)')),
               const SizedBox(width: 8),
-              _buildFilterChip('CLAIM_REFUND', 'Hoàn sao (🔄)'),
+              _buildFilterChip('CLAIM_REFUND', AppLanguage.text('Hoàn sao (🔄)', 'Refund (🔄)')),
             ],
           ),
         ),
@@ -886,8 +897,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                             entry.userName!.trim().isNotEmpty)
                         ? entry.userName!
                         : (entry.userId == widget.currentUserId
-                            ? 'Bạn'
-                            : 'Thành viên gia đình');
+                            ? AppLanguage.text('Bạn', 'You')
+                            : AppLanguage.text('Thành viên gia đình', 'Family member'));
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -910,8 +921,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                         ),
                       ),
                       subtitle: Text(
-                        'Thành viên: $memberName'
-                        '${entry.actorName != null ? ' • Duyệt/Gửi bởi: ${entry.actorName}' : ''}',
+                        AppLanguage.text('Thành viên: $memberName', 'Member: $memberName') +
+                        (entry.actorName != null ? AppLanguage.text(' • Duyệt/Gửi bởi: ${entry.actorName}', ' • Reviewed/Sent by: ${entry.actorName}') : ''),
                         style: const TextStyle(fontSize: 12),
                       ),
                       trailing: Text(
@@ -961,7 +972,10 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '⚠️ Số dư sao của bạn ($balance ⭐) không đủ để đổi "${item.title}" (Cần ${item.starCost} ⭐). Hãy làm thêm việc nhà để tích sao nhé!',
+            AppLanguage.text(
+              '⚠️ Số dư sao của bạn ($balance ⭐) không đủ để đổi "${item.title}" (Cần ${item.starCost} ⭐). Hãy làm thêm việc nhà để tích sao nhé!',
+              '⚠️ Your star balance ($balance ⭐) is insufficient to redeem "${item.title}" (Need ${item.starCost} ⭐). Do more chores to earn stars!',
+            ),
           ),
           backgroundColor: const Color(0xFFD84315),
         ),
@@ -981,7 +995,10 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✨ Đã đổi "${item.title}" (-${item.starCost} ⭐)! Đã gửi thông báo cho Phụ huynh duyệt.',
+            AppLanguage.text(
+              '✨ Đã đổi "${item.title}" (-${item.starCost} ⭐)! Đã gửi thông báo cho Phụ huynh duyệt.',
+              '✨ Redeemed "${item.title}" (-${item.starCost} ⭐)! Sent to Parents for approval.',
+            ),
           ),
           backgroundColor: const Color(0xFF005F50),
         ),
@@ -1011,7 +1028,10 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✅ Đã duyệt trao phần thưởng "${claim.itemName}" cho ${claim.childName}!',
+            AppLanguage.text(
+              '✅ Đã duyệt trao phần thưởng "${claim.itemName}" cho ${claim.childName}!',
+              '✅ Approved reward "${claim.itemName}" for ${claim.childName}!',
+            ),
           ),
           backgroundColor: const Color(0xFF2E7D32),
         ),
@@ -1035,14 +1055,17 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
         guardianName: widget.currentUserName,
         guardianRole: _effectiveRole,
         isGuardian: _isGuardian,
-        reason: 'Phụ huynh từ chối & hoàn sao',
+        reason: AppLanguage.text('Phụ huynh từ chối & hoàn sao', 'Parents rejected & refunded stars'),
       );
       if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '🔄 Đã từ chối và hoàn lại ${claim.starCost} ⭐ cho ${claim.childName}!',
+            AppLanguage.text(
+              '🔄 Đã từ chối và hoàn lại ${claim.starCost} ⭐ cho ${claim.childName}!',
+              '🔄 Rejected and refunded ${claim.starCost} ⭐ to ${claim.childName}!',
+            ),
           ),
           backgroundColor: const Color(0xFFE65100),
         ),
@@ -1066,7 +1089,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Chỉnh Sửa Phúc Lợi'),
+        title: Text(AppLanguage.text('Chỉnh Sửa Phúc Lợi', 'Edit Real-World Reward')),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1074,8 +1097,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
               TextField(
                 key: const Key('input_edit_reward_title'),
                 controller: titleCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Tên phần thưởng',
+                decoration: InputDecoration(
+                  labelText: AppLanguage.text('Tên phần thưởng', 'Reward title'),
                 ),
               ),
               const SizedBox(height: 10),
@@ -1083,16 +1106,16 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 key: const Key('input_edit_reward_cost'),
                 controller: costCtrl,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Số sao cần đổi (⭐)',
+                decoration: InputDecoration(
+                  labelText: AppLanguage.text('Số sao cần đổi (⭐)', 'Star cost (⭐)'),
                 ),
               ),
               const SizedBox(height: 10),
               TextField(
                 key: const Key('input_edit_reward_desc'),
                 controller: descCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Mô tả chi tiết',
+                decoration: InputDecoration(
+                  labelText: AppLanguage.text('Mô tả chi tiết', 'Detailed description'),
                 ),
               ),
             ],
@@ -1101,7 +1124,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
+            child: Text(AppLanguage.text('Hủy', 'Cancel')),
           ),
           FilledButton(
             key: const Key('btn_save_edit_reward'),
@@ -1131,7 +1154,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 setState(() {});
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('✅ Đã cập nhật phúc lợi "$newTitle"!'),
+                    content: Text(AppLanguage.text('✅ Đã cập nhật phúc lợi "$newTitle"!', '✅ Updated reward "$newTitle"!')),
                     backgroundColor: const Color(0xFF005F50),
                   ),
                 );
@@ -1143,7 +1166,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 );
               }
             },
-            child: const Text('Lưu Thay Đổi'),
+            child: Text(AppLanguage.text('Lưu Thay Đổi', 'Save Changes')),
           ),
         ],
       ),
@@ -1154,14 +1177,17 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Xóa Phúc Lợi Thực Tế?'),
+        title: Text(AppLanguage.text('Xóa Phúc Lợi Thực Tế?', 'Delete Real-World Reward?')),
         content: Text(
-          'Bạn có chắc chắn muốn xóa "${item.title}" (${item.starCost} ⭐) khỏi danh mục đổi quà của gia đình không?',
+          AppLanguage.text(
+            'Bạn có chắc chắn muốn xóa "${item.title}" (${item.starCost} ⭐) khỏi danh mục đổi quà của gia đình không?',
+            'Are you sure you want to delete "${item.title}" (${item.starCost} ⭐) from the family rewards catalog?',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
+            child: Text(AppLanguage.text('Hủy', 'Cancel')),
           ),
           FilledButton(
             key: const Key('btn_confirm_delete_reward'),
@@ -1183,7 +1209,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 setState(() {});
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('🗑️ Đã xóa phúc lợi "${item.title}"!'),
+                    content: Text(AppLanguage.text('🗑️ Đã xóa phúc lợi "${item.title}"!', '🗑️ Deleted reward "${item.title}"!')),
                     backgroundColor: const Color(0xFFE65100),
                   ),
                 );
@@ -1195,7 +1221,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 );
               }
             },
-            child: const Text('Xóa Phúc Lợi'),
+            child: Text(AppLanguage.text('Xóa Phúc Lợi', 'Delete Reward')),
           ),
         ],
       ),
@@ -1210,7 +1236,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Thêm Phúc Lợi Thực Tế Mới'),
+        title: Text(AppLanguage.text('Thêm Phúc Lợi Thực Tế Mới', 'Add New Real-World Reward')),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1218,8 +1244,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
               TextField(
                 key: const Key('input_reward_title'),
                 controller: titleCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Tên phần thưởng (VD: Xem phim 30 phút)',
+                decoration: InputDecoration(
+                  labelText: AppLanguage.text('Tên phần thưởng (VD: Xem phim 30 phút)', 'Reward title (e.g. 30m TV time)'),
                 ),
               ),
               const SizedBox(height: 10),
@@ -1227,15 +1253,15 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 key: const Key('input_reward_cost'),
                 controller: costCtrl,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Số sao cần đổi (⭐)',
+                decoration: InputDecoration(
+                  labelText: AppLanguage.text('Số sao cần đổi (⭐)', 'Star cost (⭐)'),
                 ),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: descCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Mô tả chi tiết (không bắt buộc)',
+                decoration: InputDecoration(
+                  labelText: AppLanguage.text('Mô tả chi tiết (không bắt buộc)', 'Detailed description (optional)'),
                 ),
               ),
             ],
@@ -1244,7 +1270,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
+            child: Text(AppLanguage.text('Hủy', 'Cancel')),
           ),
           ElevatedButton(
             key: const Key('btn_confirm_create_reward'),
@@ -1271,7 +1297,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 }
               }
             },
-            child: const Text('Lưu phúc lợi'),
+            child: Text(AppLanguage.text('Lưu phúc lợi', 'Save Reward')),
           ),
         ],
       ),
@@ -1282,8 +1308,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     final eligibleReceivers = widget.familyMembers.where((m) => m.id != widget.currentUserId).toList();
     if (eligibleReceivers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Gia đình cần có ít nhất 2 thành viên để sử dụng tính năng tặng sao khích lệ!'),
+        SnackBar(
+          content: Text(AppLanguage.text('Gia đình cần có ít nhất 2 thành viên để sử dụng tính năng tặng sao khích lệ!', 'Family must have at least 2 members to sponsor stars!')),
           backgroundColor: Colors.orange,
         ),
       );
@@ -1293,19 +1319,22 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     String targetMemberId = eligibleReceivers.first.id;
     String targetMemberName = eligibleReceivers.first.name;
     final starsCtrl = TextEditingController(text: '10');
-    final noteCtrl = TextEditingController(text: 'Lì xì sao khích lệ chăm ngoan');
+    final noteCtrl = TextEditingController(text: AppLanguage.text('Lì xì sao khích lệ chăm ngoan', 'Encouragement gift stars'));
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.card_giftcard_rounded, color: Color(0xFF005F50), size: 24),
+              const Icon(Icons.card_giftcard_rounded, color: Color(0xFF005F50), size: 24),
               SizedBox(width: 8),
               Expanded(
-                child: Text('Lì Xì / Tặng Sao Khích Lệ', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                child: Text(
+                  AppLanguage.text('Lì Xì / Tặng Sao Khích Lệ', 'Gift / Sponsor Stars'),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
@@ -1316,15 +1345,15 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
               children: [
                 DropdownButtonFormField<String>(
                   initialValue: targetMemberId,
-                  decoration: const InputDecoration(
-                    labelText: 'Chọn thành viên nhận sao',
+                  decoration: InputDecoration(
+                    labelText: AppLanguage.text('Chọn thành viên nhận sao', 'Select member to receive stars'),
                     prefixIcon: Icon(Icons.person_rounded),
                   ),
                   items: eligibleReceivers
                       .map(
                         (c) => DropdownMenuItem(
                           value: c.id,
-                          child: Text('${c.name} (${c.role.isNotEmpty ? c.role : "Thành viên"})'),
+                          child: Text('${c.name} (${c.role.isNotEmpty ? c.role : AppLanguage.text("Thành viên", "Member")})'),
                         ),
                       )
                       .toList(),
@@ -1344,17 +1373,17 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   key: const Key('input_sponsor_stars'),
                   controller: starsCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Số sao lì xì (1 - 20 ⭐)',
-                    helperText: 'Hạn mức tối đa 20 ⭐/lần, 50 ⭐/tuần/thành viên',
+                  decoration: InputDecoration(
+                    labelText: AppLanguage.text('Số sao lì xì (1 - 20 ⭐)', 'Gift stars amount (1 - 20 ⭐)'),
+                    helperText: AppLanguage.text('Hạn mức tối đa 20 ⭐/lần, 50 ⭐/tuần/thành viên', 'Limit: max 20 ⭐/time, 50 ⭐/week/member'),
                     prefixIcon: Icon(Icons.stars_rounded, color: Colors.amber),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: noteCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Lời nhắn khích lệ',
+                  decoration: InputDecoration(
+                    labelText: AppLanguage.text('Lời nhắn khích lệ', 'Encouragement message'),
                     prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
                   ),
                 ),
@@ -1364,7 +1393,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Hủy'),
+              child: Text(AppLanguage.text('Hủy', 'Cancel')),
             ),
             ElevatedButton(
               key: const Key('btn_confirm_sponsor_stars'),
@@ -1377,8 +1406,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 final stars = int.tryParse(starsCtrl.text.trim()) ?? 0;
                 if (stars <= 0 || stars > 20) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Số sao tặng mỗi lần phải từ 1 đến 20 ⭐!'),
+                    SnackBar(
+                      content: Text(AppLanguage.text('Số sao tặng mỗi lần phải từ 1 đến 20 ⭐!', 'Gifted stars must be between 1 and 20 ⭐!')),
                       backgroundColor: Colors.red,
                     ),
                   );
@@ -1401,7 +1430,10 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          '🎁 Đã lì xì +$stars ⭐ cho $targetMemberName thành công!',
+                          AppLanguage.text(
+                            '🎁 Đã lì xì +$stars ⭐ cho $targetMemberName thành công!',
+                            '🎁 Successfully gifted +$stars ⭐ to $targetMemberName!',
+                          ),
                         ),
                         backgroundColor: const Color(0xFF2E7D32),
                       ),
@@ -1418,7 +1450,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   }
                 }
               },
-              child: const Text('Tặng Sao Ngay'),
+              child: Text(AppLanguage.text('Tặng Sao Ngay', 'Gift Stars Now')),
             ),
           ],
         ),
