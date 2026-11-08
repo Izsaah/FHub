@@ -137,5 +137,47 @@ void main() {
       service.scheduleSnoozeReminder(dueTask);
       expect(service.hasPendingSnooze(dueTask.id), isFalse);
     });
+
+    test('4. Matches assignee by name when user ID has prefix or format differences', () {
+      final service = MultiTierEscalationService.instance;
+      final now = DateTime.now();
+      final pastDue = now.subtract(const Duration(minutes: 2));
+      final dateStr =
+          '${pastDue.day.toString().padLeft(2, '0')}/${pastDue.month.toString().padLeft(2, '0')}/${pastDue.year}';
+      final timeStr =
+          '${pastDue.hour.toString().padLeft(2, '0')}:${pastDue.minute.toString().padLeft(2, '0')}';
+
+      final task = ReminderModel(
+        id: 'task_name_match_1',
+        familyId: 'fam_test',
+        creatorId: 'user_parent_id',
+        creatorName: 'Lương Diệu Vinh',
+        assignedTo: 'fam_test_child_doc_id',
+        assignedToName: 'Trần Nguyễn Văn Vinh',
+        title: 'di tam',
+        date: dateStr,
+        time: timeStr,
+        rewardStars: 2,
+        status: ReminderStatus.pending,
+      );
+
+      // Creator with different name -> NO alarm
+      service.syncReminders(
+        [task],
+        currentUserId: 'user_parent_id',
+        currentUserName: 'Lương Diệu Vinh',
+      );
+      expect(service.alertedDueReminderIds.contains(task.id), isFalse);
+      expect(AlarmSoundService.instance.isPlaying, isFalse);
+
+      // Assignee matching by name -> Alarm triggered!
+      service.syncReminders(
+        [task],
+        currentUserId: 'another_auth_uid',
+        currentUserName: 'Trần Nguyễn Văn Vinh',
+      );
+      expect(service.alertedDueReminderIds.contains(task.id), isTrue);
+      expect(AlarmSoundService.instance.isPlaying, isTrue);
+    });
   });
 }

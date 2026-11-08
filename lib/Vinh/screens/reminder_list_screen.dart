@@ -89,12 +89,33 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   Timer? _deleteSnackBarTimer;
   Timer? _clockTicker;
   List<ReminderModel> _lastLoadedReminders = [];
+  Stream<List<ReminderModel>>? _remindersStream;
+  String? _cachedStreamFamilyId;
+  bool? _cachedStreamFilterOnlyMine;
+
+  Stream<List<ReminderModel>> _getRemindersStream() {
+    if (_remindersStream == null ||
+        _cachedStreamFamilyId != _familyId ||
+        _cachedStreamFilterOnlyMine != _filterOnlyMine) {
+      _cachedStreamFamilyId = _familyId;
+      _cachedStreamFilterOnlyMine = _filterOnlyMine;
+      _remindersStream = _filterOnlyMine
+          ? _repository.watchRemindersForFamilies(
+              familyIds: _families.isNotEmpty
+                  ? _families.map((f) => f.id).toList()
+                  : [_familyId],
+            )
+          : _repository.watchReminders(familyId: _familyId);
+    }
+    return _remindersStream!;
+  }
 
   void _checkDueReminders() {
     if (_lastLoadedReminders.isEmpty || !mounted) return;
     MultiTierEscalationService.instance.syncReminders(
       _lastLoadedReminders,
       currentUserId: _currentUserId,
+      currentUserName: _currentUserName,
       context: context,
       onOpenDetail: _showDetailBottomSheet,
     );
@@ -180,10 +201,11 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
   void _startClockTicker() {
     _clockTicker?.cancel();
-    MultiTierEscalationService.instance.ensureClockRunning(forceRestart: true);
+    MultiTierEscalationService.instance.ensureClockRunning();
     _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       _checkDueReminders();
+      setState(() {});
     });
   }
 
@@ -1753,19 +1775,14 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             color: primaryColor,
             onRefresh: _manualRefresh,
             child: StreamBuilder<List<ReminderModel>>(
-              stream: _filterOnlyMine
-                  ? _repository.watchRemindersForFamilies(
-                      familyIds: _families.isNotEmpty
-                          ? _families.map((f) => f.id).toList()
-                          : [_familyId],
-                    )
-                  : _repository.watchReminders(familyId: _familyId),
+              stream: _getRemindersStream(),
               builder: (context, snapshot) {
                 final allReminders = snapshot.data ?? [];
                 _lastLoadedReminders = allReminders;
                 MultiTierEscalationService.instance.syncReminders(
                   allReminders,
                   currentUserId: _currentUserId,
+                  currentUserName: _currentUserName,
                   context: context,
                   onOpenDetail: _showDetailBottomSheet,
                 );

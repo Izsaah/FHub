@@ -39,6 +39,16 @@ class _CalendarPageState extends State<CalendarPage> {
   Timer? _deleteSnackBarTimer;
   Timer? _clockTicker;
   List<ReminderModel> _lastLoadedReminders = [];
+  Stream<List<ReminderModel>>? _remindersStream;
+  String? _cachedStreamFamilyId;
+
+  Stream<List<ReminderModel>> _getRemindersStream() {
+    if (_remindersStream == null || _cachedStreamFamilyId != widget.familyId) {
+      _cachedStreamFamilyId = widget.familyId;
+      _remindersStream = widget.repository.watchReminders(familyId: widget.familyId);
+    }
+    return _remindersStream!;
+  }
 
   @override
   void initState() {
@@ -48,10 +58,11 @@ class _CalendarPageState extends State<CalendarPage> {
 
   void _startClockTicker() {
     _clockTicker?.cancel();
-    MultiTierEscalationService.instance.ensureClockRunning(forceRestart: true);
+    MultiTierEscalationService.instance.ensureClockRunning();
     _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       _checkDueReminders();
+      setState(() {});
     });
   }
 
@@ -66,6 +77,7 @@ class _CalendarPageState extends State<CalendarPage> {
     MultiTierEscalationService.instance.syncReminders(
       _lastLoadedReminders,
       currentUserId: widget.currentUserId,
+      currentUserName: widget.currentUserName,
       context: context,
       onOpenDetail: _showDetailBottomSheet,
     );
@@ -396,13 +408,14 @@ class _CalendarPageState extends State<CalendarPage> {
             ),
           ),
           body: StreamBuilder<List<ReminderModel>>(
-            stream: widget.repository.watchReminders(familyId: widget.familyId),
+            stream: _getRemindersStream(),
             builder: (context, snapshot) {
               final allReminders = snapshot.data ?? [];
               _lastLoadedReminders = allReminders;
               MultiTierEscalationService.instance.syncReminders(
                 allReminders,
                 currentUserId: widget.currentUserId,
+                currentUserName: widget.currentUserName,
                 context: context,
                 onOpenDetail: _showDetailBottomSheet,
               );
