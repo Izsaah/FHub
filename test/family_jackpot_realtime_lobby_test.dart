@@ -218,5 +218,48 @@ void main() {
       expect(find.textContaining('Rút Tiền Thưởng Về Ngân Hàng'), findsNothing);
       expect(find.text('Góp Vui Hũ Mới & Chơi Tiếp'), findsNothing);
     });
+
+    testWidgets('10. UI Empty Pot SnackBar and Lobby Ratio Sanity: Ratio never shows inverted 2/1', (tester) async {
+      final service = FamilyJackpotService.instance;
+      service.overrideCanUseJackpotForTest = true;
+      service.initForFamily('f1');
+      await service.resetJackpot();
+
+      // Test Empty Pot SnackBar
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: FamilyJackpotScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final emptyBtn = find.textContaining('Hũ Đang Trống (0 ⭐)');
+      expect(emptyBtn, findsOneWidget);
+      await tester.ensureVisible(emptyBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(emptyBtn);
+      await tester.pump();
+
+      expect(find.textContaining('Cả nhà cùng hoàn thành Điểm danh mỗi ngày'), findsOneWidget);
+
+      // Test Lobby: Initiated with 2 targets, second member accepts -> ratio is 2/2, NOT 2/1
+      await service.contributeStars(stars: 10, memberId: 'u1', memberName: 'Trần Văn');
+      await service.initiateJackpotLobby(
+        initiatorId: 'u1',
+        initiatorName: 'Trần Văn',
+        targetMemberIds: ['u1', 'u2'],
+      );
+      expect(service.jackpot.isLobbyActive, isTrue);
+
+      await tester.pump();
+      expect(find.textContaining('(1/2)'), findsOneWidget);
+      expect(find.textContaining('(2/1)'), findsNothing);
+
+      // u2 accepts -> completes 100% acceptance
+      await service.acceptJackpotLobby(userId: 'u2', userName: 'Lương Vinh');
+      expect(service.jackpot.isShaking, isTrue);
+
+      await service.resetJackpot();
+    });
   });
 }

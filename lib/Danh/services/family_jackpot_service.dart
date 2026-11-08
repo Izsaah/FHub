@@ -358,6 +358,7 @@ class FamilyJackpotService extends ChangeNotifier {
   bool _isTransitioningPhase = false;
   String? _resolvedUserName;
   final Map<String, String> _cachedFamilyMembers = {};
+  Map<String, String> get cachedFamilyMembers => Map.unmodifiable(_cachedFamilyMembers);
 
   FamilyJackpotModel _jackpot = const FamilyJackpotModel(
     familyId: '',
@@ -537,11 +538,15 @@ class FamilyJackpotService extends ChangeNotifier {
     }
 
     final updatedAccepted = [..._jackpot.lobbyAcceptedMemberIds, userId];
+    final updatedTargets = _jackpot.lobbyTargetMemberIds.contains(userId)
+        ? _jackpot.lobbyTargetMemberIds
+        : [..._jackpot.lobbyTargetMemberIds, userId];
     final updatedNames = Map<String, String>.from(_jackpot.memberNames);
     updatedNames[userId] = userName;
 
     _jackpot = _jackpot.copyWith(
       lobbyAcceptedMemberIds: updatedAccepted,
+      lobbyTargetMemberIds: updatedTargets,
       memberNames: updatedNames,
     );
     notifyListeners();
@@ -555,6 +560,7 @@ class FamilyJackpotService extends ChangeNotifier {
             .doc('current');
         await docRef.update({
           'lobbyAcceptedMemberIds': FieldValue.arrayUnion([userId]),
+          'lobbyTargetMemberIds': FieldValue.arrayUnion([userId]),
           'memberNames.$userId': userName,
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -564,7 +570,8 @@ class FamilyJackpotService extends ChangeNotifier {
     }
 
     // Nếu tất cả thành viên trong danh sách chỉ định đã chấp nhận đầy đủ -> Tự động bắt đầu 30s lắc!
-    if (_jackpot.hasAllTargetMembersAccepted) {
+    if (_jackpot.hasAllTargetMembersAccepted ||
+        updatedAccepted.length >= updatedTargets.length) {
       await startShakeBattle(participantIds: updatedAccepted);
     }
   }
@@ -1813,8 +1820,8 @@ class FamilyJackpotService extends ChangeNotifier {
               familyId: _currentFamilyId ?? 'f1',
               title: 'Kết quả Nổ Hũ Gia Đình! ✨',
               titleEn: 'Family Pot Battle Results! ✨',
-              body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize đ!',
-              bodyEn: '$winnerName won 1st Prize with a reward of $formattedPrize đ!',
+              body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize ⭐!',
+              bodyEn: '$winnerName won 1st Prize with a reward of $formattedPrize ⭐!',
               type: 'jackpot_win',
             ));
           }

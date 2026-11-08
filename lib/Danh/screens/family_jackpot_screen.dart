@@ -19,6 +19,7 @@ import '../services/sepay_service.dart';
 import '../theme/danh_colors.dart';
 import '../theme/danh_svgs.dart';
 import 'premium_plan_screen.dart';
+import '../danh_payment_entry.dart';
 
 /// Màn hình Hũ Niềm Vui Gia Đình (Nổ Hũ Shopee Shake)
 /// Tính năng độc quyền cho gói Tổ Ấm Premium
@@ -46,12 +47,35 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     super.initState();
     final famId = PaymentService().currentFamilyId;
     _jackpotService.initForFamily(famId);
-    FamilyDataService().getCurrentFamily().then((f) {
-      if (mounted && f != null && f.name.isNotEmpty) {
-        setState(() => _familyName = f.name);
+    _loadFamilyContext();
+    _lastRenderedShakeCount = _jackpotService.myShakeCount;
+    _shakeAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 240),
+      lowerBound: -0.12,
+      upperBound: 0.12,
+    );
+  }
+
+  Future<void> _loadFamilyContext() async {
+    try {
+      final fam = await FamilyDataService().getCurrentFamily();
+      final effectiveFamId = (fam != null && fam.id.isNotEmpty)
+          ? fam.id
+          : (PaymentService().currentFamilyId.isNotEmpty
+              ? PaymentService().currentFamilyId
+              : 'f1');
+
+      if (PaymentService().currentFamilyId != effectiveFamId) {
+        PaymentService().setFamilyId(effectiveFamId);
       }
-    });
-    FamilyDataService().getFamilyMembers(familyId: famId).then((members) {
+      _jackpotService.initForFamily(effectiveFamId);
+
+      if (mounted && fam != null && fam.name.isNotEmpty) {
+        setState(() => _familyName = fam.name);
+      }
+
+      final members = await FamilyDataService().getFamilyMembers(familyId: effectiveFamId);
       if (mounted) {
         setState(() {
           _currentFamilyMembers = members;
@@ -68,20 +92,16 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           }
         });
       }
-    });
-    _jackpotService.isUserParent().then((isParent) {
+
+      final isParent = await _jackpotService.isUserParent(familyId: effectiveFamId);
       if (mounted) {
         setState(() => _isCurrentUserParent = isParent);
       }
-    });
-    _syncCheckInFromHome(famId);
-    _lastRenderedShakeCount = _jackpotService.myShakeCount;
-    _shakeAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 240),
-      lowerBound: -0.12,
-      upperBound: 0.12,
-    );
+
+      _syncCheckInFromHome(effectiveFamId);
+    } catch (e) {
+      debugPrint('Error loading family context in jackpot: $e');
+    }
   }
 
   String? _getMemberName(String uid) {
@@ -548,12 +568,28 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   Widget _buildParticipantsList(FamilyJackpotModel jackpot) {
     final isLobby = jackpot.isLobbyActive;
     final acceptedIds = jackpot.lobbyAcceptedMemberIds.toSet();
-    final targetIds = jackpot.lobbyTargetMemberIds;
+    final targetIds = jackpot.lobbyTargetMemberIds.toSet();
 
     final List<Map<String, dynamic>> items = [];
 
-    if (isLobby && targetIds.isNotEmpty) {
-      for (final uid in targetIds) {
+    if (isLobby) {
+      final allLobbyUids = <String>{};
+      allLobbyUids.addAll(targetIds);
+      allLobbyUids.addAll(acceptedIds);
+      for (final m in _currentFamilyMembers) {
+        allLobbyUids.add(m.user.id);
+      }
+      for (final k in jackpot.memberNames.keys) {
+        if (k != 'system_daily_mission') allLobbyUids.add(k);
+      }
+      for (final k in _jackpotService.cachedFamilyMembers.keys) {
+        if (k != 'system_daily_mission') allLobbyUids.add(k);
+      }
+      if (allLobbyUids.isEmpty && _jackpotService.currentUserId.isNotEmpty) {
+        allLobbyUids.add(_jackpotService.currentUserId);
+      }
+
+      for (final uid in allLobbyUids) {
         final name = jackpot.memberNames[uid] ?? _getMemberName(uid) ?? 'Thành viên';
         final isAccepted = acceptedIds.contains(uid);
         final isInitiator = uid == jackpot.lobbyInitiatorId;
@@ -564,12 +600,23 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           'isInitiator': isInitiator,
         });
       }
+
+      items.sort((a, b) {
+        if (a['isInitiator'] == true) return -1;
+        if (b['isInitiator'] == true) return 1;
+        if (a['isAccepted'] == true && b['isAccepted'] != true) return -1;
+        if (a['isAccepted'] != true && b['isAccepted'] == true) return 1;
+        return 0;
+      });
     } else {
       final allUids = jackpot.memberNames.keys
           .where((k) => k != 'system_daily_mission')
           .toSet();
       for (final m in _currentFamilyMembers) {
         allUids.add(m.user.id);
+      }
+      for (final k in _jackpotService.cachedFamilyMembers.keys) {
+        if (k != 'system_daily_mission') allUids.add(k);
       }
       if (allUids.isEmpty && _jackpotService.currentUserId.isNotEmpty) {
         allUids.add(_jackpotService.currentUserId);
@@ -847,11 +894,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           onPressed: () {
             if (!hasPool) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
+                SnackBar(
                   content: Text(
-                    'Quỹ Hũ hiện đang là 0 ⭐! Hãy tích lũy sao vào hũ trước khi phát lệnh lắc.',
+                    AppLanguage.text(
+                      'Quỹ Hũ hiện đang là 0 ⭐! Cả nhà cùng hoàn thành Điểm danh mỗi ngày (+10 ⭐) hoặc Đổi phúc lợi trong Shop (+10% sao tích lũy) để làm đầy Hũ trước khi Nổ Hũ nhé!',
+                      'Family Pot currently has 0 ⭐! Complete daily check-in (+10 ⭐) or redeem shop items (+10% stars) to fill the pot before shaking!',
+                    ),
                   ),
-                  backgroundColor: DanhColors.warning,
+                  backgroundColor: const Color(0xFFE65100),
+                  duration: const Duration(seconds: 4),
                 ),
               );
               return;
@@ -867,7 +918,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               );
               return;
             }
-            _showLobbyParticipantPickerModal(context);
+            _showLobbyParticipantPickerModal();
           },
         ),
       );
@@ -878,7 +929,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     final ss = (remSecs % 60).toString().padLeft(2, '0');
     final countdownStr = '$mm:$ss';
     final acceptedCount = jackpot.lobbyAcceptedMemberIds.length;
-    final targetCount = jackpot.lobbyTargetMemberIds.length;
+    final targetCount = max(jackpot.lobbyTargetMemberIds.length, acceptedCount);
 
     if (!hasUserAccepted) {
       return SizedBox(
@@ -1000,22 +1051,45 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   }
 
   /// Modal chọn danh sách thành viên tham gia nổ hũ dành cho Bố Mẹ
-  void _showLobbyParticipantPickerModal(BuildContext context) {
+  void _showLobbyParticipantPickerModal() async {
     final currentJackpot = _jackpotService.jackpot;
     final allMembers = <String, String>{};
+
     for (final m in _currentFamilyMembers) {
-      allMembers[m.user.id] = m.user.name;
+      if (m.user.id.isNotEmpty && m.user.name.isNotEmpty) {
+        allMembers[m.user.id] = m.user.name;
+      }
     }
-    for (final entry in currentJackpot.memberNames.entries) {
-      if (entry.key != 'system_daily_mission') {
+    for (final entry in _jackpotService.cachedFamilyMembers.entries) {
+      if (entry.key != 'system_daily_mission' && entry.value.isNotEmpty) {
         allMembers.putIfAbsent(entry.key, () => entry.value);
       }
     }
-    if (allMembers.isEmpty && _jackpotService.currentUserId.isNotEmpty) {
-      allMembers[_jackpotService.currentUserId] = _jackpotService.currentUserName;
+    for (final entry in currentJackpot.memberNames.entries) {
+      if (entry.key != 'system_daily_mission' && entry.value.isNotEmpty) {
+        allMembers.putIfAbsent(entry.key, () => entry.value);
+      }
+    }
+    if (allMembers.length <= 1) {
+      try {
+        final mems = await FamilyDataService().getFamilyMembers(
+          familyId: PaymentService().currentFamilyId.isNotEmpty
+              ? PaymentService().currentFamilyId
+              : null,
+        );
+        for (final m in mems) {
+          if (m.user.id.isNotEmpty && m.user.name.isNotEmpty) {
+            allMembers[m.user.id] = m.user.name;
+          }
+        }
+      } catch (_) {}
+    }
+    if (_jackpotService.currentUserId.isNotEmpty) {
+      allMembers.putIfAbsent(_jackpotService.currentUserId, () => _jackpotService.currentUserName);
     }
 
     final selectedIds = Set<String>.from(allMembers.keys);
+    if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
@@ -1763,20 +1837,25 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                       ),
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
-                    onPressed: () {
+                    onPressed: () async {
                       _hasShownYTroiDialog = false;
-                      _jackpotService.resetJackpot();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            AppLanguage.text(
-                              'Đã nhận thành công ${displayStars > 0 ? "$displayStars ⭐" : "sao thưởng"} vào Ví Sao của bạn!',
-                              'Successfully claimed ${displayStars > 0 ? "$displayStars ⭐" : "reward stars"} into your Star Wallet!',
+                      await _jackpotService.resetJackpot();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              AppLanguage.text(
+                                'Đã nhận thành công ${displayStars > 0 ? "$displayStars ⭐" : "sao thưởng"} vào Ví Sao của bạn! Đang mở Cửa Hàng Đổi Sao...',
+                                'Successfully claimed ${displayStars > 0 ? "$displayStars ⭐" : "reward stars"} into your Star Wallet! Opening Star Shop...',
+                              ),
                             ),
+                            backgroundColor: const Color(0xFF2E7D32),
+                            duration: const Duration(seconds: 2),
                           ),
-                          backgroundColor: const Color(0xFF2E7D32),
-                        ),
-                      );
+                        );
+                        // Điều hướng trực tiếp tới Cửa Hàng Đổi Sao & Sổ Cái Phúc Lợi Thực Tế
+                        await DanhPaymentEntry.openWishlistAndLedger(context);
+                      }
                     },
                   ),
                 ),
