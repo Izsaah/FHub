@@ -230,7 +230,9 @@ class MultiTierEscalationService {
           (memberId.isNotEmpty && _matchesUserId(reminder.creatorId, memberId)) ||
           (reminder.creatorName != null &&
               (_matchesUserName(reminder.creatorName!, uname) ||
-                  _matchesUserName(reminder.creatorName!, memberName)));
+                  _matchesUserName(reminder.creatorName!, memberName))) ||
+          _matchesUserName(reminder.creatorId, uname) ||
+          _matchesUserName(reminder.creatorId, memberName);
       return creatorMatch;
     }
 
@@ -238,7 +240,9 @@ class MultiTierEscalationService {
         (memberId.isNotEmpty && _matchesUserId(reminder.assignedTo, memberId)) ||
         (reminder.assignedToName.isNotEmpty &&
             (_matchesUserName(reminder.assignedToName, uname) ||
-                _matchesUserName(reminder.assignedToName, memberName)));
+                _matchesUserName(reminder.assignedToName, memberName))) ||
+        _matchesUserName(reminder.assignedTo, uname) ||
+        _matchesUserName(reminder.assignedTo, memberName);
     return assigneeMatch;
   }
 
@@ -512,25 +516,34 @@ class MultiTierEscalationService {
       return;
     }
 
-    BuildContext? targetContext = navigatorKey.currentContext ?? _lastContext;
-    if (targetContext != null && !targetContext.mounted) {
+    BuildContext? targetContext;
+    if (_lastContext != null && _lastContext!.mounted) {
+      targetContext = _lastContext;
+    } else if (navigatorKey.currentState?.overlay?.context != null) {
+      targetContext = navigatorKey.currentState!.overlay!.context;
+    } else if (navigatorKey.currentContext != null) {
       targetContext = navigatorKey.currentContext;
     }
-    if (targetContext == null || !targetContext.mounted) {
+
+    if (targetContext == null) {
       return;
     }
 
     final nextReminder = _safePendingAlertQueue.removeAt(0);
     final isFollowUp = _safeFollowUpActiveIds.contains(nextReminder.id);
-    await DueReminderAlertDialog.show(
-      targetContext,
-      reminder: nextReminder,
-      isSnoozeFollowUp: isFollowUp,
-      onOpenDetail: _lastOnOpenDetail,
-      onSnoozeDismiss: (rem) {
-        scheduleSnoozeReminder(rem, context: targetContext);
-      },
-    );
+    try {
+      await DueReminderAlertDialog.show(
+        targetContext,
+        reminder: nextReminder,
+        isSnoozeFollowUp: isFollowUp,
+        onOpenDetail: _lastOnOpenDetail,
+        onSnoozeDismiss: (rem) {
+          scheduleSnoozeReminder(rem, context: targetContext);
+        },
+      );
+    } catch (e) {
+      debugPrint('_processNextAlertInQueue show dialog error: $e');
+    }
 
     if (_safePendingAlertQueue.isNotEmpty) {
       _scheduleProcessAlertQueue();
@@ -549,8 +562,14 @@ class MultiTierEscalationService {
             .update({
           'status': ReminderStatus.overdue,
           'isOverdue': true,
-        }).catchError((_) {});
-      } catch (_) {}
+        }).then((_) {
+          debugPrint('[_syncOverdueToFirestore] Synced overdue status to Firestore for: ${reminder.title} (${reminder.id})');
+        }).catchError((e) {
+          debugPrint('[_syncOverdueToFirestore] Firestore update error: $e');
+        });
+      } catch (e) {
+        debugPrint('[_syncOverdueToFirestore] Exception: $e');
+      }
     }
   }
 
@@ -633,7 +652,7 @@ class MultiTierEscalationService {
         final justTransitionedFromPending =
             _safePreviouslyPendingIds.remove(r.id);
 
-        if (justTransitionedFromPending) {
+        if (justTransitionedFromPending || r.status != ReminderStatus.overdue) {
           _syncOverdueToFirestore(r);
         }
 

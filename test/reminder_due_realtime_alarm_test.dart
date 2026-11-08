@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fhub/main.dart';
 import 'package:fhub/Vinh/models/reminder_model.dart';
 import 'package:fhub/Vinh/services/alarm_sound_service.dart';
 import 'package:fhub/Vinh/services/multi_tier_escalation_service.dart';
+import 'package:fhub/Vinh/widgets/due_reminder_alert_dialog.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -214,6 +218,41 @@ void main() {
 
       expect(service.alertedDueReminderIds.contains(task.id), isTrue);
       expect(AlarmSoundService.instance.isPlaying, isTrue);
+    });
+
+    testWidgets('6. DueReminderAlertDialog.show succeeds with MaterialApp navigatorKey', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          home: const Scaffold(body: Center(child: Text('Home'))),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final task = ReminderModel(
+        id: 'dialog_test_1',
+        familyId: 'fam_test',
+        creatorId: 'u1',
+        assignedTo: 'u2',
+        assignedToName: 'Trần Nguyễn Văn Vinh',
+        title: 'tim o ga',
+        date: '08/11/2026',
+        time: '19:10',
+      );
+
+      // Call show with navigatorKey.currentContext
+      unawaited(DueReminderAlertDialog.show(navigatorKey.currentContext!, reminder: task));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('tim o ga'), findsOneWidget);
+      expect(DueReminderAlertDialog.isShowing, isTrue);
+
+      // Tap "Biết rồi / Bỏ qua"
+      await tester.tap(find.textContaining('Biết rồi'));
+      await tester.pumpAndSettle();
+
+      expect(DueReminderAlertDialog.isShowing, isFalse);
     });
   });
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../main.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/reminder_model.dart';
 import '../services/alarm_sound_service.dart';
@@ -32,16 +33,36 @@ class DueReminderAlertDialog extends StatefulWidget {
     _isShowing = true;
 
     try {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => DueReminderAlertDialog(
-          reminder: reminder,
-          isSnoozeFollowUp: isSnoozeFollowUp,
-          onOpenDetail: onOpenDetail,
-          onSnoozeDismiss: onSnoozeDismiss,
-        ),
-      );
+      final nav = navigatorKey.currentState ?? Navigator.maybeOf(context);
+      if (nav != null) {
+        final targetCtx =
+            nav.overlay?.context ?? (context.mounted ? context : nav.context);
+        await nav.push<void>(
+          DialogRoute<void>(
+            context: targetCtx,
+            barrierDismissible: false,
+            builder: (ctx) => DueReminderAlertDialog(
+              reminder: reminder,
+              isSnoozeFollowUp: isSnoozeFollowUp,
+              onOpenDetail: onOpenDetail,
+              onSnoozeDismiss: onSnoozeDismiss,
+            ),
+          ),
+        );
+      } else if (context.mounted) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => DueReminderAlertDialog(
+            reminder: reminder,
+            isSnoozeFollowUp: isSnoozeFollowUp,
+            onOpenDetail: onOpenDetail,
+            onSnoozeDismiss: onSnoozeDismiss,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('DueReminderAlertDialog show error: $e');
     } finally {
       _isShowing = false;
       AlarmSoundService.instance.stopAlarm();
