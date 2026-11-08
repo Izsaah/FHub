@@ -28,6 +28,13 @@ class FamilyJackpotModel {
   final DateTime? shakeStartTime; // Thời điểm bắt đầu 30s đếm ngược
   final DateTime? suspenseStartTime; // Thời điểm bắt đầu 10s đếm ngược hồi hộp trao thưởng
   final bool lostDueToPremiumExpired; // Đánh dấu nếu hũ bị mất/hủy do gói Premium hết hạn
+  final String lobbyStatus; // 'idle' | 'waiting' | 'started' | 'expired'
+  final String? lobbyInitiatorId; // Người phát động nổ hũ
+  final String? lobbyInitiatorName; // Tên người phát động
+  final DateTime? lobbyCreatedAt; // Thời điểm phát động phiếu chờ
+  final DateTime? lobbyExpiresAt; // Thời điểm hết hạn phiếu chờ (5 phút)
+  final List<String> lobbyTargetMemberIds; // Danh sách thành viên được phụ huynh chọn tham gia
+  final List<String> lobbyAcceptedMemberIds; // Danh sách thành viên đã bấm xác nhận tham gia
 
   const FamilyJackpotModel({
     required this.familyId,
@@ -46,6 +53,13 @@ class FamilyJackpotModel {
     this.shakeStartTime,
     this.suspenseStartTime,
     this.lostDueToPremiumExpired = false,
+    this.lobbyStatus = 'idle',
+    this.lobbyInitiatorId,
+    this.lobbyInitiatorName,
+    this.lobbyCreatedAt,
+    this.lobbyExpiresAt,
+    this.lobbyTargetMemberIds = const [],
+    this.lobbyAcceptedMemberIds = const [],
   });
 
   FamilyJackpotModel copyWith({
@@ -70,6 +84,16 @@ class FamilyJackpotModel {
     DateTime? suspenseStartTime,
     bool clearSuspenseStartTime = false,
     bool? lostDueToPremiumExpired,
+    String? lobbyStatus,
+    String? lobbyInitiatorId,
+    bool clearLobbyInitiatorId = false,
+    String? lobbyInitiatorName,
+    DateTime? lobbyCreatedAt,
+    bool clearLobbyCreatedAt = false,
+    DateTime? lobbyExpiresAt,
+    bool clearLobbyExpiresAt = false,
+    List<String>? lobbyTargetMemberIds,
+    List<String>? lobbyAcceptedMemberIds,
   }) {
     return FamilyJackpotModel(
       familyId: familyId ?? this.familyId,
@@ -88,6 +112,13 @@ class FamilyJackpotModel {
       shakeStartTime: clearShakeStartTime ? null : (shakeStartTime ?? this.shakeStartTime),
       suspenseStartTime: clearSuspenseStartTime ? null : (suspenseStartTime ?? this.suspenseStartTime),
       lostDueToPremiumExpired: lostDueToPremiumExpired ?? this.lostDueToPremiumExpired,
+      lobbyStatus: lobbyStatus ?? this.lobbyStatus,
+      lobbyInitiatorId: clearLobbyInitiatorId ? null : (lobbyInitiatorId ?? this.lobbyInitiatorId),
+      lobbyInitiatorName: lobbyInitiatorName ?? this.lobbyInitiatorName,
+      lobbyCreatedAt: clearLobbyCreatedAt ? null : (lobbyCreatedAt ?? this.lobbyCreatedAt),
+      lobbyExpiresAt: clearLobbyExpiresAt ? null : (lobbyExpiresAt ?? this.lobbyExpiresAt),
+      lobbyTargetMemberIds: lobbyTargetMemberIds ?? this.lobbyTargetMemberIds,
+      lobbyAcceptedMemberIds: lobbyAcceptedMemberIds ?? this.lobbyAcceptedMemberIds,
     );
   }
 
@@ -95,6 +126,26 @@ class FamilyJackpotModel {
   bool get isShaking => status == JackpotStatus.shaking;
   bool get isSuspense => status == JackpotStatus.suspense;
   bool get isFinished => status == JackpotStatus.finished;
+
+  /// Kiểm tra phòng chờ nổ hũ (Lobby 5 phút) có đang hoạt động hay không
+  bool get isLobbyActive =>
+      status == JackpotStatus.idle &&
+      lobbyStatus == 'waiting' &&
+      lobbyExpiresAt != null &&
+      DateTime.now().isBefore(lobbyExpiresAt!);
+
+  /// Số giây còn lại của phòng chờ nổ hũ (Tối đa 300 giây = 5 phút)
+  int get remainingLobbySeconds {
+    if (!isLobbyActive || lobbyExpiresAt == null) return 0;
+    final left = lobbyExpiresAt!.difference(DateTime.now()).inSeconds;
+    return left > 0 ? left : 0;
+  }
+
+  /// Kiểm tra toàn bộ thành viên trong danh sách được phụ huynh chọn đã bấm tham gia đầy đủ chưa
+  bool get hasAllTargetMembersAccepted =>
+      isLobbyActive &&
+      lobbyTargetMemberIds.isNotEmpty &&
+      lobbyTargetMemberIds.every((id) => lobbyAcceptedMemberIds.contains(id));
 
   /// Số giây còn lại trong hiệp 30s lắc
   int get remainingShakeSeconds {
@@ -163,6 +214,13 @@ class FamilyJackpotModel {
       'shakeStartTime': shakeStartTime != null ? Timestamp.fromDate(shakeStartTime!) : null,
       'suspenseStartTime': suspenseStartTime != null ? Timestamp.fromDate(suspenseStartTime!) : null,
       'lostDueToPremiumExpired': lostDueToPremiumExpired,
+      'lobbyStatus': lobbyStatus,
+      'lobbyInitiatorId': lobbyInitiatorId,
+      'lobbyInitiatorName': lobbyInitiatorName,
+      'lobbyCreatedAt': lobbyCreatedAt != null ? Timestamp.fromDate(lobbyCreatedAt!) : null,
+      'lobbyExpiresAt': lobbyExpiresAt != null ? Timestamp.fromDate(lobbyExpiresAt!) : null,
+      'lobbyTargetMemberIds': lobbyTargetMemberIds,
+      'lobbyAcceptedMemberIds': lobbyAcceptedMemberIds,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -197,8 +255,16 @@ class FamilyJackpotModel {
 
     DateTime? parseDate(dynamic val) {
       if (val is Timestamp) return val.toDate();
+      if (val is DateTime) return val;
       if (val is String) return DateTime.tryParse(val);
       return null;
+    }
+
+    List<String> parseStringList(dynamic val) {
+      if (val is List) {
+        return val.map((e) => e.toString()).toList();
+      }
+      return const [];
     }
 
     return FamilyJackpotModel(
@@ -218,6 +284,13 @@ class FamilyJackpotModel {
       shakeStartTime: parseDate(data['shakeStartTime']),
       suspenseStartTime: parseDate(data['suspenseStartTime']),
       lostDueToPremiumExpired: data['lostDueToPremiumExpired'] as bool? ?? false,
+      lobbyStatus: data['lobbyStatus'] as String? ?? 'idle',
+      lobbyInitiatorId: data['lobbyInitiatorId'] as String?,
+      lobbyInitiatorName: data['lobbyInitiatorName'] as String?,
+      lobbyCreatedAt: parseDate(data['lobbyCreatedAt']),
+      lobbyExpiresAt: parseDate(data['lobbyExpiresAt']),
+      lobbyTargetMemberIds: parseStringList(data['lobbyTargetMemberIds']),
+      lobbyAcceptedMemberIds: parseStringList(data['lobbyAcceptedMemberIds']),
     );
   }
 }

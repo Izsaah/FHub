@@ -1,3 +1,5 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../Long/models/family_member_model.dart';
 import '../../Thinh/theme/app_language.dart';
 import 'dart:async';
 import 'dart:math';
@@ -36,6 +38,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   int _lastRenderedShakeCount = 0;
   double? _lastMouseX;
   DateTime? _lastMouseShakeTime;
+  bool _isCurrentUserParent = true;
+  List<FamilyMemberModel> _currentFamilyMembers = [];
 
   @override
   void initState() {
@@ -47,6 +51,29 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         setState(() => _familyName = f.name);
       }
     });
+    FamilyDataService().getFamilyMembers(familyId: famId).then((members) {
+      if (mounted) {
+        setState(() {
+          _currentFamilyMembers = members;
+          final myUid = _jackpotService.currentUserId;
+          String? currentEmail;
+          try {
+            currentEmail = FirebaseAuth.instance.currentUser?.email;
+          } catch (_) {}
+          for (final m in members) {
+            if (m.user.id == myUid || (currentEmail != null && m.user.email == currentEmail)) {
+              _isCurrentUserParent = m.isParent || m.isOwner || m.isGuardian;
+              break;
+            }
+          }
+        });
+      }
+    });
+    _jackpotService.isUserParent().then((isParent) {
+      if (mounted) {
+        setState(() => _isCurrentUserParent = isParent);
+      }
+    });
     _syncCheckInFromHome(famId);
     _lastRenderedShakeCount = _jackpotService.myShakeCount;
     _shakeAnimController = AnimationController(
@@ -55,6 +82,20 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
       lowerBound: -0.12,
       upperBound: 0.12,
     );
+  }
+
+  String? _getMemberName(String uid) {
+    for (final m in _currentFamilyMembers) {
+      if (m.user.id == uid) return m.user.name;
+    }
+    return null;
+  }
+
+  String? _getMemberRoleLabel(String uid) {
+    for (final m in _currentFamilyMembers) {
+      if (m.user.id == uid) return m.roleLabel;
+    }
+    return null;
   }
 
   Future<void> _syncCheckInFromHome(String famId) async {
@@ -392,15 +433,6 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
 
   /// Trạng thái 1: Chuẩn bị & Nạp tiền vào hũ (Qua VietQR SePay)
   Widget _buildIdleSection(FamilyJackpotModel jackpot) {
-    final totalMembers = _jackpotService.totalFamilyMembersCount;
-    final isSoleMember = totalMembers <= 1;
-    final hasPool = jackpot.totalPoolAmount > 0;
-    final hasConsensus = _jackpotService.hasReachedShakeConsensus;
-    final isTopContributor = jackpot.topContributorId != null &&
-        jackpot.topContributorId != 'system_daily_mission' &&
-        jackpot.topContributorId == _jackpotService.currentUserId;
-    final canTriggerDirectly = hasPool && (isSoleMember || hasConsensus || isTopContributor);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -494,207 +526,682 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         _buildContributionsList(jackpot),
         const SizedBox(height: 24),
 
-        // Nút Bắt Đầu Nổ Hũ (30 Giây) - Hỗ trợ gia đình 1 người hoặc biểu quyết >= 70% đồng thuận
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: hasPool
-                  ? const Color(0xFFE65100)
-                  : Colors.grey.shade400,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: hasPool ? 4 : 0,
-            ),
-            icon: canTriggerDirectly
-                ? const Icon(Icons.play_circle_fill_rounded, size: 22)
-                : (hasPool
-                    ? const Icon(Icons.how_to_vote_rounded, size: 22)
-                    : const Icon(Icons.lock_clock_rounded, size: 22)),
-            label: Text(
-              !hasPool
-                  ? AppLanguage.text('Hũ Đang Trống (0 ⭐) - Tích Sao Để Lắc', 'Pot Empty (0 ⭐) - Add Stars to Shake')
-                  : (canTriggerDirectly
-                      ? AppLanguage.text('BẮT ĐẦU NỔ HŨ (30 GIÂY LẮC)', 'START POT SHAKE (30 SECONDS)')
-                      : AppLanguage.text(
-                          'PHÁT ĐỘNG NỔ HŨ (/ ĐỒNG THUẬN)',
-                          'TRIGGER POT SHAKE (/ VOTES)',
-                        )),
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-            onPressed: () async {
-              if (!hasPool) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Quỹ Hũ hiện đang là 0 ⭐! Hãy tích lũy sao vào hũ trước khi phát lệnh lắc.',
-                    ),
-                    backgroundColor: DanhColors.warning,
-                  ),
-                );
-                return;
-              }
-              if (canTriggerDirectly) {
-                _hasShownYTroiDialog = false;
-                _jackpotService.startShakeBattle();
-              } else {
-                _showShakeGovernanceModal(context);
-              }
-            },
+        Text(
+          AppLanguage.text('3. Danh Sách Tham Gia Nổ Hũ', '3. Pot Shake Participants'),
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: DanhColors.brand900,
           ),
         ),
+        const SizedBox(height: 10),
+        _buildParticipantsList(jackpot),
+        const SizedBox(height: 24),
+
+        // Nút chính: Phát động phiếu chờ 5 phút / Xác nhận tham gia / Bắt đầu ngay
+        _buildMainActionButton(jackpot),
       ],
     );
   }
 
-  void _showShakeGovernanceModal(BuildContext context) {
-    final votes = _jackpotService.shakeVotes.length;
-    final required = _jackpotService.requiredShakeVotes;
-    final total = _jackpotService.totalFamilyMembersCount;
+  /// Mục 3: Danh sách thành viên tham gia nổ hũ (Giới hạn tối đa 5 tên, cuộn mượt nếu > 5)
+  Widget _buildParticipantsList(FamilyJackpotModel jackpot) {
+    final isLobby = jackpot.isLobbyActive;
+    final acceptedIds = jackpot.lobbyAcceptedMemberIds.toSet();
+    final targetIds = jackpot.lobbyTargetMemberIds;
+
+    final List<Map<String, dynamic>> items = [];
+
+    if (isLobby && targetIds.isNotEmpty) {
+      for (final uid in targetIds) {
+        final name = jackpot.memberNames[uid] ?? _getMemberName(uid) ?? 'Thành viên';
+        final isAccepted = acceptedIds.contains(uid);
+        final isInitiator = uid == jackpot.lobbyInitiatorId;
+        items.add({
+          'uid': uid,
+          'name': name,
+          'isAccepted': isAccepted,
+          'isInitiator': isInitiator,
+        });
+      }
+    } else {
+      final allUids = jackpot.memberNames.keys
+          .where((k) => k != 'system_daily_mission')
+          .toSet();
+      for (final m in _currentFamilyMembers) {
+        allUids.add(m.user.id);
+      }
+      if (allUids.isEmpty && _jackpotService.currentUserId.isNotEmpty) {
+        allUids.add(_jackpotService.currentUserId);
+      }
+      for (final uid in allUids) {
+        final name = jackpot.memberNames[uid] ?? _getMemberName(uid) ?? 'Thành viên';
+        items.add({
+          'uid': uid,
+          'name': name,
+          'isAccepted': false,
+          'isReady': true,
+        });
+      }
+    }
+
+    if (items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: DanhColors.brand200),
+        ),
+        child: const Center(
+          child: Text(
+            'Chưa có thành viên nào trong danh sách gia đình.',
+            style: TextStyle(fontSize: 12, color: DanhColors.textMuted),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isLobby ? const Color(0xFFFFB74D) : DanhColors.brand200,
+          width: isLobby ? 1.5 : 1.0,
+        ),
+        boxShadow: isLobby
+            ? [
+                BoxShadow(
+                  color: const Color(0xFFFF9800).withValues(alpha: 0.12),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : DanhColors.fhubCardShadow,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Scrollbar(
+          thumbVisibility: items.length > 5,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            shrinkWrap: true,
+            itemCount: items.length,
+            separatorBuilder: (context, index) => Divider(
+              height: 1,
+              thickness: 0.7,
+              color: Colors.grey.shade100,
+              indent: 52,
+            ),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final name = item['name'] as String;
+              final uid = item['uid'] as String;
+              final isAccepted = item['isAccepted'] as bool? ?? false;
+              final isInitiator = item['isInitiator'] as bool? ?? false;
+              final isMe = uid == _jackpotService.currentUserId;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: isAccepted
+                          ? const Color(0xFFE8F5E9)
+                          : (isLobby ? const Color(0xFFFFF3E0) : DanhColors.brand50),
+                      child: Text(
+                        name.isNotEmpty ? name[0].toUpperCase() : '?',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: isAccepted
+                              ? const Color(0xFF2E7D32)
+                              : (isLobby ? const Color(0xFFE65100) : DanhColors.brand800),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13.5,
+                                    color: DanhColors.textPrimary,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isMe) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: DanhColors.brand800,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'Tôi',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (isInitiator) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF8F00),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'Phát động',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (_getMemberRoleLabel(uid) != null) ...[
+                            const SizedBox(height: 1),
+                            Text(
+                              _getMemberRoleLabel(uid)!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: DanhColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (isLobby) ...[
+                      if (isAccepted)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF81C784)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF2E7D32)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Đã tham gia',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3E0),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFFB74D)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.hourglass_empty_rounded, size: 13, color: Color(0xFFE65100)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Đang chờ...',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFE65100),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'Sẵn sàng',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: DanhColors.brand800,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Nút chính: Chuyển đổi trạng thái linh hoạt theo thời gian thực (5 phút đếm ngược)
+  Widget _buildMainActionButton(FamilyJackpotModel jackpot) {
+    final hasPool = jackpot.totalPoolAmount > 0;
+    final isLobby = jackpot.isLobbyActive;
+    final myUid = _jackpotService.currentUserId;
+    final hasUserAccepted = jackpot.lobbyAcceptedMemberIds.contains(myUid);
+    final isParent = _isCurrentUserParent;
+
+    if (!isLobby) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: !hasPool
+                ? Colors.grey.shade400
+                : (isParent ? const Color(0xFFE65100) : Colors.grey.shade400),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: (hasPool && isParent) ? 4 : 0,
+          ),
+          icon: Icon(
+            !hasPool
+                ? Icons.lock_clock_rounded
+                : (isParent ? Icons.timer_outlined : Icons.lock_outline_rounded),
+            size: 22,
+          ),
+          label: Text(
+            !hasPool
+                ? AppLanguage.text('Hũ Đang Trống (0 ⭐) - Tích Sao Để Lắc', 'Pot Empty (0 ⭐) - Add Stars to Shake')
+                : (isParent
+                    ? AppLanguage.text('🎲 PHÁT ĐỘNG NỔ HŨ (5 PHÚT CHỜ)', '🎲 START POT SHAKE (5-MIN LOBBY)')
+                    : AppLanguage.text('⏳ CHỜ BỐ MẸ PHÁT ĐỘNG NỔ HŨ', '⏳ WAITING FOR PARENTS TO START')),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          onPressed: () {
+            if (!hasPool) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Quỹ Hũ hiện đang là 0 ⭐! Hãy tích lũy sao vào hũ trước khi phát lệnh lắc.',
+                  ),
+                  backgroundColor: DanhColors.warning,
+                ),
+              );
+              return;
+            }
+            if (!isParent) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Chỉ Bố hoặc Mẹ mới có quyền phát động phiên Nổ Hũ cho cả gia đình!',
+                  ),
+                  backgroundColor: DanhColors.warning,
+                ),
+              );
+              return;
+            }
+            _showLobbyParticipantPickerModal(context);
+          },
+        ),
+      );
+    }
+
+    final remSecs = jackpot.remainingLobbySeconds;
+    final mm = (remSecs ~/ 60).toString().padLeft(2, '0');
+    final ss = (remSecs % 60).toString().padLeft(2, '0');
+    final countdownStr = '$mm:$ss';
+    final acceptedCount = jackpot.lobbyAcceptedMemberIds.length;
+    final targetCount = jackpot.lobbyTargetMemberIds.length;
+
+    if (!hasUserAccepted) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF2E7D32),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 4,
+          ),
+          icon: const Icon(Icons.check_circle_rounded, size: 22),
+          label: Text(
+            AppLanguage.text(
+              '✅ XÁC NHẬN THAM GIA LẮC HŨ ($countdownStr)',
+              '✅ JOIN POT SHAKE NOW ($countdownStr)',
+            ),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          onPressed: () async {
+            try {
+              await _jackpotService.acceptJackpotLobby(
+                userId: myUid,
+                userName: _jackpotService.currentUserName,
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Bạn đã xác nhận tham gia Nổ Hũ thành công!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+                );
+              }
+            }
+          },
+        ),
+      );
+    }
+
+    if (isParent) {
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE65100),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 4,
+              ),
+              icon: const Icon(Icons.rocket_launch_rounded, size: 22),
+              label: Text(
+                AppLanguage.text(
+                  '🚀 BẮT ĐẦU LẮC NGAY ($acceptedCount/$targetCount) - ($countdownStr)',
+                  '🚀 START SHAKE NOW ($acceptedCount/$targetCount) - ($countdownStr)',
+                ),
+                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+              ),
+              onPressed: () async {
+                _hasShownYTroiDialog = false;
+                await _jackpotService.startShakeBattleEarly(initiatorId: myUid);
+              },
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            AppLanguage.text(
+              'Bố Mẹ có thể bấm bắt đầu ngay với $acceptedCount thành viên đã có mặt hoặc chờ đủ cả nhà.',
+              'Parents can start now with $acceptedCount present members or wait for everyone.',
+            ),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 11.5, color: DanhColors.textSecondary),
+          ),
+        ],
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.amber.shade100,
+          foregroundColor: const Color(0xFFE65100),
+          disabledBackgroundColor: Colors.amber.shade100,
+          disabledForegroundColor: const Color(0xFFE65100),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFFFB74D), width: 1.5),
+          ),
+          elevation: 0,
+        ),
+        icon: const Icon(Icons.hourglass_top_rounded, size: 22),
+        label: Text(
+          AppLanguage.text(
+            '⏳ ĐÃ THAM GIA - CHỜ CẢ NHÀ ($acceptedCount/$targetCount) - ($countdownStr)',
+            '⏳ JOINED - WAITING FOR FAMILY ($acceptedCount/$targetCount) - ($countdownStr)',
+          ),
+          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+        ),
+        onPressed: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Bạn đã có mặt trong phòng chờ! Trận chiến lắc 30s sẽ bắt đầu khi cả nhà sẵn sàng.'),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Modal chọn danh sách thành viên tham gia nổ hũ dành cho Bố Mẹ
+  void _showLobbyParticipantPickerModal(BuildContext context) {
+    final currentJackpot = _jackpotService.jackpot;
+    final allMembers = <String, String>{};
+    for (final m in _currentFamilyMembers) {
+      allMembers[m.user.id] = m.user.name;
+    }
+    for (final entry in currentJackpot.memberNames.entries) {
+      if (entry.key != 'system_daily_mission') {
+        allMembers.putIfAbsent(entry.key, () => entry.value);
+      }
+    }
+    if (allMembers.isEmpty && _jackpotService.currentUserId.isNotEmpty) {
+      allMembers[_jackpotService.currentUserId] = _jackpotService.currentUserName;
+    }
+
+    final selectedIds = Set<String>.from(allMembers.keys);
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Row(
-              children: [
-                Icon(Icons.how_to_vote_rounded, color: Color(0xFFE65100), size: 24),
-                SizedBox(width: 8),
-                Text(
-                  'Biểu Quyết Phát Động Nổ Hũ',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: DanhColors.brand900),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Quy chế gia đình: Để đảm bảo công bằng cho cả nhà, cần ít nhất 70% ($required/$total) thành viên đồng ý để bắt đầu Nổ Hũ!',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade700, height: 1.4),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.amber.shade200),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline_rounded, color: Colors.orange, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Hiện đã có $votes/$required phiếu đồng ý (${(votes / total * 100).round()}%).',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFE65100)),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE65100),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                icon: const Icon(Icons.check_circle_rounded),
-                label: const Text('ĐỒNG Ý LẮC HŨ NGAY', style: TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  final started = await _jackpotService.voteToShakeNow(
-                    userId: _jackpotService.currentUserId,
-                    userName: _jackpotService.currentUserName,
-                  );
-                  if (context.mounted) {
-                    if (started) {
-                      _hasShownYTroiDialog = false;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Đạt 70% đồng thuận! Phiên Nổ Hũ 30 giây bắt đầu!'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Đã ghi nhận phiếu biểu quyết của bạn! Đã gửi thông báo mời các thành viên khác.',
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Icon(Icons.group_add_rounded, color: Color(0xFFE65100), size: 24),
+                        const SizedBox(width: 8),
+                        Text(
+                          AppLanguage.text('Chọn Thành Viên Tham Gia Nổ Hũ', 'Select Participants for Pot Shake'),
+                          style: const TextStyle(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.bold,
+                            color: DanhColors.brand900,
                           ),
-                          backgroundColor: DanhColors.brand800,
                         ),
-                      );
-                    }
-                  }
-                },
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: DanhColors.brand900,
-                  side: BorderSide(color: Colors.grey.shade400),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                icon: const Icon(Icons.calendar_month_rounded),
-                label: const Text('HẸN LỊCH CẢ NHÀ CÙNG NỔ HŨ', style: TextStyle(fontWeight: FontWeight.w600)),
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  final now = DateTime.now();
-                  final pickedTime = await showTimePicker(
-                    context: context,
-                    initialTime: const TimeOfDay(hour: 20, minute: 0),
-                  );
-                  if (pickedTime != null && context.mounted) {
-                    final scheduledDateTime = DateTime(now.year, now.month, now.day, pickedTime.hour, pickedTime.minute);
-                    await _jackpotService.scheduleShakeEvent(
-                      userId: _jackpotService.currentUserId,
-                      userName: _jackpotService.currentUserName,
-                      scheduledTime: scheduledDateTime,
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Đã hẹn lịch Nổ Hũ vào ${pickedTime.format(context)} và gửi thông báo tới cả gia đình!',
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      AppLanguage.text(
+                        'Phiếu chờ có hiệu lực trong 5 phút. Cả nhà vào xác nhận để cùng lắc điện thoại!',
+                        'Ticket is valid for 5 minutes. Family members will receive an invite to join!',
+                      ),
+                      style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.3),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Đã chọn: ${selectedIds.length}/${allMembers.length} thành viên',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFE65100),
                           ),
-                          backgroundColor: Colors.green,
                         ),
-                      );
-                    }
-                  }
-                },
+                        TextButton(
+                          onPressed: () {
+                            setModalState(() {
+                              if (selectedIds.length == allMembers.length) {
+                                selectedIds.clear();
+                                if (_jackpotService.currentUserId.isNotEmpty) {
+                                  selectedIds.add(_jackpotService.currentUserId);
+                                }
+                              } else {
+                                selectedIds.addAll(allMembers.keys);
+                              }
+                            });
+                          },
+                          child: Text(
+                            selectedIds.length == allMembers.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 1),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 240),
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: allMembers.entries.map((entry) {
+                          final uid = entry.key;
+                          final name = entry.value;
+                          final isSelected = selectedIds.contains(uid);
+                          final isMe = uid == _jackpotService.currentUserId;
+
+                          return CheckboxListTile(
+                            dense: true,
+                            value: isSelected,
+                            activeColor: const Color(0xFFE65100),
+                            title: Row(
+                              children: [
+                                Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                                if (isMe) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: DanhColors.brand800,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'Bố / Mẹ',
+                                      style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            onChanged: (val) {
+                              setModalState(() {
+                                if (val == true) {
+                                  selectedIds.add(uid);
+                                } else {
+                                  if (selectedIds.length > 1) {
+                                    selectedIds.remove(uid);
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Cần ít nhất 1 thành viên tham gia!'),
+                                        duration: Duration(seconds: 1),
+                                      ),
+                                    );
+                                  }
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE65100),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        icon: const Icon(Icons.send_rounded),
+                        label: Text(
+                          AppLanguage.text('PHÁT ĐỘNG PHIẾU CHỜ (5 PHÚT)', 'START 5-MIN LOBBY TICKET'),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                        ),
+                        onPressed: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          Navigator.pop(ctx);
+                          try {
+                            await _jackpotService.initiateJackpotLobby(
+                              initiatorId: _jackpotService.currentUserId,
+                              initiatorName: _jackpotService.currentUserName,
+                              targetMemberIds: selectedIds.toList(),
+                            );
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Đã phát động phiếu chờ 5 phút! Thông báo đã gửi tới cả gia đình.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('Lỗi: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
