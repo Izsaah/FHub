@@ -29,46 +29,59 @@ void main() {
       expect(alarm.isPlaying, isFalse);
     });
 
-    test('2. MultiTierEscalationService.syncReminders detects due reminder and triggers alarm', () {
+    test('2. MultiTierEscalationService.syncReminders detects due reminder and completed tasks do NOT kill the alarm', () {
       final service = MultiTierEscalationService.instance;
       final now = DateTime.now();
-      // Task due 5 minutes ago (16:50 when now is 16:55)
-      final pastDue = now.subtract(const Duration(minutes: 5));
+      final pastDue = now.subtract(const Duration(minutes: 2));
       final dateStr =
           '${pastDue.day.toString().padLeft(2, '0')}/${pastDue.month.toString().padLeft(2, '0')}/${pastDue.year}';
       final timeStr =
           '${pastDue.hour.toString().padLeft(2, '0')}:${pastDue.minute.toString().padLeft(2, '0')}';
 
-      final task = ReminderModel(
-        id: 'task_due_now_1',
+      final dueTask = ReminderModel(
+        id: 'task_di_1728',
         familyId: 'fam_test',
         creatorId: 'parent_1',
         creatorName: 'Bố Tuấn',
         assignedTo: 'child_1',
-        assignedToName: 'Bé Na',
-        title: 'Quét dọn nhà cửa',
+        assignedToName: 'Trần Nguyễn Văn',
+        title: 'di',
         date: dateStr,
         time: timeStr,
-        rewardStars: 3,
+        rewardStars: 2,
         status: ReminderStatus.pending,
       );
 
-      expect(task.isOverdue, isTrue);
-      expect(service.alertedDueReminderIds.contains(task.id), isFalse);
+      final completedTask = ReminderModel(
+        id: 'task_launha_completed',
+        familyId: 'fam_test',
+        creatorId: 'parent_1',
+        creatorName: 'Bố Tuấn',
+        assignedTo: 'child_1',
+        assignedToName: 'Trần Nguyễn Văn',
+        title: 'Lau nha',
+        date: dateStr,
+        time: '11:27',
+        rewardStars: 3,
+        status: ReminderStatus.completed,
+      );
 
-      // Trigger sync
-      service.syncReminders([task]);
+      expect(dueTask.isOverdue, isTrue);
+      expect(service.alertedDueReminderIds.contains(dueTask.id), isFalse);
 
-      // Alarm started and task recorded in alerted set
-      expect(service.alertedDueReminderIds.contains(task.id), isTrue);
+      // Trigger sync with both dueTask and completedTask in the same list
+      service.syncReminders([dueTask, completedTask]);
+
+      // Alarm started and NOT cancelled by completedTask
+      expect(service.alertedDueReminderIds.contains(dueTask.id), isTrue);
       expect(AlarmSoundService.instance.isPlaying, isTrue);
 
       // Calling sync again should NOT re-trigger duplicate alert
-      service.syncReminders([task]);
+      service.syncReminders([dueTask, completedTask]);
       expect(service.alertedDueReminderIds.length, 1);
 
-      // Completing / cancelling task cancels escalation and stops alarm
-      service.cancelEscalation(task.id);
+      // Completing / cancelling dueTask stops the alarm
+      service.cancelEscalation(dueTask.id);
       expect(AlarmSoundService.instance.isPlaying, isFalse);
     });
 

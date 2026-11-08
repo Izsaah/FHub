@@ -258,7 +258,7 @@ class ReminderModel {
     if (isCompleted || isDeleted || isSubmitted) return false;
     if (status == ReminderStatus.overdue) return true;
     final dt = dueDateTime;
-    if (dt != null && dt.isBefore(DateTime.now())) return true;
+    if (dt != null && !dt.isAfter(DateTime.now())) return true;
     return false;
   }
 

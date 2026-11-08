@@ -173,12 +173,23 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     // 3. Đăng ký lắng nghe sự kiện thay đổi family_members từ Firestore theo thời gian thực (Realtime)
     _listenToFirestoreFamilyMembers();
 
-    // 4. Ticker đồng hồ thời gian thực mỗi 3 giây: Tự động đổi trạng thái Quá hạn và Bật chuông/thông báo khi tới giờ
-    _clockTicker = Timer.periodic(const Duration(seconds: 3), (_) {
+    // 4. Ticker đồng hồ thời gian thực mỗi 1 giây: Tự động đổi trạng thái Quá hạn và Bật chuông/thông báo khi tới giờ
+    _startClockTicker();
+  }
+
+  void _startClockTicker() {
+    _clockTicker?.cancel();
+    MultiTierEscalationService.instance.ensureClockRunning();
+    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       _checkDueReminders();
-      setState(() {});
     });
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    _startClockTicker();
   }
 
   @override

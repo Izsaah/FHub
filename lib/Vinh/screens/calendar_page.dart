@@ -43,12 +43,22 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   void initState() {
     super.initState();
-    // Ticker đồng hồ thời gian thực mỗi 3 giây: tự động chuyển task sang Quá hạn & kích hoạt chuông/thông báo
-    _clockTicker = Timer.periodic(const Duration(seconds: 3), (_) {
+    _startClockTicker();
+  }
+
+  void _startClockTicker() {
+    _clockTicker?.cancel();
+    MultiTierEscalationService.instance.ensureClockRunning();
+    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       _checkDueReminders();
-      setState(() {});
     });
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    _startClockTicker();
   }
 
   void _checkDueReminders() {
@@ -392,9 +402,12 @@ class _CalendarPageState extends State<CalendarPage> {
                 allReminders,
                 context: context,
               );
-              final dayReminders = allReminders
-                  .where((r) => r.date == selectedDateStr && !r.isDeleted)
-                  .toList();
+              return ValueListenableBuilder<DateTime>(
+                valueListenable: MultiTierEscalationService.instance.clockTick,
+                builder: (context, nowTick, _) {
+                  final dayReminders = allReminders
+                      .where((r) => r.date == selectedDateStr && !r.isDeleted)
+                      .toList();
 
               final overdueList = dayReminders
                   .where((r) => r.isOverdue && !r.isCompleted && !r.isSubmitted)
@@ -694,6 +707,8 @@ class _CalendarPageState extends State<CalendarPage> {
                     ],
                   ),
                 ),
+              );
+                },
               );
             },
           ),

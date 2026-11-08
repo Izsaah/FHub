@@ -218,13 +218,13 @@ class ReminderCard extends StatelessWidget {
     if (dt == null) return null;
     final now = DateTime.now();
     final diff = dt.difference(now);
-    if (diff.isNegative) {
+    if (diff.isNegative || diff.inSeconds <= 0) {
       return null;
     }
     if (diff.inMinutes < 60) {
       return AppLanguage.text(
-        'còn ${diff.inMinutes}p',
-        '${diff.inMinutes}m left',
+        'còn ${(diff.inSeconds / 60).ceil()}p',
+        '${(diff.inSeconds / 60).ceil()}m left',
       );
     } else if (diff.inHours < 24 && dt.day == now.day) {
       return AppLanguage.text(
