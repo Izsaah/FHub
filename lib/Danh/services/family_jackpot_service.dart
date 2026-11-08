@@ -750,7 +750,7 @@ class FamilyJackpotService extends ChangeNotifier {
         : PaymentService().currentFamilyId;
     final effectiveFamilyId = rawFamilyId.isNotEmpty ? rawFamilyId : 'f1';
 
-    if (_currentFamilyId == effectiveFamilyId && _jackpotSub != null) {
+    if (_currentFamilyId == effectiveFamilyId && (_jackpotSub != null || _firestore == null)) {
       _loadFamilyMembers(effectiveFamilyId);
       return;
     }

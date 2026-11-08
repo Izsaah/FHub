@@ -1567,10 +1567,13 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Tiền thưởng đã được cộng trực tiếp vào Ví App của từng thành viên!\nCó thể rút về tài khoản ngân hàng cá nhân bất cứ lúc nào.',
+              Text(
+                AppLanguage.text(
+                  'Sao thưởng đã được cộng trực tiếp vào Ví Sao của từng thành viên!\nDùng sao để đổi những phần quà & phúc lợi từ Bố Mẹ.',
+                  'Reward stars have been credited directly to each member\'s Star Wallet!\nUse stars to redeem rewards & wishes from Parents.',
+                ),
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12.5, color: DanhColors.textSecondary, height: 1.4),
+                style: const TextStyle(fontSize: 12.5, color: DanhColors.textSecondary, height: 1.4),
               ),
               const Divider(height: 28),
 
@@ -1732,45 +1735,75 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           ),
         ],
 
-        // Nút Rút tiền về Ngân hàng (Chỉ hiển thị khi ví còn tiền thưởng)
-        if (_jackpotService.myWalletBalance > 0) ...[
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE65100),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              icon: const Icon(Icons.account_balance_rounded),
-              label: Text(
-                'Rút Tiền Thưởng Về Ngân Hàng (${_jackpotService.myWalletBalance.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ)',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-              ),
-              onPressed: _openBankAndWithdrawModal,
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
+        // Nút Nhận sao từ hũ (thay cho Rút tiền thưởng về ngân hàng)
+        Builder(
+          builder: (ctx) {
+            final myPrize = jackpot.prizeResults[_jackpotService.currentUserId] ?? 0;
+            final myBal = _jackpotService.myWalletBalance;
+            final displayStars = myPrize > 0 ? myPrize : myBal;
+            final starSuffix = displayStars > 0 ? ' (+$displayStars ⭐)' : '';
 
-        // Nút Tạo Hũ Mới
+            return Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE65100),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 3,
+                    ),
+                    icon: const Icon(Icons.stars_rounded, size: 22, color: Colors.amber),
+                    label: Text(
+                      AppLanguage.text(
+                        'Nhận sao từ hũ$starSuffix',
+                        'Claim stars from pot$starSuffix',
+                      ),
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () {
+                      _hasShownYTroiDialog = false;
+                      _jackpotService.resetJackpot();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            AppLanguage.text(
+                              'Đã nhận thành công ${displayStars > 0 ? "$displayStars ⭐" : "sao thưởng"} vào Ví Sao của bạn!',
+                              'Successfully claimed ${displayStars > 0 ? "$displayStars ⭐" : "reward stars"} into your Star Wallet!',
+                            ),
+                          ),
+                          backgroundColor: const Color(0xFF2E7D32),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+            );
+          },
+        ),
+
+        // Nút Góp sao hũ mới (rút gọn từ "Góp Vui Hũ Mới & Chơi Tiếp")
         SizedBox(
           width: double.infinity,
-          child: OutlinedButton(
+          child: OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: DanhColors.brand800),
+              side: const BorderSide(color: DanhColors.brand800, width: 1.5),
               foregroundColor: DanhColors.brand800,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
+            icon: const Icon(Icons.stars_outlined, size: 20),
             onPressed: () {
               _hasShownYTroiDialog = false;
               _jackpotService.resetJackpot();
             },
-            child: const Text(
-              'Góp Vui Hũ Mới & Chơi Tiếp',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            label: Text(
+              AppLanguage.text('Góp sao hũ mới', 'Contribute stars to new pot'),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
           ),
         ),

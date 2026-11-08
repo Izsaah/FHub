@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fhub/Danh/models/family_jackpot_model.dart';
+import 'package:fhub/Danh/screens/family_jackpot_screen.dart';
 import 'package:fhub/Danh/services/family_jackpot_service.dart';
 
 void main() {
@@ -190,6 +192,31 @@ void main() {
       expect(totalPaid, 100, reason: '100% quỹ 100 sao được trao cho các thành viên tham gia');
       expect(service.jackpot.status, JackpotStatus.finished);
       expect(service.jackpot.lobbyStatus, 'idle', reason: 'Lobby được reset về idle sau khi nổ hũ xong');
+    });
+
+    testWidgets('9. UI Finished State: Renders "Nhận sao từ hũ" and "Góp sao hũ mới"', (tester) async {
+      final service = FamilyJackpotService.instance;
+      service.overrideCanUseJackpotForTest = true;
+      service.initForFamily('f1');
+      await service.resetJackpot();
+
+      await service.contributeStars(stars: 10, memberId: 'u1', memberName: 'Trần Văn');
+      await service.distributeStarPotNow(
+        overrideShakeCounts: {'u1': 20},
+        overrideParticipantIds: ['u1'],
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: FamilyJackpotScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Nhận sao từ hũ'), findsOneWidget);
+      expect(find.text('Góp sao hũ mới'), findsOneWidget);
+      expect(find.textContaining('Rút Tiền Thưởng Về Ngân Hàng'), findsNothing);
+      expect(find.text('Góp Vui Hũ Mới & Chơi Tiếp'), findsNothing);
     });
   });
 }
