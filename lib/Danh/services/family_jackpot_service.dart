@@ -764,6 +764,8 @@ class FamilyJackpotService extends ChangeNotifier {
     _currentFamilyId = effectiveFamilyId;
     _cachedFamilyMembers.clear();
     _shakeVotes.clear();
+    _dailyCheckIns.clear();
+    _awardedCheckInDates.clear();
     _jackpot = FamilyJackpotModel(
       familyId: effectiveFamilyId,
       totalPoolAmount: 0,
@@ -831,6 +833,16 @@ class FamilyJackpotService extends ChangeNotifier {
         }
 
         _jackpot = incoming;
+
+        // Đồng bộ dữ liệu nhiệm vụ điểm danh hằng ngày từ Firebase
+        if (incoming.lastDailyCheckInAwardedDate != null && incoming.lastDailyCheckInAwardedDate!.isNotEmpty) {
+          _awardedCheckInDates.add(incoming.lastDailyCheckInAwardedDate!);
+        }
+        _awardedCheckInDates.addAll(incoming.dailyCheckInAwardedDates);
+        final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+        if (incoming.dailyCheckedInMemberIds.isNotEmpty) {
+          _dailyCheckIns.putIfAbsent(todayStr, () => <String>{}).addAll(incoming.dailyCheckedInMemberIds);
+        }
 
         // Nếu nhận dữ liệu mà gia đình không còn Premium nhưng đang trong phiên lắc -> hủy phiên lắc
         if (!canUseJackpot && (_jackpot.isShaking || _jackpot.isSuspense)) {
@@ -1283,6 +1295,17 @@ class FamilyJackpotService extends ChangeNotifier {
   final Map<String, Set<String>> _dailyCheckIns = {}; // dateKey (YYYY-MM-DD) -> Set<userId>
   final Set<String> _awardedCheckInDates = {}; // dateKey đã được cộng 10 sao
 
+  @visibleForTesting
+  void resetDailyMissionStateForTesting() {
+    _dailyCheckIns.clear();
+    _awardedCheckInDates.clear();
+    _jackpot = _jackpot.copyWith(
+      clearLastDailyCheckInAwardedDate: true,
+      dailyCheckInAwardedDates: const [],
+      dailyCheckedInMemberIds: const [],
+    );
+  }
+
   bool hasUserCheckedInToday(String userId) {
     final todayKey = DateTime.now().toIso8601String().substring(0, 10);
     return _dailyCheckIns[todayKey]?.contains(userId) ?? false;
@@ -1305,9 +1328,44 @@ class FamilyJackpotService extends ChangeNotifier {
       }
     }
 
+    // Nếu hôm nay đã nhận thưởng +10 ⭐ rồi thì không bao giờ cộng lại!
+    if (isDailyCheckInCompletedToday()) {
+      notifyListeners();
+      return;
+    }
+
     final threshold = members.length;
-    if (userSet.length >= threshold && !_awardedCheckInDates.contains(todayKey)) {
+    if (userSet.length >= threshold) {
       _awardedCheckInDates.add(todayKey);
+      final updatedList = List<String>.from(_jackpot.dailyCheckInAwardedDates);
+      if (!updatedList.contains(todayKey)) {
+        updatedList.add(todayKey);
+      }
+      _jackpot = _jackpot.copyWith(
+        lastDailyCheckInAwardedDate: todayKey,
+        dailyCheckInAwardedDates: updatedList,
+        dailyCheckedInMemberIds: userSet.toList(),
+      );
+
+      // Ghi nhận trực tiếp lên Firestore để bảo toàn vĩnh viễn (dù reset hũ sau nổ hũ vẫn lưu)
+      if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+        try {
+          final docRef = _firestore!
+              .collection('families')
+              .doc(_currentFamilyId)
+              .collection('jackpot')
+              .doc('current');
+          await docRef.set({
+            'lastDailyCheckInAwardedDate': todayKey,
+            'dailyCheckInAwardedDates': FieldValue.arrayUnion([todayKey]),
+            'dailyCheckedInMemberIds': userSet.toList(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('FamilyJackpotService syncCheckIn Firestore error: $e');
+        }
+      }
+
       if (canUseJackpot) {
         await contributeStars(
           stars: 10,
@@ -1332,7 +1390,8 @@ class FamilyJackpotService extends ChangeNotifier {
 
   bool isDailyCheckInCompletedToday() {
     final todayKey = DateTime.now().toIso8601String().substring(0, 10);
-    return _awardedCheckInDates.contains(todayKey);
+    return _awardedCheckInDates.contains(todayKey) ||
+        _jackpot.isDailyCheckInAwardedForDate(todayKey);
   }
 
   /// Thành viên điểm danh hôm nay. Nếu toàn bộ thành viên gia đình đã điểm danh đủ,
@@ -1346,7 +1405,21 @@ class FamilyJackpotService extends ChangeNotifier {
     final userSet = _dailyCheckIns.putIfAbsent(todayKey, () => <String>{});
     userSet.add(userId);
 
-    if (_awardedCheckInDates.contains(todayKey)) {
+    // Cập nhật member đã điểm danh lên Firestore
+    if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+      try {
+        final docRef = _firestore!
+            .collection('families')
+            .doc(_currentFamilyId)
+            .collection('jackpot')
+            .doc('current');
+        docRef.set({
+          'dailyCheckedInMemberIds': FieldValue.arrayUnion([userId]),
+        }, SetOptions(merge: true)).catchError((_) {});
+      } catch (_) {}
+    }
+
+    if (isDailyCheckInCompletedToday()) {
       notifyListeners();
       return false;
     }
@@ -1354,6 +1427,35 @@ class FamilyJackpotService extends ChangeNotifier {
     final threshold = totalFamilyMembers > 0 ? totalFamilyMembers : 1;
     if (userSet.length >= threshold) {
       _awardedCheckInDates.add(todayKey);
+      final updatedList = List<String>.from(_jackpot.dailyCheckInAwardedDates);
+      if (!updatedList.contains(todayKey)) {
+        updatedList.add(todayKey);
+      }
+      _jackpot = _jackpot.copyWith(
+        lastDailyCheckInAwardedDate: todayKey,
+        dailyCheckInAwardedDates: updatedList,
+        dailyCheckedInMemberIds: userSet.toList(),
+      );
+
+      // Lưu ngay vào Firestore
+      if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+        try {
+          final docRef = _firestore!
+              .collection('families')
+              .doc(_currentFamilyId)
+              .collection('jackpot')
+              .doc('current');
+          await docRef.set({
+            'lastDailyCheckInAwardedDate': todayKey,
+            'dailyCheckInAwardedDates': FieldValue.arrayUnion([todayKey]),
+            'dailyCheckedInMemberIds': userSet.toList(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('FamilyJackpotService checkInDaily Firestore error: $e');
+        }
+      }
+
       // Chỉ tăng sao vào hũ nếu gia đình đang có Premium
       if (canUseJackpot) {
         await contributeStars(
@@ -2008,8 +2110,15 @@ class FamilyJackpotService extends ChangeNotifier {
 
   /// Đặt lại Hũ mới sau khi nổ hũ xong (Bảo toàn 100% ví tiền thưởng tích lũy chưa rút của thành viên)
   Future<void> resetJackpot() async {
+    // Giữ nguyên lịch sử điểm danh hôm nay, KHÔNG xóa _awardedCheckInDates
+    // để tránh việc vừa nổ hũ xong lại cộng lặp 10 sao cho cùng một ngày
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    final todayCheckIns = _dailyCheckIns[todayKey];
     _dailyCheckIns.clear();
-    _awardedCheckInDates.clear();
+    if (todayCheckIns != null && todayCheckIns.isNotEmpty) {
+      _dailyCheckIns[todayKey] = todayCheckIns;
+    }
+
     _localMyShakeCount = 0;
     _isTransitioningPhase = false;
     _stopCountdownTimer();

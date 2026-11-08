@@ -2358,7 +2358,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                                 ),
                               ),
                               Text(
-                                '$prefix${tx.amount} đ',
+                                '$prefix${tx.amount} ⭐',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.bold,

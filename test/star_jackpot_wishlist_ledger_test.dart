@@ -801,6 +801,7 @@ void main() {
 
       test('6.6 syncCheckInsFromMembers syncs check-in status from home members (with and without Premium)', () async {
         final jackpotSvc = FamilyJackpotService.instance;
+        jackpotSvc.resetDailyMissionStateForTesting();
         await jackpotSvc.resetJackpot();
 
         final member1 = FamilyMemberModel(
@@ -823,6 +824,7 @@ void main() {
         expect(jackpotSvc.jackpot.totalPoolStars, 10);
 
         // Case B: When family does NOT have Premium -> pot stars remain 0, no stars added
+        jackpotSvc.resetDailyMissionStateForTesting();
         await jackpotSvc.resetJackpot();
         jackpotSvc.overrideCanUseJackpotForTest = false;
         await jackpotSvc.syncCheckInsFromMembers([member1, member2]);

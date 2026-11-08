@@ -35,6 +35,9 @@ class FamilyJackpotModel {
   final DateTime? lobbyExpiresAt; // Thời điểm hết hạn phiếu chờ (5 phút)
   final List<String> lobbyTargetMemberIds; // Danh sách thành viên được phụ huynh chọn tham gia
   final List<String> lobbyAcceptedMemberIds; // Danh sách thành viên đã bấm xác nhận tham gia
+  final String? lastDailyCheckInAwardedDate; // Ngày gần nhất hũ đã nhận +10 ⭐ điểm danh (YYYY-MM-DD)
+  final List<String> dailyCheckInAwardedDates; // Danh sách các ngày đã được cộng sao điểm danh (chống cộng lặp)
+  final List<String> dailyCheckedInMemberIds; // Danh sách ID thành viên gia đình đã điểm danh hôm nay
 
   const FamilyJackpotModel({
     required this.familyId,
@@ -60,6 +63,9 @@ class FamilyJackpotModel {
     this.lobbyExpiresAt,
     this.lobbyTargetMemberIds = const [],
     this.lobbyAcceptedMemberIds = const [],
+    this.lastDailyCheckInAwardedDate,
+    this.dailyCheckInAwardedDates = const [],
+    this.dailyCheckedInMemberIds = const [],
   });
 
   FamilyJackpotModel copyWith({
@@ -94,6 +100,10 @@ class FamilyJackpotModel {
     bool clearLobbyExpiresAt = false,
     List<String>? lobbyTargetMemberIds,
     List<String>? lobbyAcceptedMemberIds,
+    String? lastDailyCheckInAwardedDate,
+    bool clearLastDailyCheckInAwardedDate = false,
+    List<String>? dailyCheckInAwardedDates,
+    List<String>? dailyCheckedInMemberIds,
   }) {
     return FamilyJackpotModel(
       familyId: familyId ?? this.familyId,
@@ -119,7 +129,22 @@ class FamilyJackpotModel {
       lobbyExpiresAt: clearLobbyExpiresAt ? null : (lobbyExpiresAt ?? this.lobbyExpiresAt),
       lobbyTargetMemberIds: lobbyTargetMemberIds ?? this.lobbyTargetMemberIds,
       lobbyAcceptedMemberIds: lobbyAcceptedMemberIds ?? this.lobbyAcceptedMemberIds,
+      lastDailyCheckInAwardedDate: clearLastDailyCheckInAwardedDate ? null : (lastDailyCheckInAwardedDate ?? this.lastDailyCheckInAwardedDate),
+      dailyCheckInAwardedDates: dailyCheckInAwardedDates ?? this.dailyCheckInAwardedDates,
+      dailyCheckedInMemberIds: dailyCheckedInMemberIds ?? this.dailyCheckedInMemberIds,
     );
+  }
+
+  /// Kiểm tra xem ngày cụ thể đã được cộng sao điểm danh cả nhà vào hũ chưa
+  bool isDailyCheckInAwardedForDate(String dateKey) {
+    if (lastDailyCheckInAwardedDate == dateKey) return true;
+    return dailyCheckInAwardedDates.contains(dateKey);
+  }
+
+  /// Kiểm tra xem hôm nay hũ đã nhận +10 ⭐ từ nhiệm vụ Cả nhà điểm danh chưa
+  bool get isDailyCheckInAwardedToday {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return isDailyCheckInAwardedForDate(todayKey);
   }
 
   bool get isIdle => status == JackpotStatus.idle;
@@ -221,6 +246,9 @@ class FamilyJackpotModel {
       'lobbyExpiresAt': lobbyExpiresAt != null ? Timestamp.fromDate(lobbyExpiresAt!) : null,
       'lobbyTargetMemberIds': lobbyTargetMemberIds,
       'lobbyAcceptedMemberIds': lobbyAcceptedMemberIds,
+      'lastDailyCheckInAwardedDate': lastDailyCheckInAwardedDate,
+      'dailyCheckInAwardedDates': dailyCheckInAwardedDates,
+      'dailyCheckedInMemberIds': dailyCheckedInMemberIds,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -267,6 +295,12 @@ class FamilyJackpotModel {
       return const [];
     }
 
+    final rawLastAwarded = data['lastDailyCheckInAwardedDate'] as String?;
+    final awardedDates = parseStringList(data['dailyCheckInAwardedDates']).toSet();
+    if (rawLastAwarded != null && rawLastAwarded.isNotEmpty) {
+      awardedDates.add(rawLastAwarded);
+    }
+
     return FamilyJackpotModel(
       familyId: familyId,
       totalPoolAmount: (data['totalPoolAmount'] as num?)?.toInt() ?? 0,
@@ -291,6 +325,9 @@ class FamilyJackpotModel {
       lobbyExpiresAt: parseDate(data['lobbyExpiresAt']),
       lobbyTargetMemberIds: parseStringList(data['lobbyTargetMemberIds']),
       lobbyAcceptedMemberIds: parseStringList(data['lobbyAcceptedMemberIds']),
+      lastDailyCheckInAwardedDate: rawLastAwarded,
+      dailyCheckInAwardedDates: awardedDates.toList(),
+      dailyCheckedInMemberIds: parseStringList(data['dailyCheckedInMemberIds']),
     );
   }
 }

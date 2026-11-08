@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fhub/Danh/models/family_jackpot_model.dart';
 import 'package:fhub/Danh/screens/family_jackpot_screen.dart';
 import 'package:fhub/Danh/services/family_jackpot_service.dart';
+import 'package:fhub/Long/models/family_member_model.dart';
+import 'package:fhub/Long/models/user_model.dart';
 
 void main() {
   group('Realtime Multiplayer Jackpot Lobby & 5-Minute Ticket Tests', () {
@@ -260,6 +262,90 @@ void main() {
       expect(service.jackpot.isShaking, isTrue);
 
       await service.resetJackpot();
+    });
+
+    test('11. Daily Check-in mission idempotency: +10 ⭐ is awarded strictly ONCE per day and persists across resetJackpot', () async {
+      final service = FamilyJackpotService.instance;
+      service.overrideCanUseJackpotForTest = true;
+      service.resetDailyMissionStateForTesting();
+      await service.resetJackpot();
+
+      final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+      expect(service.isDailyCheckInCompletedToday(), isFalse);
+      expect(service.jackpot.totalPoolStars, 0);
+
+      // Member 1 checks in
+      final firstCheck = await service.checkInDaily(userId: 'u1', userName: 'Member 1', totalFamilyMembers: 2);
+      expect(firstCheck, isFalse);
+      expect(service.jackpot.totalPoolStars, 0);
+      expect(service.isDailyCheckInCompletedToday(), isFalse);
+
+      // Member 2 checks in -> Threshold (2) reached -> Awards +10 ⭐
+      final secondCheck = await service.checkInDaily(userId: 'u2', userName: 'Member 2', totalFamilyMembers: 2);
+      expect(secondCheck, isTrue);
+      expect(service.jackpot.totalPoolStars, 10);
+      expect(service.isDailyCheckInCompletedToday(), isTrue);
+      expect(service.jackpot.lastDailyCheckInAwardedDate, todayStr);
+      expect(service.jackpot.dailyCheckInAwardedDates.contains(todayStr), isTrue);
+
+      // Repeated check-in attempts on the same day MUST NOT add any more stars!
+      final duplicateCheck = await service.checkInDaily(userId: 'u1', userName: 'Member 1', totalFamilyMembers: 2);
+      expect(duplicateCheck, isFalse);
+      expect(service.jackpot.totalPoolStars, 10);
+
+      // Member sync MUST NOT add stars again
+      final mockMembers = [
+        FamilyMemberModel(
+          familyId: 'f1',
+          user: UserModel(id: 'u1', name: 'Member 1', email: 'u1@test.com'),
+          role: Role.owner,
+          lastCheckInAt: DateTime.now(),
+        ),
+        FamilyMemberModel(
+          familyId: 'f1',
+          user: UserModel(id: 'u2', name: 'Member 2', email: 'u2@test.com'),
+          role: Role.member,
+          lastCheckInAt: DateTime.now(),
+        ),
+      ];
+      await service.syncCheckInsFromMembers(mockMembers);
+      expect(service.jackpot.totalPoolStars, 10);
+
+      // CRITICAL: Reset jackpot (after shake battle or user action)
+      await service.resetJackpot();
+      expect(service.jackpot.totalPoolStars, 0); // Pool resets to 0
+      // BUT daily check-in completed status MUST PERSIST for today!
+      expect(service.isDailyCheckInCompletedToday(), isTrue);
+      expect(service.jackpot.lastDailyCheckInAwardedDate, todayStr);
+
+      // Now sync or check-in again -> STILL BLOCKED, does NOT re-award +10 ⭐!
+      await service.syncCheckInsFromMembers(mockMembers);
+      expect(service.jackpot.totalPoolStars, 0); // Still 0, no duplicate +10!
+      final postResetCheck = await service.checkInDaily(userId: 'u1', userName: 'Member 1', totalFamilyMembers: 2);
+      expect(postResetCheck, isFalse);
+      expect(service.jackpot.totalPoolStars, 0);
+    });
+
+    test('12. Model serialization: lastDailyCheckInAwardedDate & dailyCheckInAwardedDates serialize and deserialize properly', () {
+      final model = FamilyJackpotModel(
+        familyId: 'f1',
+        totalPoolAmount: 50,
+        lastDailyCheckInAwardedDate: '2026-11-08',
+        dailyCheckInAwardedDates: const ['2026-11-07', '2026-11-08'],
+        dailyCheckedInMemberIds: const ['u1', 'u2'],
+      );
+
+      final map = model.toMap();
+      expect(map['lastDailyCheckInAwardedDate'], '2026-11-08');
+      expect(map['dailyCheckInAwardedDates'], ['2026-11-07', '2026-11-08']);
+      expect(map['dailyCheckedInMemberIds'], ['u1', 'u2']);
+
+      final restored = FamilyJackpotModel.fromMap('f1', map);
+      expect(restored.lastDailyCheckInAwardedDate, '2026-11-08');
+      expect(restored.dailyCheckInAwardedDates, containsAll(['2026-11-07', '2026-11-08']));
+      expect(restored.dailyCheckedInMemberIds, containsAll(['u1', 'u2']));
+      expect(restored.isDailyCheckInAwardedForDate('2026-11-08'), isTrue);
+      expect(restored.isDailyCheckInAwardedForDate('2026-11-09'), isFalse);
     });
   });
 }
