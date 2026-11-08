@@ -638,7 +638,9 @@ class MultiTierEscalationService {
             reminder,
             currentUserId: _lastCurrentUserId,
             currentUserName: _lastCurrentUserName,
-          )) break;
+          )) {
+            break;
+          }
           HapticFeedback.heavyImpact();
           Future.delayed(const Duration(milliseconds: 250), () {
             try {
