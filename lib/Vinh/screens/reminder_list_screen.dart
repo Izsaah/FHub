@@ -87,6 +87,17 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   String _searchQuery = '';
   final _searchController = TextEditingController();
   Timer? _deleteSnackBarTimer;
+  Timer? _clockTicker;
+  List<ReminderModel> _lastLoadedReminders = [];
+
+  void _checkDueReminders() {
+    if (_lastLoadedReminders.isEmpty || !mounted) return;
+    MultiTierEscalationService.instance.syncReminders(
+      _lastLoadedReminders,
+      context: context,
+      onOpenDetail: _showDetailBottomSheet,
+    );
+  }
 
   // Realtime listeners
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _familyMembersSub;
@@ -161,6 +172,13 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
     // 3. Đăng ký lắng nghe sự kiện thay đổi family_members từ Firestore theo thời gian thực (Realtime)
     _listenToFirestoreFamilyMembers();
+
+    // 4. Ticker đồng hồ thời gian thực mỗi 3 giây: Tự động đổi trạng thái Quá hạn và Bật chuông/thông báo khi tới giờ
+    _clockTicker = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted) return;
+      _checkDueReminders();
+      setState(() {});
+    });
   }
 
   @override
@@ -178,6 +196,7 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   @override
   void dispose() {
     FamilyDataService().selectedFamilyIdNotifier.removeListener(_onGlobalFamilyNotifierChanged);
+    _clockTicker?.cancel();
     _familyMembersSub?.cancel();
     _deleteSnackBarTimer?.cancel();
     _searchController.dispose();
@@ -1731,6 +1750,12 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   : _repository.watchReminders(familyId: _familyId),
               builder: (context, snapshot) {
                 final allReminders = snapshot.data ?? [];
+                _lastLoadedReminders = allReminders;
+                MultiTierEscalationService.instance.syncReminders(
+                  allReminders,
+                  context: context,
+                  onOpenDetail: _showDetailBottomSheet,
+                );
 
                 // 1. Lọc theo Scope:
                 // - Cả nhà (!_filterOnlyMine): Chỉ hiện lời nhắc thuộc family đang được chọn (_familyId)

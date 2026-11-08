@@ -37,9 +37,31 @@ class _CalendarPageState extends State<CalendarPage> {
       DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
   Timer? _deleteSnackBarTimer;
+  Timer? _clockTicker;
+  List<ReminderModel> _lastLoadedReminders = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Ticker đồng hồ thời gian thực mỗi 3 giây: tự động chuyển task sang Quá hạn & kích hoạt chuông/thông báo
+    _clockTicker = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted) return;
+      _checkDueReminders();
+      setState(() {});
+    });
+  }
+
+  void _checkDueReminders() {
+    if (_lastLoadedReminders.isEmpty || !mounted) return;
+    MultiTierEscalationService.instance.syncReminders(
+      _lastLoadedReminders,
+      context: context,
+    );
+  }
 
   @override
   void dispose() {
+    _clockTicker?.cancel();
     _deleteSnackBarTimer?.cancel();
     super.dispose();
   }
@@ -365,6 +387,11 @@ class _CalendarPageState extends State<CalendarPage> {
             stream: widget.repository.watchReminders(familyId: widget.familyId),
             builder: (context, snapshot) {
               final allReminders = snapshot.data ?? [];
+              _lastLoadedReminders = allReminders;
+              MultiTierEscalationService.instance.syncReminders(
+                allReminders,
+                context: context,
+              );
               final dayReminders = allReminders
                   .where((r) => r.date == selectedDateStr && !r.isDeleted)
                   .toList();

@@ -1,7 +1,11 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../main.dart';
+import '../../Danh/services/notification_service.dart';
 import '../models/reminder_model.dart';
+import '../widgets/due_reminder_alert_dialog.dart';
+import 'alarm_sound_service.dart';
 import 'quiet_hours_engine.dart';
 
 /// 3 Mốc báo động đa tầng theo tài liệu EPIC Module 6:
@@ -123,6 +127,79 @@ class MultiTierEscalationService {
     }
   }
 
+  /// Tập hợp các reminderId đã được phát chuông & hiện popup khi đến hạn (tránh hiện lặp lại liên tục)
+  final Set<String> _alertedDueReminderIds = {};
+  Set<String> get alertedDueReminderIds => _alertedDueReminderIds;
+
+  /// Kích hoạt chuông reo báo thức và hiển thị Khung Thông Báo Nổi (Due Alert Dialog)
+  void triggerDueAlarmAndPopup(
+    ReminderModel reminder, {
+    BuildContext? context,
+    void Function(ReminderModel)? onOpenDetail,
+  }) {
+    if (_alertedDueReminderIds.contains(reminder.id)) return;
+    _alertedDueReminderIds.add(reminder.id);
+
+    // 1. Kích hoạt chuông reo & rung
+    AlarmSoundService.instance.startAlarm();
+
+    // 2. Bắn thông báo In-app vào Notification Hub
+    unawaited(
+      NotificationService.instance.addNotification(
+        familyId: reminder.familyId,
+        targetUserId: reminder.assignedTo,
+        title: '⏰ Đến giờ: ${reminder.title}!',
+        titleEn: '⏰ Task Due: ${reminder.title}!',
+        body:
+            'Nhiệm vụ "${reminder.title}" giao cho ${reminder.assignedToName} đã đến giờ thực hiện (${reminder.time}). Hãy hoàn tất ngay nhé!',
+        bodyEn:
+            'Task "${reminder.title}" assigned to ${reminder.assignedToName} is due now (${reminder.time}). Please complete it!',
+        type: 'task_due',
+      ),
+    );
+
+    // 3. Hiển thị Khung Thông Báo Nổi (Due Task Alert Dialog)
+    final targetContext = context ?? navigatorKey.currentContext;
+    if (targetContext != null && !DueReminderAlertDialog.isShowing) {
+      DueReminderAlertDialog.show(
+        targetContext,
+        reminder: reminder,
+        onOpenDetail: onOpenDetail,
+      );
+    }
+  }
+
+  /// Quét đồng bộ danh sách lời nhắc để tự động hẹn giờ và kiểm tra nhiệm vụ đến hạn
+  void syncReminders(
+    List<ReminderModel> reminders, {
+    BuildContext? context,
+    void Function(ReminderModel)? onOpenDetail,
+  }) {
+    final now = DateTime.now();
+    for (final r in reminders) {
+      if (r.isCompleted || r.isDeleted || r.isSubmitted) {
+        cancelEscalation(r.id);
+        continue;
+      }
+
+      final dt = r.dueDateTime;
+      if (dt == null) continue;
+
+      // Nếu task vừa đến hạn / quá hạn trong vòng 2 tiếng gần nhất
+      if (dt.isBefore(now)) {
+        final diff = now.difference(dt);
+        if (diff.inHours < 2 && !_alertedDueReminderIds.contains(r.id)) {
+          triggerDueAlarmAndPopup(r, context: context, onOpenDetail: onOpenDetail);
+        }
+      } else {
+        // Nếu task chưa đến giờ -> đặt lịch timer đa tầng nếu chưa có
+        if (!hasActiveEscalation(r.id)) {
+          scheduleMultiTierEscalation(r);
+        }
+      }
+    }
+  }
+
   /// Tự động hủy toàn bộ các mốc hẹn giờ rung (+6h và +12h) khi bấm Complete
   void cancelEscalation(String reminderId) {
     final timers = _activeTimers.remove(reminderId);
@@ -131,6 +208,7 @@ class MultiTierEscalationService {
         t.cancel();
       }
     }
+    AlarmSoundService.instance.stopAlarm();
   }
 
   /// Hủy toàn bộ tất cả timers đang active
@@ -141,6 +219,8 @@ class MultiTierEscalationService {
       }
     }
     _activeTimers.clear();
+    _alertedDueReminderIds.clear();
+    AlarmSoundService.instance.stopAlarm();
   }
 
   /// Kiểm tra xem lời nhắc có timers đa tầng đang chạy không
@@ -152,10 +232,7 @@ class MultiTierEscalationService {
     try {
       switch (tier) {
         case EscalationTier.tier1Due:
-          // Nhắc nhẹ: Rung nhẹ 1 nhịp
-          HapticFeedback.lightImpact();
-          debugPrint(
-              '🔔 [Escalation 0h] Đến giờ thực hiện: ${reminder.title}');
+          triggerDueAlarmAndPopup(reminder);
           break;
 
         case EscalationTier.tier2SixHours:
@@ -168,6 +245,19 @@ class MultiTierEscalationService {
           });
           debugPrint(
               '⚠️ [Escalation +6h] Quá hạn 6 tiếng: Bạn ơi, việc "${reminder.title}" đã quá hạn 6 tiếng rồi!');
+          unawaited(
+            NotificationService.instance.addNotification(
+              familyId: reminder.familyId,
+              targetUserId: reminder.assignedTo,
+              title: '⚠️ Quá hạn 6 tiếng: ${reminder.title}!',
+              titleEn: '⚠️ 6h Overdue: ${reminder.title}!',
+              body:
+                  'Nhiệm vụ "${reminder.title}" đã quá hạn 6 tiếng chưa được nộp nghiệm thu. Hãy kiểm tra lại!',
+              bodyEn:
+                  'Task "${reminder.title}" is 6 hours overdue. Please check and complete!',
+              type: 'task_overdue_6h',
+            ),
+          );
           break;
 
         case EscalationTier.tier3TwelveHours:
@@ -180,6 +270,18 @@ class MultiTierEscalationService {
           });
           debugPrint(
               '🚨 [Escalation +12h] Báo động khẩn: Việc "${reminder.title}" giao cho ${reminder.assignedToName} đã quá 12 tiếng chưa hoàn thành!');
+          unawaited(
+            NotificationService.instance.addNotification(
+              familyId: reminder.familyId,
+              title: '🚨 Báo động quá hạn 12 tiếng: ${reminder.title}!',
+              titleEn: '🚨 12h Overdue Alert: ${reminder.title}!',
+              body:
+                  'Việc "${reminder.title}" giao cho ${reminder.assignedToName} đã quá hạn hơn nửa ngày chưa hoàn tất!',
+              bodyEn:
+                  'Task "${reminder.title}" assigned to ${reminder.assignedToName} has been overdue for 12 hours!',
+              type: 'task_overdue_12h',
+            ),
+          );
           break;
       }
     } catch (e) {
