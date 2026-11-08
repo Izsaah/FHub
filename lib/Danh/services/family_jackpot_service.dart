@@ -1221,9 +1221,11 @@ class FamilyJackpotService extends ChangeNotifier {
         String? topUid;
         int maxAmount = 0;
         contribs.forEach((k, v) {
-          if (v > maxAmount) {
-            maxAmount = v;
-            topUid = k;
+          if (k != 'system_daily_mission' && !k.startsWith('system_')) {
+            if (v > maxAmount) {
+              maxAmount = v;
+              topUid = k;
+            }
           }
         });
 
@@ -1253,9 +1255,11 @@ class FamilyJackpotService extends ChangeNotifier {
       String? topUid;
       int maxAmount = 0;
       updatedContribs.forEach((k, v) {
-        if (v > maxAmount) {
-          maxAmount = v;
-          topUid = k;
+        if (k != 'system_daily_mission' && !k.startsWith('system_')) {
+          if (v > maxAmount) {
+            maxAmount = v;
+            topUid = k;
+          }
         }
       });
 
@@ -1523,9 +1527,11 @@ class FamilyJackpotService extends ChangeNotifier {
           String? topUid;
           int maxStars = 0;
           contribs.forEach((k, v) {
-            if (v > maxStars) {
-              maxStars = v;
-              topUid = k;
+            if (k != 'system_daily_mission' && !k.startsWith('system_')) {
+              if (v > maxStars) {
+                maxStars = v;
+                topUid = k;
+              }
             }
           });
 
@@ -1559,9 +1565,11 @@ class FamilyJackpotService extends ChangeNotifier {
     String? topUid;
     int maxStars = 0;
     updatedContribs.forEach((k, v) {
-      if (v > maxStars) {
-        maxStars = v;
-        topUid = k;
+      if (k != 'system_daily_mission' && !k.startsWith('system_')) {
+        if (v > maxStars) {
+          maxStars = v;
+          topUid = k;
+        }
       }
     });
 

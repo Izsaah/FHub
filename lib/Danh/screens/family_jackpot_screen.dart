@@ -864,7 +864,65 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     final hasUserAccepted = jackpot.lobbyAcceptedMemberIds.contains(myUid);
     final isParent = _isCurrentUserParent;
 
+    final totalMembers = _currentFamilyMembers.isNotEmpty ? _currentFamilyMembers.length : _jackpotService.totalFamilyMembersCount;
+    final isSoleMember = totalMembers <= 1;
+
     if (!isLobby) {
+      if (isSoleMember) {
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: !hasPool ? Colors.grey.shade400 : const Color(0xFFE65100),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: hasPool ? 4 : 0,
+            ),
+            icon: Icon(
+              !hasPool ? Icons.lock_clock_rounded : Icons.vibration_rounded,
+              size: 22,
+            ),
+            label: Text(
+              !hasPool
+                  ? AppLanguage.text('Hũ Đang Trống (0 ⭐) - Tích Sao Để Lắc', 'Pot Empty (0 ⭐) - Add Stars to Shake')
+                  : AppLanguage.text('🎲 BẮT ĐẦU NỔ HŨ NGAY (1 THÀNH VIÊN)', '🎲 START POT SHAKE NOW (1 MEMBER)'),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+            onPressed: () async {
+              if (!hasPool) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      AppLanguage.text(
+                        'Quỹ Hũ hiện đang là 0 ⭐! Hoàn thành Điểm danh mỗi ngày (+10 ⭐) để làm đầy Hũ trước khi Nổ Hũ nhé!',
+                        'Family Pot currently has 0 ⭐! Complete daily check-in (+10 ⭐) to fill the pot before shaking!',
+                      ),
+                    ),
+                    backgroundColor: const Color(0xFFE65100),
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+                return;
+              }
+              try {
+                await _jackpotService.initiateJackpotLobby(
+                  initiatorId: _jackpotService.currentUserId,
+                  initiatorName: _jackpotService.currentUserName,
+                  targetMemberIds: [_jackpotService.currentUserId],
+                );
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+          ),
+        );
+      }
+
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
@@ -2951,11 +3009,16 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
       ),
       child: Column(
         children: list.map((e) {
-          final name = jackpot.memberNames[e.key] ?? 'Thành viên';
-          final isTop = e.key == jackpot.topContributorId;
+          final isSystem = e.key == 'system_daily_mission' || e.key.startsWith('system_');
+          final name = isSystem
+              ? AppLanguage.text('Quỹ thưởng điểm danh (Hệ thống)', 'Daily Check-in Reward (System)')
+              : (jackpot.memberNames[e.key] ?? 'Thành viên');
+          final isTop = !isSystem && e.key == jackpot.topContributorId;
           return ListTile(
             dense: true,
-            leading: isTop ? DanhSvgs.crown(size: 20) : DanhSvgs.coin(size: 18),
+            leading: isSystem
+                ? const Icon(Icons.stars_rounded, color: Color(0xFFF57F17), size: 20)
+                : (isTop ? DanhSvgs.crown(size: 20) : DanhSvgs.coin(size: 18)),
             title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             trailing: Text(
               '${e.value} ⭐',

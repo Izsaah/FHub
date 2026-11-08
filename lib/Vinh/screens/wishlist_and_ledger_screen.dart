@@ -842,17 +842,17 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              _buildFilterChip('ALL', AppLanguage.text('Tất cả', 'All')),
+              _buildFilterChip('ALL', AppLanguage.text('Tất cả', 'All'), Icons.all_inclusive_rounded),
               const SizedBox(width: 8),
-              _buildFilterChip('TASK_REWARD', AppLanguage.text('Việc nhà (+⭐)', 'Chores (+⭐)')),
+              _buildFilterChip('TASK_REWARD', AppLanguage.text('Việc nhà', 'Chores'), Icons.task_alt_rounded),
               const SizedBox(width: 8),
-              _buildFilterChip('JACKPOT_WIN', AppLanguage.text('Nổ Hũ Sao (⭐)', 'Jackpot Pot (⭐)')),
+              _buildFilterChip('JACKPOT_WIN', AppLanguage.text('Nổ Hũ Sao', 'Jackpot Pot'), Icons.casino_outlined),
               const SizedBox(width: 8),
-              _buildFilterChip('RELATIVE_SPONSOR', AppLanguage.text('Lì xì Sao (🎁)', 'Gifts / Sponsor (🎁)')),
+              _buildFilterChip('RELATIVE_SPONSOR', AppLanguage.text('Lì xì Sao', 'Gifts / Sponsor'), Icons.card_giftcard_rounded),
               const SizedBox(width: 8),
-              _buildFilterChip('WISHLIST_CLAIM', AppLanguage.text('Đổi quà (-⭐)', 'Redemption (-⭐)')),
+              _buildFilterChip('WISHLIST_CLAIM', AppLanguage.text('Đổi quà', 'Redemption'), Icons.shopping_bag_outlined),
               const SizedBox(width: 8),
-              _buildFilterChip('CLAIM_REFUND', AppLanguage.text('Hoàn sao (🔄)', 'Refund (🔄)')),
+              _buildFilterChip('CLAIM_REFUND', AppLanguage.text('Hoàn sao', 'Refund'), Icons.replay_rounded),
             ],
           ),
         ),
@@ -943,11 +943,29 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
     );
   }
 
-  Widget _buildFilterChip(String code, String label) {
+  Widget _buildFilterChip(String code, String label, IconData icon) {
     final selected = _ledgerFilterType == code;
     return ChoiceChip(
+      avatar: Icon(
+        icon,
+        size: 16,
+        color: selected ? Colors.white : const Color(0xFF005F50),
+      ),
       label: Text(label),
       selected: selected,
+      selectedColor: const Color(0xFF005F50),
+      backgroundColor: Colors.white,
+      labelStyle: TextStyle(
+        fontSize: 12.5,
+        fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+        color: selected ? Colors.white : const Color(0xFF1B382B),
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: selected ? const Color(0xFF005F50) : const Color(0xFFCFE0D8),
+        ),
+      ),
       onSelected: (_) => setState(() => _ledgerFilterType = code),
     );
   }
