@@ -290,6 +290,9 @@ class _ReminderListScreenState extends State<ReminderListScreen>
     MultiTierEscalationService.instance.clockTick.removeListener(_onClockTick);
     FamilyDataService().selectedFamilyIdNotifier.removeListener(_onGlobalFamilyNotifierChanged);
     _clockTicker?.cancel();
+    _clockTicker = null;
+    MultiTierEscalationService.instance.stopClock();
+    MultiTierEscalationService.instance.cancelAll();
     _familyMembersSub?.cancel();
     _deleteSnackBarTimer?.cancel();
     _searchController.dispose();
@@ -1629,14 +1632,31 @@ class _ReminderListScreenState extends State<ReminderListScreen>
                       });
                     },
                   )
-                : Text(
-                    AppLanguage.text('Tổ Ấm Yêu Thương', 'Family Hub'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                      color: primaryColor,
-                      letterSpacing: -0.5,
-                    ),
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        AppLanguage.text('Tổ Ấm Yêu Thương', 'Family Hub'),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: primaryColor,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      if (_currentFamilyName.isNotEmpty)
+                        Text(
+                          _currentFamilyName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: primaryColor.withValues(alpha: 0.8),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
             backgroundColor: const Color(0xFFEDF5F2),
             elevation: 1,

@@ -21,9 +21,23 @@ import 'package:fhub/Vinh/widgets/reminder_detail_bottom_sheet.dart';
 import 'package:fhub/Vinh/widgets/multi_tier_simulation_dialog.dart';
 import 'package:fhub/Vinh/widgets/voice_reminder_player.dart';
 import 'package:fhub/Vinh/services/quiet_hours_engine.dart';
+import 'package:fhub/Vinh/services/alarm_sound_service.dart';
+import 'package:fhub/Vinh/services/multi_tier_escalation_service.dart';
 export 'package:fhub/Vinh/services/quiet_hours_engine.dart';
 
 void main() {
+  setUp(() {
+    AlarmSoundService.instance.disableAudioPlayerForTest = true;
+    MultiTierEscalationService.instance.stopClock();
+    MultiTierEscalationService.instance.cancelAll();
+  });
+
+  tearDown(() {
+    MultiTierEscalationService.instance.stopClock();
+    MultiTierEscalationService.instance.cancelAll();
+    AlarmSoundService.instance.stopAlarm();
+  });
+
   group('Reminder Validator Tests (Lab 11 Cases)', () {
     test('Empty reminder title fails validation (Case 3)', () {
       final resEmpty = ReminderValidator.validateTitle('');
@@ -2169,7 +2183,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 1. Default selected family is "Gia Đình An Bình" (first alphabetically)
-      expect(find.text('Gia Đình An Bình'), findsOneWidget);
+      expect(find.text('Gia Đình An Bình'), findsAtLeastNWidgets(1));
       expect(find.text('Mua trái cây cho Gia Đình An Bình'), findsOneWidget);
       // Does NOT show reminder from "Gia Đình Ngoại" in general view when "Gia Đình An Bình" is selected
       expect(find.text('Biếu thuốc bổ cho Gia Đình Ngoại'), findsNothing);

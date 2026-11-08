@@ -7,9 +7,20 @@ import 'package:fhub/Vinh/services/reminder_repository.dart';
 import 'package:fhub/Vinh/screens/reminder_list_screen.dart';
 import 'package:fhub/Vinh/widgets/weekly_calendar_strip.dart';
 import 'package:fhub/Vinh/widgets/reminder_empty_states.dart';
+import 'package:fhub/Vinh/services/multi_tier_escalation_service.dart';
 
 void main() {
   group('Empirical Milestone 0 Challenge Tests', () {
+    setUp(() {
+      MultiTierEscalationService.instance.stopClock();
+      MultiTierEscalationService.instance.cancelAll();
+    });
+
+    tearDown(() {
+      MultiTierEscalationService.instance.stopClock();
+      MultiTierEscalationService.instance.cancelAll();
+    });
+
     test('Empirical Git Branch Assertion: branch name must contain /vinh/', () {
       final result = Process.runSync('git', ['branch', '--show-current'],
           workingDirectory: Directory.current.path);

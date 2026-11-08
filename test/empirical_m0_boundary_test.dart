@@ -6,6 +6,7 @@ import 'package:fhub/Vinh/services/reminder_repository.dart';
 import 'package:fhub/Vinh/screens/reminder_list_screen.dart';
 import 'package:fhub/Vinh/widgets/reminder_empty_states.dart';
 import 'package:fhub/Vinh/widgets/family_progress_card.dart';
+import 'package:fhub/Vinh/services/multi_tier_escalation_service.dart';
 
 void main() {
   const testMembers = [
@@ -24,6 +25,16 @@ void main() {
   }
 
   group('M0 Empirical Boundary & Stress Challenge Tests', () {
+    setUp(() {
+      MultiTierEscalationService.instance.stopClock();
+      MultiTierEscalationService.instance.cancelAll();
+    });
+
+    tearDown(() {
+      MultiTierEscalationService.instance.stopClock();
+      MultiTierEscalationService.instance.cancelAll();
+    });
+
     test('Boundary 1: ReminderModel date & time parser resilience under malformed and null inputs', () {
       // 1a. JSON with null date
       final nullDateModel = ReminderModel.fromJson({

@@ -129,6 +129,11 @@ class PaymentService extends ChangeNotifier {
         planName: pending.planName,
         maxMembers: pending.maxMembers,
       );
+    } else if (_isFirebaseAvailable) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null && uid.isNotEmpty) {
+        _checkAndInheritAccountPremium(uid, familyId);
+      }
     }
 
     // Lắng nghe thay đổi gói cước theo thời gian thực từ Firestore
@@ -225,7 +230,25 @@ class PaymentService extends ChangeNotifier {
     }
     notifyListeners();
 
-    // Ghi trực tiếp lên Cloud Firestore nếu đã gắn familyId
+    // 1. Account-Level Premium: Lưu vào hồ sơ người dùng users/{userId}
+    final uid = _isFirebaseAvailable ? FirebaseAuth.instance.currentUser?.uid : null;
+    if (uid != null && uid.isNotEmpty) {
+      try {
+        await _firestore.collection('users').doc(uid).set({
+          'isPremium': true,
+          'planName': name,
+          'maxMembers': limit,
+          'subscriptionStartDate': FieldValue.serverTimestamp(),
+          'subscriptionEndDate': Timestamp.fromDate(expiry),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        debugPrint('PaymentService: Persisted Account-Level Premium to users/$uid');
+      } catch (e) {
+        debugPrint('PaymentService: Error persisting to user doc: $e');
+      }
+    }
+
+    // 2. Ghi trực tiếp lên Cloud Firestore nếu đã gắn familyId
     if (_currentFamilyId.isNotEmpty) {
       try {
         await _firestore.collection('families').doc(_currentFamilyId).set({
@@ -243,12 +266,71 @@ class PaymentService extends ChangeNotifier {
     }
   }
 
+  /// Kiểm tra và kế thừa gói cước cấp tài khoản từ users/{userId} sang gia đình được chọn
+  Future<void> _checkAndInheritAccountPremium(String uid, String familyId) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(uid).get();
+      if (!userDoc.exists || userDoc.data() == null) return;
+      final uData = userDoc.data()!;
+      final bool userIsPrem = uData['isPremium'] as bool? ?? false;
+      if (!userIsPrem) return;
+
+      final dynamic endAt = uData['subscriptionEndDate'] ?? uData['endDate'];
+      DateTime? parsedEnd;
+      if (endAt is Timestamp) parsedEnd = endAt.toDate();
+      if (endAt is String) parsedEnd = DateTime.tryParse(endAt);
+
+      if (parsedEnd != null && parsedEnd.isBefore(DateTime.now())) return;
+
+      final String plan = uData['planName'] as String? ?? 'Family Hub Premium';
+      final int maxMem = uData['maxMembers'] as int? ?? 10;
+
+      // Kế thừa sang gia đình đang chọn
+      await _firestore.collection('families').doc(familyId).set({
+        'isPremium': true,
+        'planName': plan,
+        'maxMembers': maxMem,
+        if (parsedEnd != null) 'subscriptionEndDate': Timestamp.fromDate(parsedEnd),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      _currentSubscription = FamilySubscriptionModel(
+        familyId: familyId,
+        isPremium: true,
+        planName: plan,
+        maxMembers: maxMem,
+        endDate: parsedEnd,
+      );
+      notifyListeners();
+      debugPrint('PaymentService: Inherited Account-Level Premium to family $familyId');
+    } catch (e) {
+      debugPrint('PaymentService: checkAndInheritAccountPremium error: $e');
+    }
+  }
+
   // ─── Đặt lại về Free (Reset Test) ────────────────────────────────────────
 
   Future<void> resetToFreeForDemo() async {
     _currentSubscription = FamilySubscriptionModel.freeDefault(_currentFamilyId);
     _pendingSubscription = null;
     notifyListeners();
+
+    final uid = _isFirebaseAvailable ? FirebaseAuth.instance.currentUser?.uid : null;
+    if (uid != null && uid.isNotEmpty) {
+      try {
+        await _firestore.collection('users').doc(uid).set({
+          'isPremium': false,
+          'planName': 'Gói Cơ Bản (Free)',
+          'maxMembers': 4,
+          'subscriptionStartDate': null,
+          'subscriptionEndDate': null,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        debugPrint('PaymentService: Reset user $uid to Free on Firestore');
+      } catch (e) {
+        debugPrint('PaymentService: Error resetting user doc: $e');
+      }
+    }
 
     if (_currentFamilyId.isNotEmpty) {
       try {

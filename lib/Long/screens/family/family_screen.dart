@@ -31,6 +31,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   final _joinRequestService = JoinRequestService();
 
   late Future<Map<String, dynamic>> _familyDataFuture;
+  String? _currentFamilyName;
   bool _isLeaving = false;
 
   @override
@@ -64,7 +65,15 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   void _loadData() {
-    _familyDataFuture = _fetchFamilyData();
+    _familyDataFuture = _fetchFamilyData().then((data) {
+      final family = data['family'] as FamilyModel?;
+      if (mounted && _currentFamilyName != family?.name) {
+        setState(() {
+          _currentFamilyName = family?.name;
+        });
+      }
+      return data;
+    });
   }
 
   Future<Map<String, dynamic>> _fetchFamilyData() async {
@@ -570,6 +579,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
           backgroundColor: Colors.white,
           appBar: CustomAppBar(
             title: LongStrings.tabFamily,
+            subtitle: _currentFamilyName,
             actions: [
               IconButton(
                 icon: const Icon(Icons.group_add_outlined),

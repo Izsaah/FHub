@@ -34,7 +34,8 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
   @override
   void didUpdateWidget(covariant WeeklyCalendarStrip oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.showAll &&
+    if (oldWidget.selectedDate != widget.selectedDate &&
+        !widget.showAll &&
         (widget.selectedDate.isBefore(_weekStart) ||
             widget.selectedDate
                 .isAfter(_weekStart.add(const Duration(days: 6))))) {

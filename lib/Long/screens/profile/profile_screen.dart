@@ -22,6 +22,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _familyDataService = FamilyDataService();
   final ScrollController _familyScrollController = ScrollController();
   late Future<Map<String, dynamic>> _profileDataFuture;
+  String? _currentFamilyName;
 
   @override
   void initState() {
@@ -55,7 +56,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _loadData() {
-    _profileDataFuture = _fetchProfileData();
+    _profileDataFuture = _fetchProfileData().then((data) {
+      final family = data['family'] as FamilyModel?;
+      if (mounted && _currentFamilyName != family?.name) {
+        setState(() {
+          _currentFamilyName = family?.name;
+        });
+      }
+      return data;
+    });
   }
 
   Future<Map<String, dynamic>> _fetchProfileData() async {
@@ -527,12 +536,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Scaffold(
           appBar: CustomAppBar(
             title: LongStrings.profileTitle,
+            subtitle: _currentFamilyName,
           ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _profileDataFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+              child: Text(
+                LongStrings.t(
+                  'Đã có lỗi xảy ra: ${snapshot.error}',
+                  'An error occurred: ${snapshot.error}',
+                ),
+              ),
+            );
           }
 
           if (!snapshot.hasData) {
@@ -679,39 +696,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     color: Color(0xFF3E4946),
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFEDF5F2),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Row(
-                                        children: [
-                                          Icon(
-                                            Icons.bloodtype,
-                                            size: 14,
-                                            color: Color(0xFF005F50),
-                                          ),
-                                          SizedBox(width: 4),
-                                          Text(
-                                            'O+',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF005F50),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
+
                               ],
                             ),
                           ),

@@ -64,16 +64,22 @@ class ReminderListView extends StatelessWidget {
             final activeAllReminders =
                 allReminders.where((r) => !r.isDeleted).toList();
             if (activeAllReminders.isEmpty) {
-              return ReminderEmptyState(onCreatePressed: onCreatePressed);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 96),
+                child: ReminderEmptyState(onCreatePressed: onCreatePressed),
+              );
             }
 
             final activeReminders =
                 displayedReminders.where((r) => !r.isDeleted).toList();
 
             if (activeReminders.isEmpty) {
-              return ReminderDayEmptyState(
-                dateStr: selectedDateStr,
-                onShowAllPressed: onShowAllPressed,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 96),
+                child: ReminderDayEmptyState(
+                  dateStr: selectedDateStr,
+                  onShowAllPressed: onShowAllPressed,
+                ),
               );
             }
 
@@ -114,7 +120,7 @@ class ReminderListView extends StatelessWidget {
             return ListView(
               shrinkWrap: shrinkWrap,
               physics: physics,
-              padding: EdgeInsets.fromLTRB(16, 4, 16, shrinkWrap ? 24 : 110),
+              padding: EdgeInsets.fromLTRB(16, 4, 16, shrinkWrap ? 96 : 110),
               children: [
                 // 1. Nhóm Quá Hạn (Ưu tiên cao nhất)
                 if (overdueList.isNotEmpty) ...[
@@ -259,6 +265,9 @@ class ReminderListView extends StatelessWidget {
                     ),
                   ),
                 ],
+
+                // Khoảng đệm đáy chống che khuất bởi các nút FAB nổi (+ Tạo lời nhắc & ✨ Trợ lý AI)
+                const SizedBox(height: 88),
               ],
             );
           },

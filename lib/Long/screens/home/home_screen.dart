@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _familydataService = FamilyDataService();
 
   late Future<Map<String, dynamic>> _homeDataFuture;
+  String? _currentFamilyName;
 
   @override
   void initState() {
@@ -73,7 +74,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _loadData() {
-    _homeDataFuture = _fetchHomeData();
+    _homeDataFuture = _fetchHomeData().then((data) {
+      final family = data['family'] as FamilyModel?;
+      if (mounted && _currentFamilyName != family?.name) {
+        setState(() {
+          _currentFamilyName = family?.name;
+        });
+      }
+      return data;
+    });
   }
 
   Future<Map<String, dynamic>> _fetchHomeData() async {
@@ -334,6 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
           backgroundColor: Colors.white,
           appBar: CustomAppBar(
             title: LongStrings.tabHome,
+            subtitle: _currentFamilyName,
             actions: [
               IconButton(
                 icon: const Icon(Icons.group_add_outlined),

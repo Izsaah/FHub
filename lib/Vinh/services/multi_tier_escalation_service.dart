@@ -280,6 +280,12 @@ class MultiTierEscalationService {
     });
   }
 
+  /// Dừng bộ đếm nhịp đồng hồ thời gian thực toàn cục
+  void stopClock() {
+    _globalClockTimer?.cancel();
+    _globalClockTimer = null;
+  }
+
   /// Đặt lịch 3 mốc thời gian thực tế:
   /// - task_0h: đúng giờ hẹn (nhắc nhẹ, có áp dụng Quiet Hours nếu không phải CARE)
   /// - task_6h: scheduledTime + 6 tiếng (nhắc rung lần 1)
@@ -598,7 +604,7 @@ class MultiTierEscalationService {
     void Function(ReminderModel)? onOpenDetail,
   }) {
     try {
-      _trackedReminders = reminders;
+      _trackedReminders = List<ReminderModel>.from(reminders);
       if (currentUserId != null && currentUserId.isNotEmpty) {
         _lastCurrentUserId = currentUserId;
       }

@@ -142,7 +142,10 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
     WidgetsBinding.instance.removeObserver(this);
     MultiTierEscalationService.instance.clockTick.removeListener(_onClockTick);
     _clockTicker?.cancel();
+    _clockTicker = null;
     _deleteSnackBarTimer?.cancel();
+    MultiTierEscalationService.instance.stopClock();
+    MultiTierEscalationService.instance.cancelAll();
     super.dispose();
   }
 

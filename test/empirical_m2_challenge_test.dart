@@ -607,20 +607,20 @@ void main() {
       expect(fromFirestoreObj.proofImageUrl, 'https://img.com/p1.png');
       expect(fromFirestoreObj.isExemptFromQuietHours, isTrue);
 
-      // 2. toSupabaseMap (snake_case) -> fromJson
-      final supabaseMap = original.toSupabaseMap();
-      expect(supabaseMap['task_type'], 'CARE');
-      expect(supabaseMap['task_status'], 'SUBMITTED');
-      expect(supabaseMap['delegation_count'], 1);
-      expect(supabaseMap['delegated_from_user_id'], 'user_parent');
-      expect(supabaseMap['proof_image_url'], 'https://img.com/p1.png');
+      // 2. toJson (snake_case & camelCase) -> fromJson
+      final jsonMap = original.toJson();
+      expect(jsonMap['task_type'], 'CARE');
+      expect(jsonMap['task_status'], 'SUBMITTED');
+      expect(jsonMap['delegation_count'], 1);
+      expect(jsonMap['delegated_from_user_id'], 'user_parent');
+      expect(jsonMap['proof_image_url'], 'https://img.com/p1.png');
 
-      final fromSupabaseObj = ReminderModel.fromJson(supabaseMap);
-      expect(fromSupabaseObj.taskType, TaskType.care);
-      expect(fromSupabaseObj.taskStatus, TaskStatus.submitted);
-      expect(fromSupabaseObj.delegationCount, 1);
-      expect(fromSupabaseObj.delegatedFromUserId, 'user_parent');
-      expect(fromSupabaseObj.proofImageUrl, 'https://img.com/p1.png');
+      final fromJsonObj = ReminderModel.fromJson(jsonMap);
+      expect(fromJsonObj.taskType, TaskType.care);
+      expect(fromJsonObj.taskStatus, TaskStatus.submitted);
+      expect(fromJsonObj.delegationCount, 1);
+      expect(fromJsonObj.delegatedFromUserId, 'user_parent');
+      expect(fromJsonObj.proofImageUrl, 'https://img.com/p1.png');
     });
 
     test('copyWith clearProofImage and clearRejectionReason atomic resets', () {

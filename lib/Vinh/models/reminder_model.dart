@@ -629,44 +629,6 @@ class ReminderModel {
     };
   }
 
-  /// Maps directly to Supabase table `reminders`
-  Map<String, dynamic> toSupabaseMap() {
-    return {
-      if (id.isNotEmpty && id.contains('-')) 'id': id,
-      'family_id': familyId,
-      'creator_id': creatorId,
-      if (creatorName != null) 'creator_name': creatorName,
-      'assigned_to': assignedTo,
-      if (assignedToName.isNotEmpty) 'assigned_to_name': assignedToName,
-      'title': title,
-      'date': date,
-      'time': time,
-      'status': status,
-      'repeat_rule': repeatRule ?? 'NONE',
-      'requires_proof_image': requiresProofImage,
-      if (proofImageUrl != null) 'proof_image_url': proofImageUrl,
-      'reward_stars': rewardStars,
-      if (voiceNotePath != null) 'voice_note_path': voiceNotePath,
-      if (voiceDurationSeconds != null)
-        'voice_duration_seconds': voiceDurationSeconds,
-      if (voiceNoteDescription != null)
-        'voice_note_description': voiceNoteDescription,
-      if (completedAt != null) 'completed_at': completedAt?.toIso8601String(),
-      if (createdAt != null) 'created_at': createdAt?.toIso8601String(),
-      'task_type': taskType.dbValue,
-      'task_status': taskStatus.dbValue,
-      if (rejectionReason != null) 'rejection_reason': rejectionReason,
-      'delegation_count': delegationCount,
-      if (delegatedFromUserId != null)
-        'delegated_from_user_id': delegatedFromUserId,
-      if (originalTaskId != null) 'original_task_id': originalTaskId,
-      if (creatorHierarchyRole != null)
-        'creator_hierarchy_role': creatorHierarchyRole,
-      if (targetHierarchyRole != null)
-        'target_hierarchy_role': targetHierarchyRole,
-    };
-  }
-
   /// Maps directly to Cloud Firestore document format
   Map<String, dynamic> toFirestoreMap() {
     return {

@@ -249,13 +249,13 @@ void main() {
           expect(fromFirestore.taskStatus, original.taskStatus);
           expect(fromFirestore.createdAt?.year, original.createdAt?.year);
 
-          // 4. toSupabaseMap / fromJson round-trip
-          final supabaseData = original.toSupabaseMap();
-          supabaseData['id'] = original.id;
-          final fromSupabase = ReminderModel.fromJson(supabaseData);
-          expect(fromSupabase.taskType, original.taskType);
-          expect(fromSupabase.taskStatus, original.taskStatus);
-          expect(fromSupabase.delegationCount, original.delegationCount);
+          // 4. toMap / fromJson round-trip
+          final mapData = original.toMap();
+          mapData['id'] = original.id;
+          final fromMapObj = ReminderModel.fromJson(mapData);
+          expect(fromMapObj.taskType, original.taskType);
+          expect(fromMapObj.taskStatus, original.taskStatus);
+          expect(fromMapObj.delegationCount, original.delegationCount);
         }
       }
     });
