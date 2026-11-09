@@ -97,7 +97,16 @@ class _ReminderListScreenState extends State<ReminderListScreen>
   String? _cachedStreamFamilyId;
   bool? _cachedStreamFilterOnlyMine;
 
+  void _invalidateRemindersStream() {
+    _remindersStream = null;
+    _cachedStreamFamilyId = null;
+    _cachedStreamFilterOnlyMine = null;
+  }
+
   Stream<List<ReminderModel>> _getRemindersStream() {
+    if (!_hasFamily || _familyId.isEmpty) {
+      return Stream.value(const <ReminderModel>[]);
+    }
     if (_remindersStream == null ||
         _cachedStreamFamilyId != _familyId ||
         _cachedStreamFilterOnlyMine != _filterOnlyMine) {
@@ -174,6 +183,7 @@ class _ReminderListScreenState extends State<ReminderListScreen>
     _showAll = widget.initialShowAll;
     // 1. Lắng nghe thay đổi gia đình toàn cục từ FamilyDataService
     FamilyDataService().selectedFamilyIdNotifier.addListener(_onGlobalFamilyNotifierChanged);
+    FamilyDataService().membershipRevisionNotifier.addListener(_onGlobalMembershipRevisionChanged);
 
     // 2. Khởi tạo dữ liệu người dùng & gia đình
     if (widget.families != null &&
@@ -294,6 +304,7 @@ class _ReminderListScreenState extends State<ReminderListScreen>
     MultiTierEscalationService.instance.stopClock();
     MultiTierEscalationService.instance.cancelAll();
     FamilyDataService().selectedFamilyIdNotifier.removeListener(_onGlobalFamilyNotifierChanged);
+    FamilyDataService().membershipRevisionNotifier.removeListener(_onGlobalMembershipRevisionChanged);
     _clockTicker?.cancel();
     _clockTicker = null;
     _familyMembersSub?.cancel();
@@ -357,7 +368,15 @@ class _ReminderListScreenState extends State<ReminderListScreen>
     }
   }
 
+  void _onGlobalMembershipRevisionChanged() {
+    if (mounted) {
+      _invalidateRemindersStream();
+      _resolveContext();
+    }
+  }
+
   void _onGlobalFamilyNotifierChanged() {
+    _invalidateRemindersStream();
     final newFamilyId = FamilyDataService().selectedFamilyIdNotifier.value;
     if (newFamilyId == null || newFamilyId.isEmpty) {
       // Chỉ reload khi trạng thái hiện tại vẫn đang giữ gia đình cũ
@@ -375,6 +394,9 @@ class _ReminderListScreenState extends State<ReminderListScreen>
   }
 
   Future<void> _manualRefresh() async {
+    HapticFeedback.lightImpact();
+    _invalidateRemindersStream();
+    _lastLoadedReminders = [];
     HapticFeedback.lightImpact();
     FamilyDataService().clearCache();
     await _resolveContext();
@@ -457,6 +479,7 @@ class _ReminderListScreenState extends State<ReminderListScreen>
   }
 
   Future<void> _resolveContext({String? forcedFamilyId}) async {
+    _invalidateRemindersStream();
     try {
       String? userId = widget.currentUserId;
       String? userName = widget.currentUserName;
@@ -673,6 +696,7 @@ class _ReminderListScreenState extends State<ReminderListScreen>
   }
 
   Future<void> _selectFamily(FamilyOption family, {bool syncToService = true}) async {
+    _invalidateRemindersStream();
     if (_familyId == family.id) return;
     HapticFeedback.selectionClick();
     setState(() {

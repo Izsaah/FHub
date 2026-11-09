@@ -170,8 +170,94 @@ void main() {
       );
 
       expect(service.memberBalances['fam_1_child_2'], 25); // 10 + 15 = 25
+      expect(service.memberBalances['fam_1_parent_1'], 85); // 100 - 15 = 85 (sender deducted)
       final ledgerEntries = service.starLedger.values.where((e) => e['type'] == 'RELATIVE_SPONSOR');
       expect(ledgerEntries.isNotEmpty, true);
+    });
+
+    test('2.8 Lì Xì Anti-Exploit: Cannot send more than 20 stars in a single gift', () async {
+      expect(
+        () => service.giftStarsToChild(
+          familyId: 'fam_1',
+          senderId: 'parent_1',
+          senderName: 'Bố Tuấn',
+          senderRole: 'PARENT',
+          childId: 'child_1',
+          stars: 25,
+        ),
+        throwsA(isA<ArgumentError>().having(
+          (e) => e.message,
+          'message',
+          contains('tối đa'),
+        )),
+      );
+    });
+
+    test('2.9 Lì Xì Anti-Exploit: Cannot send more stars than sender current balance', () async {
+      service.memberBalances['fam_1_parent_low'] = 5;
+      expect(
+        () => service.giftStarsToChild(
+          familyId: 'fam_1',
+          senderId: 'parent_low',
+          senderName: 'Bố Tuấn',
+          senderRole: 'PARENT',
+          childId: 'child_1',
+          stars: 10,
+        ),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('Số dư sao không đủ'),
+        )),
+      );
+    });
+
+    test('2.10 Reward Concurrency & Removal: Pending reward blocks second claim, approved reward removed from catalog', () async {
+      final rtx = WishlistRewardItem(
+        id: 'rtx_5090',
+        title: 'RTX5090',
+        starCost: 10,
+        familyId: 'fam_1',
+        createdBy: 'parent_1',
+        createdByName: 'Bố Tuấn',
+        createdAt: DateTime(2026, 1, 1),
+      );
+      service.wishlistCatalog[rtx.id] = rtx;
+
+      // Child 1 claims RTX5090
+      final claim1 = await service.submitWishlistRedemption(
+        familyId: 'fam_1',
+        childId: 'child_1',
+        childName: 'Khoa Cao',
+        item: rtx,
+      );
+      expect(claim1.status, WishlistClaimStatus.pending);
+
+      // Child 2 tries to claim same RTX5090 at the same time -> blocked
+      expect(
+        () => service.submitWishlistRedemption(
+          familyId: 'fam_1',
+          childId: 'child_2',
+          childName: 'Bé Na',
+          item: rtx,
+        ),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('REWARD_ALREADY_CLAIMED'),
+        )),
+      );
+
+      // Parent approves Child 1's claim -> Reward permanently removed from catalog
+      await service.approveWishlistRedemption(
+        claimId: claim1.id,
+        guardianId: 'parent_1',
+        guardianName: 'Bố Tuấn',
+        guardianRole: 'PARENT',
+      );
+
+      expect(service.wishlistCatalog.containsKey(rtx.id), isFalse,
+          reason: 'Approved reward must no longer remain in catalog');
     });
 
     test('2.7 Refund: When parent rejects claim, 100% stars returned with REFUND ledger entry', () async {

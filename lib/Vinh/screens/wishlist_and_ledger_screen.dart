@@ -155,6 +155,9 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
             final pendingClaims = claims
                 .where((c) => c.status == WishlistClaimStatus.pending)
                 .toList();
+            final pendingItemIds = pendingClaims.map((c) => c.itemId).toSet();
+            final availableCatalog =
+                catalog.where((item) => !pendingItemIds.contains(item.id)).toList();
 
             return StreamBuilder<int>(
               stream: _starService.watchMemberBalance(
@@ -232,8 +235,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                         Tab(
                           icon: const Icon(Icons.storefront_rounded, size: 18),
                           text: AppLanguage.text(
-                            'Đổi Quà Phúc Lợi (${catalog.length})',
-                            'Reward Shop (${catalog.length})',
+                            'Đổi Quà Phúc Lợi (${availableCatalog.length})',
+                            'Reward Shop (${availableCatalog.length})',
                           ),
                         ),
                         Tab(
@@ -250,7 +253,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                     controller: _tabController,
                     children: [
                       _buildWishlistShopTab(
-                        catalog,
+                        availableCatalog,
                         claims,
                         pendingClaims,
                         liveBalance,
@@ -607,25 +610,29 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
           ),
           if (_isGuardian) ...[
             const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 OutlinedButton.icon(
                   key: Key('btn_reject_claim_${claim.id}'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFFC62828),
                     side: const BorderSide(color: Color(0xFFC62828)),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   ),
                   icon: const Icon(Icons.replay_rounded, size: 16),
                   label: Text(AppLanguage.text('Từ chối & Hoàn sao', 'Reject & Refund')),
                   onPressed: () => _handleRejectClaim(claim),
                 ),
-                const SizedBox(width: 8),
                 ElevatedButton.icon(
                   key: Key('btn_approve_claim_${claim.id}'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2E7D32),
                     foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   ),
                   icon: const Icon(Icons.check_circle_rounded, size: 16),
                   label: Text(AppLanguage.text('Đồng ý trao quà', 'Approve & Grant')),
@@ -971,6 +978,23 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   }
 
   Future<void> _handleRedeemReward(WishlistRewardItem item) async {
+    final isAlreadyPending = _starService
+        .getWishlistClaims(widget.familyId)
+        .any((c) => c.itemId == item.id && c.status == WishlistClaimStatus.pending);
+    if (isAlreadyPending) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              '⚠️ Phần thưởng này đang có yêu cầu đổi chờ phụ huynh duyệt!',
+              '⚠️ This reward already has a pending redemption request awaiting parent approval!',
+            ),
+          ),
+          backgroundColor: const Color(0xFFD84315),
+        ),
+      );
+      return;
+    }
     if (widget.currentUserId.isNotEmpty && widget.currentUserId == item.createdBy) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1393,8 +1417,11 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: AppLanguage.text('Số sao lì xì (1 - 20 ⭐)', 'Gift stars amount (1 - 20 ⭐)'),
-                    helperText: AppLanguage.text('Tối đa 20 ⭐ mỗi lần lì xì khích lệ', 'Limit: max 20 ⭐ per gift'),
-                    prefixIcon: Icon(Icons.stars_rounded, color: Colors.amber),
+                    helperText: AppLanguage.text(
+                      'Tối đa 20 ⭐ và không quá số dư hiện có ($_myStarBalance ⭐)',
+                      'Limit: max 20 ⭐ and not exceeding current balance ($_myStarBalance ⭐)',
+                    ),
+                    prefixIcon: const Icon(Icons.stars_rounded, color: Colors.amber),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1402,7 +1429,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   controller: noteCtrl,
                   decoration: InputDecoration(
                     labelText: AppLanguage.text('Lời nhắn khích lệ', 'Encouragement message'),
-                    prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
+                    prefixIcon: const Icon(Icons.chat_bubble_outline_rounded),
                   ),
                 ),
               ],
@@ -1426,6 +1453,18 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(AppLanguage.text('Số sao tặng mỗi lần phải từ 1 đến 20 ⭐!', 'Gifted stars must be between 1 and 20 ⭐!')),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                if (stars > _myStarBalance) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(AppLanguage.text(
+                        'Số sao tặng không được vượt quá số sao bạn hiện có ($_myStarBalance ⭐)!',
+                        'Cannot gift more than your current star balance ($_myStarBalance ⭐)!',
+                      )),
                       backgroundColor: Colors.red,
                     ),
                   );
