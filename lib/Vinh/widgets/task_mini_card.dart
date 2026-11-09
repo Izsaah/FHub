@@ -165,6 +165,63 @@ class TaskMiniCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (reminder.requiresProofImage || reminder.rewardStars > 0) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (reminder.requiresProofImage)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFC8E6C9), width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.camera_alt_outlined, size: 12, color: Color(0xFF2E7D32)),
+                            const SizedBox(width: 4),
+                            Text(
+                              AppLanguage.text('Cần chụp ảnh nghiệm thu', 'Proof required'),
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF2E7D32),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (reminder.rewardStars > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF8E1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFFFE082), width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star_rounded, size: 13, color: Color(0xFFF57F17)),
+                            const SizedBox(width: 3),
+                            Text(
+                              '+${reminder.rewardStars} ${AppLanguage.text("sao thưởng", "stars")}',
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFF57F17),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 10),
 
               // Nút thao tác

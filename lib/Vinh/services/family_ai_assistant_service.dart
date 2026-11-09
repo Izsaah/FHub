@@ -357,11 +357,87 @@ class FamilyAiAssistantService {
 
     // 1.5. CASE: HỎI VỀ ĐIỂM DANH / CHECK-IN HÔM NAY
     if (_isCheckInIntent(lower)) {
+      final checkedInList = <String>[];
+      final notCheckedInList = <String>[];
+
+      if (Firebase.apps.isNotEmpty) {
+        try {
+          final snap = await FirebaseFirestore.instance
+              .collection('family_members')
+              .where('familyId', isEqualTo: familyId)
+              .get()
+              .timeout(const Duration(seconds: 3));
+
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            final status = (data['status'] ?? 'ACTIVE').toString().toUpperCase();
+            if (status != 'ACTIVE') continue;
+
+            final uid = (data['userId'] ?? data['user_id'] ?? doc.id).toString();
+            final memberMatch = familyMembers.where((m) => m.id == uid).firstOrNull;
+            String name = memberMatch?.name ??
+                (data['name'] ?? data['userName'] ?? data['displayName'] ?? '').toString().trim();
+            if (name.isEmpty || name == 'Thành viên') {
+              if (uid == currentUserId) {
+                name = currentUserName;
+              } else {
+                try {
+                  final uDoc = await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(uid)
+                      .get()
+                      .timeout(const Duration(seconds: 2));
+                  final n = (uDoc.data()?['name'] ?? uDoc.data()?['displayName'])?.toString().trim();
+                  if (n != null && n.isNotEmpty) name = n;
+                } catch (_) {}
+              }
+            }
+            if (name.isEmpty) name = 'Thành viên ($uid)';
+
+            final lastCheckIn = data['lastCheckInAt'] ?? data['last_check_in_at'];
+            bool isToday = false;
+            String timeStr = '';
+            if (lastCheckIn is Timestamp) {
+              final dt = lastCheckIn.toDate();
+              if (dt.year == effectiveNow.year && dt.month == effectiveNow.month && dt.day == effectiveNow.day) {
+                isToday = true;
+                timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+              }
+            } else if (lastCheckIn is String) {
+              final dt = DateTime.tryParse(lastCheckIn);
+              if (dt != null && dt.year == effectiveNow.year && dt.month == effectiveNow.month && dt.day == effectiveNow.day) {
+                isToday = true;
+                timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+              }
+            }
+
+            if (isToday) {
+              checkedInList.add('$name (lúc $timeStr)');
+            } else {
+              notCheckedInList.add(name);
+            }
+          }
+        } catch (_) {}
+      }
+
       final buffer = StringBuffer();
       buffer.writeln('📋 TÌNH HÌNH ĐIỂM DANH GIA ĐÌNH HÔM NAY ($todayStr):');
-      buffer.writeln('• Chưa có thành viên nào ghi nhận điểm danh hôm nay.');
-      if (familyMembers.isNotEmpty) {
-        buffer.writeln('\n⏳ Danh sách thành viên gia đình:');
+      if (checkedInList.isNotEmpty) {
+        buffer.writeln('✅ Đã điểm danh (${checkedInList.length}/${checkedInList.length + notCheckedInList.length} thành viên):');
+        for (final c in checkedInList) {
+          buffer.writeln('  • $c');
+        }
+      } else {
+        buffer.writeln('• Chưa có thành viên nào ghi nhận điểm danh hôm nay.');
+      }
+
+      if (notCheckedInList.isNotEmpty) {
+        buffer.writeln('\n⏳ Chưa thực hiện điểm danh an toàn (${notCheckedInList.length} thành viên):');
+        for (final nc in notCheckedInList) {
+          buffer.writeln('  • $nc');
+        }
+      } else if (familyMembers.isNotEmpty && checkedInList.isEmpty) {
+        buffer.writeln('\n⏳ Danh sách thành viên cần điểm danh:');
         for (final m in familyMembers) {
           buffer.writeln('  • ${m.name} (${m.roleDisplayName})');
         }
