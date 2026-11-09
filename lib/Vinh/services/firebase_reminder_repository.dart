@@ -130,7 +130,7 @@ class FirebaseReminderRepository implements ReminderRepository {
       // Real-time snapshot stream
       yield* col
           .where('familyId', isEqualTo: familyId)
-          .snapshots()
+          .snapshots().handleError((e) { debugPrint('FirebaseReminderRepository watchReminders error: $e'); })
           .map((snapshot) {
         final list = snapshot.docs
             .map((doc) {
@@ -254,7 +254,7 @@ class FirebaseReminderRepository implements ReminderRepository {
       final batchIds = cleanIds.take(30).toList();
       yield* col
           .where('familyId', whereIn: batchIds)
-          .snapshots()
+          .snapshots().handleError((e) { debugPrint('FirebaseReminderRepository watchReminders error: $e'); })
           .map((snapshot) {
         final list = snapshot.docs
             .map((doc) {

@@ -185,34 +185,33 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       _selectedTime =
           TimeOfDay(hour: (now.hour + 1) % 24, minute: now.minute);
 
-      // Default assigned to: Người khác (nếu là Parent), hoặc chính mình (nếu là Child/Thành viên)
+      // Default assigned to: Người khác (hoặc 'OPEN' nếu không có người khác)
+      final availableOthers = _activeMembers
+          .where((m) => m.id != widget.currentUserId && !m.isMemorialized && !m.isDeactivated)
+          .toList();
+
       if (_canAssignChores) {
         _selectedTaskType = TaskType.assign.dbValue;
         _rewardStars = 2;
-        final otherMember = _activeMembers.firstWhere(
-          (m) => m.id != widget.currentUserId,
-          orElse: () => _activeMembers.isNotEmpty
-              ? _activeMembers.first
-              : FamilyMember(
-                  id: widget.currentUserId,
-                  name: widget.currentUserName,
-                  role: 'Bố/Mẹ',
-                  familyId: _activeFamilyId,
-                ),
-        );
-        _selectedMember = otherMember;
+        _selectedMember = availableOthers.isNotEmpty
+            ? availableOthers.first
+            : const FamilyMember(
+                id: 'OPEN',
+                name: 'Cả nhà',
+                role: 'Việc chung',
+                familyId: '',
+              );
       } else {
         _selectedTaskType = TaskType.favor.dbValue;
         _rewardStars = 0;
-        _selectedMember = _activeMembers.firstWhere(
-          (m) => m.id == widget.currentUserId,
-          orElse: () => FamilyMember(
-            id: widget.currentUserId,
-            name: widget.currentUserName,
-            role: 'Thành viên',
-            familyId: _activeFamilyId,
-          ),
-        );
+        _selectedMember = availableOthers.isNotEmpty
+            ? availableOthers.first
+            : const FamilyMember(
+                id: 'OPEN',
+                name: 'Cả nhà',
+                role: 'Việc chung',
+                familyId: '',
+              );
       }
     }
   }
@@ -400,6 +399,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       context,
       familyMembers: _activeMembers,
       selectedMember: _selectedMember,
+      currentUserId: widget.currentUserId,
     );
     if (picked != null) {
       setState(() {
@@ -514,14 +514,14 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
         widget.currentUserId.toLowerCase().contains('child');
     final isSelfAssign = _selectedMember?.id == widget.currentUserId;
 
-    // Anti-exploit: Prevent CHILD self-assignment with stars
-    if (isCreatorChild && isSelfAssign && _rewardStars > 0) {
+    // Chặn không cho tự giao việc cho chính bản thân
+    if (isSelfAssign) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             AppLanguage.text(
-              'Trẻ em không được tự tạo việc cho mình để nhận sao.',
-              'Children cannot self-assign tasks to receive stars.',
+              'Không thể tự giao việc cho chính bản thân. Vui lòng chọn thành viên khác hoặc Cả nhà.',
+              'Cannot assign tasks to yourself. Please choose another member or Shared task.',
             ),
           ),
           backgroundColor: const Color(0xFFBA1A1A),

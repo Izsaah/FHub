@@ -662,6 +662,9 @@ class StarEconomyService {
       }
       throw ArgumentError('Số sao lì xì / khích lệ phải lớn hơn 0.');
     }
+    if (stars > 20) {
+      throw ArgumentError('Số sao tặng tối đa mỗi lần là 20 ⭐.');
+    }
 
     final effectiveGiftId =
         giftId ?? '${senderId}_${childId}_${DateTime.now().microsecondsSinceEpoch}';
@@ -671,6 +674,14 @@ class StarEconomyService {
     if (firestore == null) {
       if (starLedger.containsKey(ledgerKey)) {
         throw StateError('Giao dịch lì xì sao $ledgerKey đã được thực hiện!');
+      }
+      final senderKey = '${familyId}_$senderId';
+      if (memberBalances.containsKey(senderKey)) {
+        final senderBalance = memberBalances[senderKey] ?? 0;
+        if (stars > senderBalance) {
+          throw StateError('Số dư sao không đủ! Bạn chỉ có $senderBalance sao để tặng.');
+        }
+        memberBalances[senderKey] = senderBalance - stars;
       }
       final memberKey = '${familyId}_$childId';
       memberBalances[memberKey] = (memberBalances[memberKey] ?? 0) + stars;
@@ -695,6 +706,8 @@ class StarEconomyService {
     final ledgerRef = firestore.collection('star_ledger').doc(ledgerKey);
     final memberRef =
         firestore.collection('family_members').doc('${familyId}_$childId');
+    final senderRef =
+        firestore.collection('family_members').doc('${familyId}_$senderId');
 
     await firestore.runTransaction((transaction) async {
       final ledgerSnap = await transaction.get(ledgerRef);
@@ -702,10 +715,28 @@ class StarEconomyService {
         throw StateError('Giao dịch lì xì sao $ledgerKey đã được thực hiện!');
       }
 
+      final senderSnap = await transaction.get(senderRef);
+      final senderBalance = senderSnap.exists
+          ? (senderSnap.data()?['rewardStarsTotal'] as num?)?.toInt() ??
+            (senderSnap.data()?['reward_stars_total'] as num?)?.toInt() ?? 0
+          : 0;
+
+      if (senderSnap.exists && stars > senderBalance) {
+        throw StateError('Số dư sao không đủ! Bạn chỉ có $senderBalance sao để tặng.');
+      }
+
       final memberSnap = await transaction.get(memberRef);
       final currentBalance = memberSnap.exists
           ? (memberSnap.data()?['rewardStarsTotal'] as num?)?.toInt() ?? 0
           : 0;
+
+      if (senderSnap.exists) {
+        transaction.update(senderRef, {
+          'rewardStarsTotal': senderBalance - stars,
+          'reward_stars_total': senderBalance - stars,
+          'lastActiveAt': FieldValue.serverTimestamp(),
+        });
+      }
 
       if (memberSnap.exists) {
         transaction.update(memberRef, {
@@ -1321,10 +1352,54 @@ class StarEconomyService {
       );
     }
 
+    if (claimId != null &&
+        (starLedger.containsKey('claim_$claimId') ||
+            wishlistClaims.containsKey(claimId))) {
+      throw StateError('Yêu cầu đổi quà claim_$claimId đã được xử lý!');
+    }
+
+    final hasPendingClaim = wishlistClaims.values.any((c) =>
+        c.itemId == item.id &&
+        c.status == WishlistClaimStatus.pending &&
+        c.familyId == familyId);
+    if (hasPendingClaim) {
+      throw StateError(
+        'REWARD_ALREADY_CLAIMED: Phần thưởng "${item.title}" đang có người đổi và chờ duyệt. Vui lòng chọn phần thưởng khác!',
+      );
+    }
+
+    if (currentInCatalog != null && !currentInCatalog.isActive) {
+      throw StateError(
+        'REWARD_ALREADY_CLAIMED: Phần thưởng "${item.title}" đã được đổi hoặc không còn khả dụng.',
+      );
+    }
+
     if (childId.isNotEmpty && childId == item.createdBy) {
       throw StateError(
         'ANTI_EXPLOIT_CREATOR_CANNOT_REDEEM: Người tạo phúc lợi không được tự đổi vật phẩm do chính mình thiết lập.',
       );
+    }
+
+    if (_firestore != null) {
+      try {
+        final rewardRef = _firestore!
+            .collection('families')
+            .doc(familyId)
+            .collection('wishlist_rewards')
+            .doc(item.id);
+        final rewardSnap = await rewardRef.get();
+        if (rewardSnap.exists) {
+          final data = rewardSnap.data() ?? {};
+          final isActive = data['isActive'] ?? data['is_active'] ?? true;
+          if (isActive == false) {
+            throw StateError(
+              'REWARD_ALREADY_CLAIMED: Phần thưởng "${item.title}" đã được người khác đổi trước bạn.',
+            );
+          }
+        }
+      } catch (e) {
+        if (e is StateError) rethrow;
+      }
     }
 
     final effectiveClaimId =
@@ -1338,6 +1413,29 @@ class StarEconomyService {
       cost: item.starCost,
       itemName: item.title,
     );
+
+    // 1b. Khóa/Ẩn phần thưởng để tránh 2 người cùng đổi cùng một lúc
+    if (wishlistCatalog.containsKey(item.id)) {
+      wishlistCatalog[item.id] = wishlistCatalog[item.id]!.copyWith(isActive: false);
+    }
+    if (_firestore != null) {
+      try {
+        await _firestore!
+            .collection('families')
+            .doc(familyId)
+            .collection('wishlist_rewards')
+            .doc(item.id)
+            .update({
+          'isActive': false,
+          'is_active': false,
+          'claimedBy': childId,
+          'claimedByName': childName,
+          'claimedAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('submitWishlistRedemption deactivate reward error: $e');
+      }
+    }
 
     // 2. Lưu trạng thái yêu cầu đổi quà PENDING (Chưa cộng 10% vào Hũ cho tới khi Phụ huynh duyệt)
     final claimRecord = WishlistClaimRecord(
@@ -1426,10 +1524,19 @@ class StarEconomyService {
           'reviewedByName': guardianName,
           'reviewedAt': FieldValue.serverTimestamp(),
         });
+
+        await _firestore!
+            .collection('families')
+            .doc(existing.familyId)
+            .collection('wishlist_rewards')
+            .doc(existing.itemId)
+            .delete();
       } catch (e) {
         debugPrint('approveWishlistRedemption error: $e');
       }
     }
+
+    wishlistCatalog.remove(existing.itemId);
 
     // Tích điểm 10% tổng số sao đổi phúc lợi vào Hũ Niềm Vui Gia Đình (CHỈ CỘNG KHI PHỤ HUYNH CHẤP NHẬN)
     // Quy tắc: Nếu phần lẻ >= 0.5 thì làm tròn lên (ceil), dưới 0.5 thì làm tròn xuống (floor)
@@ -1538,9 +1645,27 @@ class StarEconomyService {
           'reviewedAt': FieldValue.serverTimestamp(),
           'rejectReason': reason,
         });
+
+        await _firestore!
+            .collection('families')
+            .doc(existing.familyId)
+            .collection('wishlist_rewards')
+            .doc(existing.itemId)
+            .update({
+          'isActive': true,
+          'is_active': true,
+          'claimedBy': FieldValue.delete(),
+          'claimedByName': FieldValue.delete(),
+          'claimedAt': FieldValue.delete(),
+        });
       } catch (e) {
         debugPrint('rejectWishlistRedemption error: $e');
       }
+    }
+
+    if (wishlistCatalog.containsKey(existing.itemId)) {
+      wishlistCatalog[existing.itemId] =
+          wishlistCatalog[existing.itemId]!.copyWith(isActive: true);
     }
 
     unawaited(

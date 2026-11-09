@@ -90,10 +90,17 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
     if (widget.familyId.trim().isEmpty) {
       _hasFamilyAccess = false;
     } else {
+      final myMember = widget.familyMembers
+          .where((m) => m.id == widget.currentUserId)
+          .firstOrNull;
+      final myRole = myMember?.roleDisplayName ??
+          (myMember?.isParent == true ? 'Bố/Mẹ' : 'Thành viên');
       unawaited(GeminiChatService.instance.initChat(
         familyId: widget.familyId,
         userId: widget.currentUserId,
         userName: widget.currentUserName,
+        userRole: myRole,
+        familyMembers: widget.familyMembers,
       ));
       _watchFamilyAccess();
       _loadSessionsAndHistory();

@@ -357,11 +357,87 @@ class FamilyAiAssistantService {
 
     // 1.5. CASE: HỎI VỀ ĐIỂM DANH / CHECK-IN HÔM NAY
     if (_isCheckInIntent(lower)) {
+      final checkedInList = <String>[];
+      final notCheckedInList = <String>[];
+
+      if (Firebase.apps.isNotEmpty) {
+        try {
+          final snap = await FirebaseFirestore.instance
+              .collection('family_members')
+              .where('familyId', isEqualTo: familyId)
+              .get()
+              .timeout(const Duration(seconds: 3));
+
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            final status = (data['status'] ?? 'ACTIVE').toString().toUpperCase();
+            if (status != 'ACTIVE') continue;
+
+            final uid = (data['userId'] ?? data['user_id'] ?? doc.id).toString();
+            final memberMatch = familyMembers.where((m) => m.id == uid).firstOrNull;
+            String name = memberMatch?.name ??
+                (data['name'] ?? data['userName'] ?? data['displayName'] ?? '').toString().trim();
+            if (name.isEmpty || name == 'Thành viên') {
+              if (uid == currentUserId) {
+                name = currentUserName;
+              } else {
+                try {
+                  final uDoc = await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(uid)
+                      .get()
+                      .timeout(const Duration(seconds: 2));
+                  final n = (uDoc.data()?['name'] ?? uDoc.data()?['displayName'])?.toString().trim();
+                  if (n != null && n.isNotEmpty) name = n;
+                } catch (_) {}
+              }
+            }
+            if (name.isEmpty) name = 'Thành viên ($uid)';
+
+            final lastCheckIn = data['lastCheckInAt'] ?? data['last_check_in_at'];
+            bool isToday = false;
+            String timeStr = '';
+            if (lastCheckIn is Timestamp) {
+              final dt = lastCheckIn.toDate();
+              if (dt.year == effectiveNow.year && dt.month == effectiveNow.month && dt.day == effectiveNow.day) {
+                isToday = true;
+                timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+              }
+            } else if (lastCheckIn is String) {
+              final dt = DateTime.tryParse(lastCheckIn);
+              if (dt != null && dt.year == effectiveNow.year && dt.month == effectiveNow.month && dt.day == effectiveNow.day) {
+                isToday = true;
+                timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+              }
+            }
+
+            if (isToday) {
+              checkedInList.add('$name (lúc $timeStr)');
+            } else {
+              notCheckedInList.add(name);
+            }
+          }
+        } catch (_) {}
+      }
+
       final buffer = StringBuffer();
       buffer.writeln('📋 TÌNH HÌNH ĐIỂM DANH GIA ĐÌNH HÔM NAY ($todayStr):');
-      buffer.writeln('• Chưa có thành viên nào ghi nhận điểm danh hôm nay.');
-      if (familyMembers.isNotEmpty) {
-        buffer.writeln('\n⏳ Danh sách thành viên gia đình:');
+      if (checkedInList.isNotEmpty) {
+        buffer.writeln('✅ Đã điểm danh (${checkedInList.length}/${checkedInList.length + notCheckedInList.length} thành viên):');
+        for (final c in checkedInList) {
+          buffer.writeln('  • $c');
+        }
+      } else {
+        buffer.writeln('• Chưa có thành viên nào ghi nhận điểm danh hôm nay.');
+      }
+
+      if (notCheckedInList.isNotEmpty) {
+        buffer.writeln('\n⏳ Chưa thực hiện điểm danh an toàn (${notCheckedInList.length} thành viên):');
+        for (final nc in notCheckedInList) {
+          buffer.writeln('  • $nc');
+        }
+      } else if (familyMembers.isNotEmpty && checkedInList.isEmpty) {
+        buffer.writeln('\n⏳ Danh sách thành viên cần điểm danh:');
         for (final m in familyMembers) {
           buffer.writeln('  • ${m.name} (${m.roleDisplayName})');
         }
@@ -398,7 +474,7 @@ class FamilyAiAssistantService {
         roleDisplay = 'Thành viên gia đình';
       }
       final desc = myMember?.isParent == true
-          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, duyệt quà đổi sao và mở Heo Đất khen thưởng cho cả nhà nhé! 👑'
+          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, duyệt quà đổi sao và mở Heo Đất / Nổ Hũ khen thưởng cho cả nhà nhé! 👑'
           : (myMember?.isGrandparent == true
               ? 'Bạn là **Ông Bà (Trưởng bối)**: Có quyền giao việc, gắn kết các thế hệ và cùng theo dõi tiến độ gia đình ấm cúng! 🏡'
               : 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận các công việc chung trên bảng việc, hoàn thành nhiệm vụ để tích lũy sao thưởng nuôi Heo Đất và đổi những món quà mơ ước trong Cửa hàng phúc lợi nhé! 🌟');
@@ -797,6 +873,13 @@ class FamilyAiAssistantService {
           }
         }
 
+        final bool requiresProof = lower.contains('nghiệm thu') || lower.contains('chụp ảnh');
+        int stars = 0;
+        final starMatch = RegExp(r'(\d+)\s*(sao|star)', caseSensitive: false).firstMatch(lower);
+        if (starMatch != null) {
+          stars = int.tryParse(starMatch.group(1)!) ?? 0;
+        }
+
         final created = await repository.createReminder(
           reminder: ReminderModel(
             id: 'rem_${DateTime.now().millisecondsSinceEpoch}_$i',
@@ -809,6 +892,8 @@ class FamilyAiAssistantService {
             date: dateStr,
             time: timeStr,
             status: isOpen ? ReminderStatus.open : ReminderStatus.pending,
+            requiresProofImage: requiresProof,
+            rewardStars: stars,
             taskType: isChild && (assignee.isParent || assignee.isGrandparent) ? TaskType.favor : TaskType.assign,
             taskStatus: (isChild && (assignee.isParent || assignee.isGrandparent)) ? TaskStatus.accepted : TaskStatus.pending,
             createdAt: DateTime.now(),
@@ -1847,9 +1932,17 @@ class FamilyAiAssistantService {
 
     // Kiểm tra xem có nhắc tên thành viên nào trong gia đình không
     for (final member in familyMembers) {
-      final mName = member.name.toLowerCase();
-      if (mName.isNotEmpty && lower.contains(mName)) {
-        return member;
+      final mName = member.name.toLowerCase().trim();
+      if (mName.isNotEmpty) {
+        if (lower.contains(mName)) {
+          return member;
+        }
+        final tokens = mName.split(RegExp(r'\s+'));
+        for (final token in tokens) {
+          if (token.length >= 2 && RegExp('\\b$token\\b', caseSensitive: false).hasMatch(lower)) {
+            return member;
+          }
+        }
       }
     }
 
