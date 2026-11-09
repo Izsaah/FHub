@@ -724,6 +724,13 @@ class InMemoryReminderRepository implements ReminderRepository {
 
     final existing = _reminders[index];
 
+    // Rule: Không thể hoàn thành việc đã đóng bỏ lỡ
+    if (existing.isClosedMissed) {
+      throw const ReminderValidationException(
+        'Công việc này đã đóng bỏ lỡ, không thể hoàn thành!',
+      );
+    }
+
     // Rule: Chỉ người được giao reminder mới được Complete.
     if (existing.assignedTo != currentUserId) {
       throw ReminderPermissionException(
@@ -954,6 +961,11 @@ class InMemoryReminderRepository implements ReminderRepository {
       throw const ReminderNotFoundException('Không tìm thấy công việc');
     }
     final existing = _reminders[index];
+    if (existing.isClosedMissed) {
+      throw const ReminderValidationException(
+        'Công việc này đã đóng bỏ lỡ, không thể nộp ảnh nghiệm thu!',
+      );
+    }
     final updated = existing.copyWith(
       proofImageUrl: proofImageUrl,
       taskStatus: TaskStatus.submitted,

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fhub/Vinh/models/reminder_model.dart';
-import 'package:fhub/Vinh/services/multi_tier_escalation_service.dart';
+import 'package:fhub/Vinh/services/reminder_repository.dart';
+
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -156,6 +157,33 @@ void main() {
         taskType: TaskType.assign,
       );
       expect(choreTask.isExemptFromQuietHours, false);
+    });
+
+    test('3.7 Closed Missed Task Guard: completeReminder and submitTaskWithProof throw ReminderValidationException', () async {
+      const closedTask = ReminderModel(
+        id: 'closed_task_1',
+        title: 'di an nha',
+        date: '09/11/2026',
+        time: '17:17',
+        creatorId: 'parent_1',
+        creatorName: 'Lương Diệu Vinh',
+        assignedTo: 'child_1',
+        assignedToName: 'Trần Nguyễn Văn Vinh',
+        familyId: 'fam_1',
+        status: ReminderStatus.overdue,
+        isClosedMissed: true,
+      );
+      final repo = InMemoryReminderRepository(initialReminders: [closedTask]);
+
+      expect(
+        () => repo.completeReminder(reminderId: 'closed_task_1', currentUserId: 'child_1'),
+        throwsA(isA<ReminderValidationException>()),
+      );
+
+      expect(
+        () => repo.submitTaskWithProof(taskId: 'closed_task_1', proofImageUrl: 'https://example.com/proof.jpg'),
+        throwsA(isA<ReminderValidationException>()),
+      );
     });
   });
 }

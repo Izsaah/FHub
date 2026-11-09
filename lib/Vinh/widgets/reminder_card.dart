@@ -268,13 +268,14 @@ class ReminderCard extends StatelessWidget {
       valueListenable: AppLanguage.isEnglish,
       builder: (context, isEn, child) {
         final isCompleted = reminder.isCompleted;
+        final isClosed = reminder.isClosedMissed;
         final isOpenTask = reminder.isOpenTask;
         final isAssignedToMe = reminder.assignedTo == currentUserId;
         final isFuture = reminder.isFutureDate;
         final canComplete =
-            !isCompleted && isAssignedToMe && reminder.canBeCompleted;
+            !isCompleted && !isClosed && isAssignedToMe && reminder.canBeCompleted;
         final isLockedCompletion =
-            !isCompleted && isAssignedToMe && isFuture;
+            !isCompleted && !isClosed && isAssignedToMe && isFuture;
         final canDelete = onDelete != null;
         final isCare = reminder.isCare;
 
@@ -333,25 +334,31 @@ class ReminderCard extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: isCare
                                 ? const Color(0xFFFFE0B2)
-                                : (isCompleted
-                                    ? const Color(0xFFE7F0EC)
-                                    : (reminder.requiresProofImage
-                                        ? const Color(0xFFE6F4F1)
-                                        : const Color(0xFFF3FBF8))),
+                                : (isClosed
+                                    ? const Color(0xFFF1F5F9)
+                                    : (isCompleted
+                                        ? const Color(0xFFE7F0EC)
+                                        : (reminder.requiresProofImage
+                                            ? const Color(0xFFE6F4F1)
+                                            : const Color(0xFFF3FBF8)))),
                             borderRadius:
                                 BorderRadius.circular(isCare ? 16 : 12),
                           ),
                           child: Icon(
-                            isCompleted
-                                ? Icons.check_circle
-                                : (isCare
-                                    ? Icons.health_and_safety_rounded
-                                    : _getIconForTitle(reminder.title)),
+                            isClosed
+                                ? Icons.event_busy_rounded
+                                : (isCompleted
+                                    ? Icons.check_circle
+                                    : (isCare
+                                        ? Icons.health_and_safety_rounded
+                                        : _getIconForTitle(reminder.title))),
                             color: isCare
                                 ? const Color(0xFFBF360C)
-                                : (isCompleted
-                                    ? primaryColor
-                                    : const Color(0xFF005F50)),
+                                : (isClosed
+                                    ? const Color(0xFF64748B)
+                                    : (isCompleted
+                                        ? primaryColor
+                                        : const Color(0xFF005F50))),
                             size: isCare ? 28 : 24,
                           ),
                         ),

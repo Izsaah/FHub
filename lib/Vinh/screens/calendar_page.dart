@@ -170,6 +170,20 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
   }
 
   Future<void> _completeReminder(ReminderModel reminder) async {
+    if (reminder.isClosedMissed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Công việc này đã đóng, không thể hoàn thành!',
+              'This task is closed and cannot be completed!',
+            ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
     try {
       String? proofUrl;
       if (reminder.requiresProofImage) {
