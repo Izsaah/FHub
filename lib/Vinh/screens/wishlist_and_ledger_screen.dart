@@ -395,8 +395,8 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                         icon: const Icon(Icons.card_giftcard_rounded, size: 18),
                         label: Text(
                           _isRelative
-                              ? AppLanguage.text('🎁 Cô/Chú/Bác lì xì Sao cho cháu', '🎁 Gift Stars to Child')
-                              : AppLanguage.text('🎁 Tặng / Lì xì Sao khích lệ', '🎁 Gift / Sponsor Stars'),
+                              ? AppLanguage.text('Cô/Chú/Bác lì xì Sao cho cháu', 'Gift Stars to Child')
+                              : AppLanguage.text('Tặng / Lì xì Sao khích lệ', 'Gift / Sponsor Stars'),
                         ),
                         onPressed: _showSponsorStarsDialog,
                       ),
@@ -846,7 +846,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
               const SizedBox(width: 8),
               _buildFilterChip('TASK_REWARD', AppLanguage.text('Việc nhà', 'Chores'), Icons.task_alt_rounded),
               const SizedBox(width: 8),
-              _buildFilterChip('JACKPOT_WIN', AppLanguage.text('Nổ Hũ Sao', 'Jackpot Pot'), Icons.casino_outlined),
+              _buildFilterChip('JACKPOT_WIN', AppLanguage.text('Heo Đất', 'Piggy Bank'), Icons.savings_outlined),
               const SizedBox(width: 8),
               _buildFilterChip('RELATIVE_SPONSOR', AppLanguage.text('Lì xì Sao', 'Gifts / Sponsor'), Icons.card_giftcard_rounded),
               const SizedBox(width: 8),
@@ -1393,7 +1393,7 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: AppLanguage.text('Số sao lì xì (1 - 20 ⭐)', 'Gift stars amount (1 - 20 ⭐)'),
-                    helperText: AppLanguage.text('Hạn mức tối đa 20 ⭐/lần, 50 ⭐/tuần/thành viên', 'Limit: max 20 ⭐/time, 50 ⭐/week/member'),
+                    helperText: AppLanguage.text('Tối đa 20 ⭐ mỗi lần lì xì khích lệ', 'Limit: max 20 ⭐ per gift'),
                     prefixIcon: Icon(Icons.stars_rounded, color: Colors.amber),
                   ),
                 ),

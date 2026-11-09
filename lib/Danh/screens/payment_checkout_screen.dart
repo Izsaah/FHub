@@ -565,7 +565,7 @@ class _PaymentCheckoutScreenState extends State<PaymentCheckoutScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                   icon: DanhSvgs.goldenPot(size: 20),
-                  label: const Text('Mở Hũ Niềm Vui Gia Đình Ngay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  label: const Text('Vào Heo Đất Gia Đình Ngay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   onPressed: () {
                     Navigator.pushReplacement(
                       context,

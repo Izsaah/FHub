@@ -1100,7 +1100,9 @@ class InMemoryReminderRepository implements ReminderRepository {
       effectiveIsGuardian = false;
     }
 
-    if (!effectiveIsGuardian) {
+    final bool isTaskCreator =
+        existing.creatorId.isNotEmpty && existing.creatorId == reviewerId;
+    if (!effectiveIsGuardian && !isTaskCreator) {
       throw StateError(
         'ANTI_EXPLOIT_GUARDIAN_REQUIRED: Chỉ Người giám hộ (Bố Mẹ, Ông Bà) mới có quyền duyệt việc và thưởng sao.',
       );

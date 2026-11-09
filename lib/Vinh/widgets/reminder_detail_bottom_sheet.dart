@@ -14,6 +14,7 @@ import '../services/star_economy_service.dart';
 import '../screens/create_reminder_screen.dart';
 import 'camera_proof_dialog.dart';
 import 'member_picker_bottom_sheet.dart';
+import 'parent_triage_actions_widget.dart';
 import 'voice_reminder_player.dart';
 
 /// Hộp thoại hiển thị chi tiết lời nhắc (Việt hóa 100%, tương thích mọi kích thước màn hình)
@@ -267,7 +268,8 @@ class ReminderDetailBottomSheet extends StatelessWidget {
 
   Future<void> _handleApproveSubmission(BuildContext context) async {
     // 1. Pre-flight check: Non-guardian approval
-    if (!isGuardian) {
+    final bool isTaskCreator = reminder.creatorId == currentUserId;
+    if (!isGuardian && !isTaskCreator) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1832,7 +1834,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                             ),
                           )
                         else if (reminder.taskStatus == TaskStatus.submitted) ...[
-                          if (isGuardian && reminder.assignedTo != currentUserId)
+                          if ((isGuardian || reminder.creatorId == currentUserId) && reminder.assignedTo != currentUserId)
                             Row(
                               children: [
                                 Expanded(
@@ -2016,7 +2018,16 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                               },
                             ),
                           )
-                        else
+                        else if (reminder.isOverdue && (isGuardian || reminder.creatorId == currentUserId)) ...[
+                          const SizedBox(height: 8),
+                          ParentTriageActionsWidget(
+                            reminder: reminder,
+                            onActionCompleted: () {
+                              Navigator.of(context).pop();
+                              onReminderUpdated?.call();
+                            },
+                          ),
+                        ] else
                           Text(
                             AppLanguage.text(
                               'Chỉ ${reminder.assignedToName} mới có thể đánh dấu hoàn thành',

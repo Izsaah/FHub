@@ -21,7 +21,7 @@ import '../theme/danh_svgs.dart';
 import 'premium_plan_screen.dart';
 import '../danh_payment_entry.dart';
 
-/// Màn hình Hũ Niềm Vui Gia Đình (Nổ Hũ Shopee Shake)
+/// Màn hình Heo Đất Gia Đình (Piggy Bank)
 /// Tính năng độc quyền cho gói Tổ Ấm Premium
 class FamilyJackpotScreen extends StatefulWidget {
   const FamilyJackpotScreen({super.key});
@@ -201,7 +201,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    AppLanguage.text('Hũ Niềm Vui Gia Đình', 'Family Happiness Pot'),
+                    AppLanguage.text('Heo Đất Gia Đình', 'Family Piggy Bank'),
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -390,7 +390,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      AppLanguage.text('TỔNG QUỸ HŨ SAO GIA ĐÌNH', 'FAMILY STAR JACKPOT POOL'),
+                      AppLanguage.text('TỔNG SAO TRONG HEO ĐẤT GIA ĐÌNH', 'FAMILY PIGGY BANK STARS'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -463,7 +463,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           runSpacing: 4,
           children: [
             Text(
-              AppLanguage.text('1. Tích Lũy Sao Vào Hũ Niềm Vui ⭐', '1. Contribute Stars into Family Pot ⭐'),
+              AppLanguage.text('1. Tích Lũy Sao Nuôi Heo Đất ⭐', '1. Contribute Stars into Piggy Bank ⭐'),
               style: TextStyle(
                 fontSize: 15.5,
                 fontWeight: FontWeight.bold,
@@ -478,7 +478,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 border: Border.all(color: Colors.amber.shade300, width: 0.8),
               ),
               child: Text(
-                '⭐ Nổ Hũ Sao',
+                '🐷 Heo Đất Gia Đình',
                 style: TextStyle(
                   fontSize: 11,
                   color: Colors.amber.shade900,
@@ -506,7 +506,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      AppLanguage.text('Quy chế tích lũy sao vào hũ', 'How pot stars accumulate'),
+                                      AppLanguage.text('Quy chế tích lũy sao nuôi heo', 'How piggy bank stars accumulate'),
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
@@ -520,10 +520,10 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                               const SizedBox(height: 6),
                               Text(
                                 AppLanguage.text(
-                                  '• Cả nhà hoàn thành điểm danh mỗi ngày: +10 ⭐ vào hũ.\n'
-                                  '• Đổi phúc lợi từ shop: Tích điểm 10% tổng số sao vào hũ khi phụ huynh duyệt quà.',
-                                  '• Daily family check-in completed: +10 ⭐ to pot.\n'
-                                  '• Wishlist reward redeemed: 10% cashback added to pot once approved by parents.',
+                                  '• Cả nhà hoàn thành điểm danh mỗi ngày: +10 ⭐ vào heo đất.\n'
+                                  '• Đổi phúc lợi từ shop: Tích điểm hoàn 10% tổng số sao vào heo đất khi phụ huynh duyệt quà.',
+                                  '• Daily family check-in completed: +10 ⭐ to piggy bank.\n'
+                                  '• Wishlist reward redeemed: 10% cashback added to piggy bank once approved by parents.',
                                 ),
                                 style: const TextStyle(fontSize: 12, height: 1.4, color: Color(0xFF5D4037)),
                               ),
@@ -535,7 +535,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         const SizedBox(height: 24),
 
         Text(
-          AppLanguage.text('2. Bảng Vinh Danh Thành Viên Đóng Góp', '2. Contributor Leaderboard'),
+          AppLanguage.text('2. Bảng Đóng Góp Nuôi Heo Đất', '2. Piggy Bank Contributors'),
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -547,7 +547,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         const SizedBox(height: 24),
 
         Text(
-          AppLanguage.text('3. Danh Sách Tham Gia Nổ Hũ', '3. Pot Shake Participants'),
+          AppLanguage.text('3. Thành Viên Tham Gia Mở Heo Đất', '3. Piggy Bank Participants'),
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -564,7 +564,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
   }
 
-  /// Mục 3: Danh sách thành viên tham gia nổ hũ (Giới hạn tối đa 5 tên, cuộn mượt nếu > 5)
+  /// Mục 3: Danh sách thành viên tham gia mở heo (Giới hạn tối đa 5 tên, cuộn mượt nếu > 5)
   Widget _buildParticipantsList(FamilyJackpotModel jackpot) {
     final isLobby = jackpot.isLobbyActive;
     final acceptedIds = jackpot.lobbyAcceptedMemberIds.toSet();
@@ -880,13 +880,13 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               elevation: hasPool ? 4 : 0,
             ),
             icon: Icon(
-              !hasPool ? Icons.lock_clock_rounded : Icons.vibration_rounded,
+              !hasPool ? Icons.lock_clock_rounded : Icons.savings_rounded,
               size: 22,
             ),
             label: Text(
               !hasPool
-                  ? AppLanguage.text('Hũ Đang Trống (0 ⭐) - Tích Sao Để Lắc', 'Pot Empty (0 ⭐) - Add Stars to Shake')
-                  : AppLanguage.text('🎲 BẮT ĐẦU NỔ HŨ NGAY (1 THÀNH VIÊN)', '🎲 START POT SHAKE NOW (1 MEMBER)'),
+                  ? AppLanguage.text('Heo Đất Trống (0 ⭐) - Điểm Danh Nuôi Heo', 'Piggy Empty (0 ⭐) - Add Stars to Open')
+                  : AppLanguage.text('MỞ HEO ĐẤT NGAY (1 THÀNH VIÊN)', 'OPEN PIGGY BANK NOW (1 MEMBER)'),
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
             onPressed: () async {
@@ -895,8 +895,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                   SnackBar(
                     content: Text(
                       AppLanguage.text(
-                        'Quỹ Hũ hiện đang là 0 ⭐! Hoàn thành Điểm danh mỗi ngày (+10 ⭐) để làm đầy Hũ trước khi Nổ Hũ nhé!',
-                        'Family Pot currently has 0 ⭐! Complete daily check-in (+10 ⭐) to fill the pot before shaking!',
+                        'Heo Đất hiện đang là 0 ⭐! Hoàn thành Điểm danh mỗi ngày (+10 ⭐) để nuôi heo trước khi mở nhé!',
+                        'Piggy Bank currently has 0 ⭐! Complete daily check-in (+10 ⭐) to feed the pig before opening!',
                       ),
                     ),
                     backgroundColor: const Color(0xFFE65100),
@@ -912,7 +912,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                   targetMemberIds: [_jackpotService.currentUserId],
                 );
               } catch (e) {
-                if (context.mounted) {
+                if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
                   );
@@ -938,15 +938,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           icon: Icon(
             !hasPool
                 ? Icons.lock_clock_rounded
-                : (isParent ? Icons.timer_outlined : Icons.lock_outline_rounded),
+                : (isParent ? Icons.savings_rounded : Icons.hourglass_empty_rounded),
             size: 22,
           ),
           label: Text(
             !hasPool
-                ? AppLanguage.text('Hũ Đang Trống (0 ⭐) - Tích Sao Để Lắc', 'Pot Empty (0 ⭐) - Add Stars to Shake')
+                ? AppLanguage.text('Heo Đất Trống (0 ⭐) - Điểm Danh Nuôi Heo', 'Piggy Empty (0 ⭐) - Add Stars to Open')
                 : (isParent
-                    ? AppLanguage.text('🎲 PHÁT ĐỘNG NỔ HŨ (5 PHÚT CHỜ)', '🎲 START POT SHAKE (5-MIN LOBBY)')
-                    : AppLanguage.text('⏳ CHỜ BỐ MẸ PHÁT ĐỘNG NỔ HŨ', '⏳ WAITING FOR PARENTS TO START')),
+                    ? AppLanguage.text('PHÁT ĐỘNG MỞ HEO ĐẤT (5 PHÚT CHỜ)', 'START PIGGY OPENING (5-MIN LOBBY)')
+                    : AppLanguage.text('CHỜ BỐ MẸ PHÁT ĐỘNG MỞ HEO', 'WAITING FOR PARENTS TO OPEN')),
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
           ),
           onPressed: () {
@@ -955,8 +955,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 SnackBar(
                   content: Text(
                     AppLanguage.text(
-                      'Quỹ Hũ hiện đang là 0 ⭐! Cả nhà cùng hoàn thành Điểm danh mỗi ngày (+10 ⭐) hoặc Đổi phúc lợi trong Shop (được phụ huynh duyệt +10% sao) để làm đầy Hũ trước khi Nổ Hũ nhé!',
-                      'Family Pot currently has 0 ⭐! Complete daily check-in (+10 ⭐) or redeem shop items (once approved +10% stars) to fill the pot before shaking!',
+                      'Heo Đất hiện đang là 0 ⭐! Cả nhà cùng hoàn thành Điểm danh mỗi ngày (+10 ⭐) hoặc Đổi phúc lợi trong Shop (+10% hoàn sao) để nuôi heo trước khi mở nhé!',
+                      'Piggy Bank currently has 0 ⭐! Complete daily check-in (+10 ⭐) or redeem shop items (+10% stars) to feed the pig before opening!',
                     ),
                   ),
                   backgroundColor: const Color(0xFFE65100),
@@ -969,7 +969,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text(
-                    'Chỉ Bố hoặc Mẹ mới có quyền phát động phiên Nổ Hũ cho cả gia đình!',
+                    'Chỉ Bố hoặc Mẹ mới có quyền phát động mở Heo Đất cho cả gia đình!',
                   ),
                   backgroundColor: DanhColors.warning,
                 ),
@@ -1003,8 +1003,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           icon: const Icon(Icons.check_circle_rounded, size: 22),
           label: Text(
             AppLanguage.text(
-              '✅ XÁC NHẬN THAM GIA LẮC HŨ ($countdownStr)',
-              '✅ JOIN POT SHAKE NOW ($countdownStr)',
+              'XÁC NHẬN THAM GIA MỞ HEO ($countdownStr)',
+              'JOIN PIGGY OPENING ($countdownStr)',
             ),
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
           ),
@@ -1017,7 +1017,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Bạn đã xác nhận tham gia Nổ Hũ thành công!'),
+                    content: Text('Bạn đã xác nhận tham gia mở Heo Đất thành công!'),
                     backgroundColor: Colors.green,
                   ),
                 );
@@ -1050,8 +1050,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               icon: const Icon(Icons.rocket_launch_rounded, size: 22),
               label: Text(
                 AppLanguage.text(
-                  '🚀 BẮT ĐẦU LẮC NGAY ($acceptedCount/$targetCount) - ($countdownStr)',
-                  '🚀 START SHAKE NOW ($acceptedCount/$targetCount) - ($countdownStr)',
+                  'BẮT ĐẦU MỞ HEO NGAY ($acceptedCount/$targetCount) - ($countdownStr)',
+                  'START PIGGY OPENING NOW ($acceptedCount/$targetCount) - ($countdownStr)',
                 ),
                 style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
               ),
@@ -1092,15 +1092,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         icon: const Icon(Icons.hourglass_top_rounded, size: 22),
         label: Text(
           AppLanguage.text(
-            '⏳ ĐÃ THAM GIA - CHỜ CẢ NHÀ ($acceptedCount/$targetCount) - ($countdownStr)',
-            '⏳ JOINED - WAITING FOR FAMILY ($acceptedCount/$targetCount) - ($countdownStr)',
+            'ĐÃ THAM GIA - CHỜ CẢ NHÀ ($acceptedCount/$targetCount) - ($countdownStr)',
+            'JOINED - WAITING FOR FAMILY ($acceptedCount/$targetCount) - ($countdownStr)',
           ),
           style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
         ),
         onPressed: () {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Bạn đã có mặt trong phòng chờ! Trận chiến lắc 30s sẽ bắt đầu khi cả nhà sẵn sàng.'),
+              content: Text('Bạn đã có mặt trong phòng chờ! Phiên mở heo sẽ bắt đầu khi cả nhà sẵn sàng.'),
             ),
           );
         },
@@ -1108,7 +1108,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
   }
 
-  /// Modal chọn danh sách thành viên tham gia nổ hũ dành cho Bố Mẹ
+  /// Modal chọn danh sách thành viên tham gia mở heo dành cho Bố Mẹ
   void _showLobbyParticipantPickerModal() async {
     final currentJackpot = _jackpotService.jackpot;
     final allMembers = <String, String>{};
@@ -1181,7 +1181,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         const Icon(Icons.group_add_rounded, color: Color(0xFFE65100), size: 24),
                         const SizedBox(width: 8),
                         Text(
-                          AppLanguage.text('Chọn Thành Viên Tham Gia Nổ Hũ', 'Select Participants for Pot Shake'),
+                          AppLanguage.text('Chọn Thành Viên Tham Gia Mở Heo', 'Select Participants for Piggy Opening'),
                           style: const TextStyle(
                             fontSize: 16.5,
                             fontWeight: FontWeight.bold,
@@ -1193,7 +1193,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     const SizedBox(height: 6),
                     Text(
                       AppLanguage.text(
-                        'Phiếu chờ có hiệu lực trong 5 phút. Cả nhà vào xác nhận để cùng lắc điện thoại!',
+                        'Phiếu chờ có hiệu lực trong 5 phút. Cả nhà vào xác nhận để cùng tham gia mở Heo Đất!',
                         'Ticket is valid for 5 minutes. Family members will receive an invite to join!',
                       ),
                       style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.3),
@@ -1398,7 +1398,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                       ],
                     ),
                     child: Text(
-                      '$remaining GIÂY CUỐI CÙNG - TĂNG TỐC LẮC!',
+                      '$remaining GIÂY CUỐI CÙNG - TĂNG TỐC MỞ HEO!',
                       style: const TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w900,
@@ -1452,8 +1452,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 const SizedBox(height: 16),
                 Text(
                   isUrgent
-                      ? 'HẾT GIỜ TỚI NƠI RỒI! LẮC NHIỆT TÌNH LÊN CẢ NHÀ ƠI!'
-                      : 'CẦM ĐIỆN THOẠI LẮC THẬT MẠNH!\n(Trên Laptop: Lắc chuột vào vòng tròn, nhấn phím Space hoặc bấm nút bên dưới)',
+                      ? 'HẾT GIỜ TỚI NƠI RỒI! CÙNG GÕ HEO NHIỆT TÌNH LÊN CẢ NHÀ ƠI!'
+                      : 'CÙNG ĐẬP HEO ĐẤT GIA ĐÌNH!\n(Cầm điện thoại lắc, lắc chuột trên Laptop, nhấn Space hoặc bấm nút bên dưới)',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13.5,
@@ -1538,7 +1538,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     ),
                     icon: const Icon(Icons.touch_app_rounded),
                     label: Text(
-                      isUrgent ? 'LẮC NGAY BÂY GIỜ! ($remaining GIÂY CUỐI)' : 'Lắc Ngay (+1 Lượt / Phím Space)',
+                      isUrgent ? 'MỞ HEO NGAY! ($remaining GIÂY CUỐI)' : 'Gõ Heo Đất (+1 Lượt / Phím Space)',
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     onPressed: _onManualShake,
@@ -1589,7 +1589,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     DanhSvgs.crown(size: 18),
                     const SizedBox(width: 6),
                     const Text(
-                      '🏆 QUÁN QUÂN LẮC TAY ĐÃ LỘ DIỆN!',
+                      '🏆 THÀNH VIÊN TÍCH CỰC ĐÃ LỘ DIỆN!',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w900,
@@ -1613,7 +1613,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               ),
               const SizedBox(height: 6),
               Text(
-                'Đã lắc thần tốc $topShakerCount lần (nhiều nhất gia đình!) 🔥',
+                'Đã tích cực đóng góp $topShakerCount lượt gõ mở heo!',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 14,
@@ -1625,7 +1625,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
 
               // Đếm ngược 10s hồi hộp
               const Text(
-                '⏳ THẦN MAY MẮN ĐANG PHÂN XỬ GIẢI THƯỞNG...',
+                '⏳ HỆ THỐNG ĐANG PHÂN BỔ SAO TỪ HEO ĐẤT CHO CÁC BÉ...',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
@@ -1653,7 +1653,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               ),
               const SizedBox(height: 14),
               const Text(
-                'Liệu quán quân lắc tay có ôm trọn Giải Nhất 3/4 quỹ hũ\nhay sẽ phải đón nhận tấm poster "Ý TRỜI"? Cùng nín thở chờ xem! 🎁',
+                'Thuật toán Heo Đất đang chia 60% nỗ lực điểm danh + 40% may mắn cho các bé!\nBố Mẹ không nhận sao, toàn bộ sao trao cho các con chăm ngoan. ⭐',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12.5,
@@ -1691,7 +1691,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               DanhSvgs.checkSuccess(size: 54),
               const SizedBox(height: 12),
               const Text(
-                'NỔ HŨ THÀNH CÔNG! ✨',
+                'MỞ HEO THÀNH CÔNG! ✨',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
@@ -1701,8 +1701,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               const SizedBox(height: 6),
               Text(
                 AppLanguage.text(
-                  'Sao thưởng đã được cộng trực tiếp vào Ví Sao của từng thành viên!\nDùng sao để đổi những phần quà & phúc lợi từ Bố Mẹ.',
-                  'Reward stars have been credited directly to each member\'s Star Wallet!\nUse stars to redeem rewards & wishes from Parents.',
+                  'Sao thưởng từ Heo Đất đã được chia công bằng (60% nỗ lực + 40% may mắn) cho các bé!\nCác bé dùng sao để đổi những phần quà & phúc lợi từ Bố Mẹ.',
+                  'Reward stars from the Piggy Bank have been partitioned fairly to the children!\nUse stars to redeem rewards & wishes from Parents.',
                 ),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 12.5, color: DanhColors.textSecondary, height: 1.4),
@@ -1890,8 +1890,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     icon: const Icon(Icons.stars_rounded, size: 22, color: Colors.amber),
                     label: Text(
                       AppLanguage.text(
-                        'Nhận sao từ hũ$starSuffix',
-                        'Claim stars from pot$starSuffix',
+                        'Vào Cửa Hàng Đổi Quà$starSuffix',
+                        'Open Reward Shop$starSuffix',
                       ),
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
@@ -1903,8 +1903,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           SnackBar(
                             content: Text(
                               AppLanguage.text(
-                                'Đã nhận thành công ${displayStars > 0 ? "$displayStars ⭐" : "sao thưởng"} vào Ví Sao của bạn! Đang mở Cửa Hàng Đổi Sao...',
-                                'Successfully claimed ${displayStars > 0 ? "$displayStars ⭐" : "reward stars"} into your Star Wallet! Opening Star Shop...',
+                                'Đã cộng ${displayStars > 0 ? "$displayStars ⭐" : "sao thưởng"} vào Ví Sao của bạn! Đang mở Cửa Hàng Đổi Quà...',
+                                'Added ${displayStars > 0 ? "$displayStars ⭐" : "reward stars"} into your Star Wallet! Opening Reward Shop...',
                               ),
                             ),
                             backgroundColor: const Color(0xFF2E7D32),
@@ -1923,7 +1923,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           },
         ),
 
-        // Nút Góp sao hũ mới (rút gọn từ "Góp Vui Hũ Mới & Chơi Tiếp")
+        // Nút Nuôi Heo Đất Đợt Mới
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
@@ -1933,13 +1933,13 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
-            icon: const Icon(Icons.stars_outlined, size: 20),
+            icon: const Icon(Icons.savings_outlined, size: 20),
             onPressed: () {
               _hasShownYTroiDialog = false;
               _jackpotService.resetJackpot();
             },
             label: Text(
-              AppLanguage.text('Góp sao hũ mới', 'Contribute stars to new pot'),
+              AppLanguage.text('Nuôi Heo Đất đợt mới', 'Feed new Piggy Bank round'),
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
           ),
@@ -2517,7 +2517,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('Số Dư Ví Khả Dụng', style: TextStyle(fontSize: 12, color: Color(0xFF8A5300))),
-                                Text('Tiền thưởng sau các lần nổ hũ', style: TextStyle(fontSize: 10, color: Color(0xFF8A5300))),
+                                Text('Sao thưởng sau các lần mở heo đất', style: TextStyle(fontSize: 10, color: Color(0xFF8A5300))),
                               ],
                             ),
                           ),
@@ -2702,7 +2702,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           if (balance <= 0) {
                             setSheetState(() {
                               sheetSuccess = null;
-                              sheetError = 'Số dư ví của bạn hiện đang là 0 đ. Hãy tham gia Nổ Hũ để nhận thưởng trước khi rút!';
+                              sheetError = 'Số dư ví của bạn hiện đang là 0 đ. Hãy tham gia Mở Heo Đất để nhận thưởng trước khi rút!';
                             });
                             return;
                           }
@@ -2967,7 +2967,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           SnackBar(
                             content: Text(
                               awarded
-                                  ? '✨ Cả nhà đã điểm danh đủ! Hũ Niềm Vui được cộng +10 ⭐!'
+                                  ? '✨ Cả nhà đã điểm danh đủ! Heo Đất Gia Đình được cộng +10 ⭐!'
                                   : '✅ Bạn đã điểm danh hôm nay thành công!',
                             ),
                             backgroundColor: awarded ? const Color(0xFF2E7D32) : const Color(0xFF005F50),
@@ -3483,7 +3483,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 children: [
                   Expanded(
                     child: Text(
-                      AppLanguage.text('Luật Chơi Hũ Niềm Vui Gia Đình 📜', 'Family Pot Rules & Guidelines 📜'),
+                      AppLanguage.text('Quy Chế Heo Đất Gia Đình 📜', 'Family Piggy Bank Guidelines 📜'),
                       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: DanhColors.brand900),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -3498,13 +3498,14 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               const Flexible(
                 child: SingleChildScrollView(
                   child: Text(
-                    '1. Quỹ Hũ Sao được tích lũy tự động từ: Nhiệm vụ điểm danh hằng ngày (+10 ⭐) và tích điểm 10% sao khi phụ huynh duyệt quà phúc lợi.\n'
-                    '2. Người đóng góp nhiều sao nhất cho gia đình trở thành "Trưởng Ban Lễ Hội" và có quyền phát lệnh Nổ Hũ.\n'
-                    '3. Trận chiến Lắc 30s: Cả nhà cùng lắc điện thoại (hoặc bấm Lắc Ngay). Mỗi lần lắc = +1 vé may mắn!\n'
-                    '4. Vừa hết 30s: Lộ diện ngay "Quán Quân Lắc Tay", sau đó 10s thần may mắn công bố kết quả trao thưởng.\n'
-                    '5. Công thức chia thưởng tổng quỹ A: Giải Nhất nhận 3/4 của A, Giải Nhì nhận 3/5 phần còn lại, tiếp theo nhận 3/4 của 2 phần còn lại, chia trọn vẹn 100% quỹ cho cả nhà.\n'
-                    '6. Đặc biệt: Khi hết hạn gói Premium, số sao đã tích lũy trong hũ vẫn được bảo toàn nguyên vẹn (chỉ lắc nổ hũ khi kích hoạt Premium)!\n'
-                    '7. Ai lắc nhiều nhất nhà mà trượt Giải Nhất sẽ nhận thêm tấm Poster "Ý TRỜI"! 🤣',
+                    '1. Tích lũy sao nuôi heo: Cả nhà cùng hoàn thành Điểm danh mỗi ngày (+10 ⭐) và nhận hoàn 10% sao khi phụ huynh duyệt quà từ Wishlist.\n'
+                    '2. Mở Heo Đất Gia Đình: Bố Mẹ phát động phiên mở heo cuối tuần hoặc khi heo đã đầy sao để khen thưởng các con.\n'
+                    '3. Thuật toán chia sao giáo dục (Tất định 100%):\n'
+                    '   • 60% Nỗ lực (Effort Pool): Chia theo tỷ lệ đóng góp điểm danh và hoàn thành việc nhà chăm chỉ của các con.\n'
+                    '   • 40% May mắn (Lucky Pool): Chia đều cho tất cả các con tham gia.\n'
+                    '   • Bố Mẹ không nhận sao từ heo đất, 100% số sao thuộc về các con.\n'
+                    '4. Đổi quà thực tế: Số sao nhận được được cộng trực tiếp vào Ví Sao của con để đổi những phần quà yêu thích trong Cửa Hàng Phúc Lợi.\n'
+                    '5. Bảo toàn sao: Số sao trong heo luôn được bảo toàn nguyên vẹn ngay cả khi gia đình thay đổi gói dịch vụ!',
                     style: TextStyle(fontSize: 13, height: 1.45, color: DanhColors.textPrimary),
                   ),
                 ),
@@ -3549,7 +3550,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'HŨ SAO GIA ĐÌNH ĐƯỢC BẢO TOÀN!',
+                  'SAO TRONG HEO ĐẤT ĐƯỢC BẢO TOÀN!',
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.bold,
@@ -3558,7 +3559,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Khi gói Premium hết hạn, số sao đã tích lũy trong Hũ vẫn được giữ nguyên vẹn. Bạn chỉ cần gia hạn gói Premium để tiếp tục cùng gia đình lắc nổ hũ!',
+                  'Khi gói Premium hết hạn, số sao đã tích lũy trong Heo Đất vẫn được giữ nguyên vẹn. Bạn chỉ cần gia hạn gói Premium để tiếp tục cùng gia đình mở heo!',
                   style: TextStyle(
                     fontSize: 12,
                     color: DanhColors.textSecondary,
@@ -3605,7 +3606,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           ),
           const SizedBox(height: 8),
           const Text(
-            'Hũ Niềm Vui Gia Đình là đặc quyền dành riêng cho gia đình sở hữu Gói Premium.\n\n⭐ Lưu ý: Khi hết hạn Premium, số sao đã tích trữ trong hũ vẫn được BẢO TOÀN NGUYÊN VẸN. Nhiệm vụ điểm danh vẫn đồng bộ nhưng chỉ tăng sao vào hũ khi kích hoạt lại gói Premium!',
+            'Heo Đất Gia Đình là đặc quyền dành riêng cho gia đình sở hữu Gói Premium.\n\n⭐ Lưu ý: Khi hết hạn Premium, số sao đã tích trữ trong heo vẫn được BẢO TOÀN NGUYÊN VẸN. Nhiệm vụ điểm danh vẫn đồng bộ nhưng chỉ tăng sao vào heo khi kích hoạt lại gói Premium!',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12.5,

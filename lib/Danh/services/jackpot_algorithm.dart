@@ -183,4 +183,86 @@ class JackpotAlgorithm {
       return max(0, result);
     }
   }
+
+  /// Thuật toán phân bổ sao Heo Đất Gia Đình tất định (Deterministic Partition):
+  /// - 60% Effort Pool (chia theo tỷ lệ đóng góp điểm danh của con).
+  /// - 40% Lucky Pool (chia đều cho tất cả các con tham gia).
+  /// - Phần dư làm tròn (remainder): phân bổ cho con có đóng góp cao nhất (tie-break theo UID tăng dần).
+  /// - BẢO ĐẢM CÁC BẤT BIẾN (INVARIANTS):
+  ///   1. Phụ huynh (Bố, Mẹ) tuyệt đối KHÔNG nhận sao từ heo (chỉ con cái trong [childUids] mới được nhận).
+  ///   2. Tổng sao phân bổ = đúng 100% totalPot (không sinh sao ảo, không thất thoát sao).
+  ///   3. Không âm, hoạt động ngoại tuyến không cần mạng.
+  static Map<String, int> computeDeterministicPartition({
+    required int totalPot,
+    required Map<String, int> checkinCounts,
+    required List<String> childUids,
+    String settlementId = 'default',
+  }) {
+    if (totalPot <= 0 || childUids.isEmpty) {
+      return {};
+    }
+
+    final uniqueChildren =
+        childUids.where((id) => id.trim().isNotEmpty).toSet().toList();
+    if (uniqueChildren.isEmpty) return {};
+
+    // 1. Lọc chỉ lấy checkin của các con (loại trừ bố mẹ khỏi danh sách nhận sao)
+    final validCheckins = <String, int>{};
+    for (final cid in uniqueChildren) {
+      validCheckins[cid] = max(0, checkinCounts[cid] ?? 0);
+    }
+
+    final totalChildCheckins =
+        validCheckins.values.fold(0, (a, b) => a + b);
+
+    // 2. Tách Quỹ: 60% Effort + 40% Lucky
+    final effortPool = (totalPot * 0.6).round();
+    final luckyPool = totalPot - effortPool;
+
+    final shares = <String, int>{};
+
+    // 3. Phân bổ Effort Pool:
+    if (totalChildCheckins == 0) {
+      final base = effortPool ~/ uniqueChildren.length;
+      for (final cid in uniqueChildren) {
+        shares[cid] = (shares[cid] ?? 0) + base;
+      }
+    } else {
+      for (final cid in uniqueChildren) {
+        final share =
+            ((validCheckins[cid]! / totalChildCheckins) * effortPool).floor();
+        shares[cid] = (shares[cid] ?? 0) + share;
+      }
+    }
+
+    // 4. Phân bổ Lucky Pool: Chia đều cho tất cả con
+    final baseLucky = luckyPool ~/ uniqueChildren.length;
+    for (final cid in uniqueChildren) {
+      shares[cid] = (shares[cid] ?? 0) + baseLucky;
+    }
+
+    // 5. Cân đối phần dư (Remainder) do làm tròn -> Trao cho con đóng góp cao nhất
+    final currentSum = shares.values.fold(0, (a, b) => a + b);
+    int remainder = totalPot - currentSum;
+
+    if (remainder > 0) {
+      final sortedChildren = List<String>.from(uniqueChildren)
+        ..sort((a, b) {
+          final diff =
+              (validCheckins[b] ?? 0).compareTo(validCheckins[a] ?? 0);
+          if (diff != 0) return diff;
+          return a.compareTo(b);
+        });
+
+      int idx = 0;
+      while (remainder > 0 && sortedChildren.isNotEmpty) {
+        final target = sortedChildren[idx % sortedChildren.length];
+        shares[target] = (shares[target] ?? 0) + 1;
+        remainder--;
+        idx++;
+      }
+    }
+
+    return shares;
+  }
 }

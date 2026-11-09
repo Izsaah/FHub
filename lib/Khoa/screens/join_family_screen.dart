@@ -96,6 +96,8 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
         return AppLanguage.text('Ông / Bà', 'Grandparent');
       case FamilyMember.roleRelative:
         return AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative');
+      case FamilyMember.roleMember:
+        return AppLanguage.text('Thành viên / Bạn bè', 'Member / Friend');
       case FamilyMember.roleChild:
         return AppLanguage.text('Con cái', 'Child');
       default:
@@ -315,6 +317,10 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                   DropdownMenuItem(
                                     value: FamilyMember.roleRelative,
                                     child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleMember,
+                                    child: Text(AppLanguage.text('Thành viên / Bạn bè', 'Member / Friend')),
                                   ),
                                   DropdownMenuItem(
                                     value: FamilyMember.roleChild,

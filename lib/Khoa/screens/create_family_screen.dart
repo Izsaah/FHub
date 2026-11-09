@@ -238,6 +238,10 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                                     child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
                                   ),
                                   DropdownMenuItem(
+                                    value: FamilyMember.roleMember,
+                                    child: Text(AppLanguage.text('Thành viên / Bạn bè', 'Member / Friend')),
+                                  ),
+                                  DropdownMenuItem(
                                     value: FamilyMember.roleChild,
                                     child: Text(AppLanguage.text('Con cái', 'Child')),
                                   ),

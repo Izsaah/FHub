@@ -770,7 +770,7 @@ class StarEconomyService {
     final effectiveNote = note ??
         (sourceTaskId != null
             ? 'Tích lũy tự động từ nhiệm vụ hoàn thành'
-            : 'Góp sao vào Hũ Niềm Vui Gia Đình');
+            : 'Góp sao vào Heo Đất Gia Đình');
 
     if (_firestore == null) {
       starLedger[txKey] = {
@@ -838,8 +838,8 @@ class StarEconomyService {
         'type': 'JACKPOT_WIN',
         'sourceId': roundId,
         'note': isFirstPrize
-            ? 'Giải Nhất Nổ Hũ Sao Gia Đình 👑'
-            : 'Thưởng lắc Hũ Sao Gia Đình 🎉',
+            ? 'Thưởng Xuất Sắc Heo Đất Gia Đình 👑'
+            : 'Thưởng Heo Đất Gia Đình ⭐',
         'createdAt': DateTime.now(),
       };
       return;
@@ -888,8 +888,8 @@ class StarEconomyService {
         'type': 'JACKPOT_WIN',
         'sourceId': roundId,
         'note': isFirstPrize
-            ? 'Giải Nhất Nổ Hũ Sao Gia Đình 👑'
-            : 'Thưởng lắc Hũ Sao Gia Đình 🎉',
+            ? 'Thưởng Xuất Sắc Heo Đất Gia Đình 👑'
+            : 'Thưởng Heo Đất Gia Đình ⭐',
         'createdAt': FieldValue.serverTimestamp(),
       });
     });
@@ -1305,9 +1305,16 @@ class StarEconomyService {
     required String childId,
     required String childName,
     required WishlistRewardItem item,
+    int? expectedPrice,
     String? claimId,
   }) async {
     final currentInCatalog = wishlistCatalog[item.id];
+    final serverPrice = currentInCatalog?.starCost ?? item.starCost;
+    if (expectedPrice != null && expectedPrice != serverPrice) {
+      throw StateError(
+        'ITEM_PRICE_CHANGED: Giá của vật phẩm đã được cập nhật thành $serverPrice ⭐. Vui lòng thử lại với giá mới.',
+      );
+    }
     if (currentInCatalog != null && currentInCatalog.starCost != item.starCost) {
       throw StateError(
         'ITEM_PRICE_CHANGED: Giá của vật phẩm đã được cập nhật thành ${currentInCatalog.starCost} ⭐. Vui lòng thử lại với giá mới.',
@@ -1465,9 +1472,9 @@ class StarEconomyService {
         title: '🎉 Bố/Mẹ đã duyệt quà "${existing.itemName}"!',
         titleEn: '🎉 Your reward "${existing.itemName}" was approved!',
         body:
-            '$guardianName đã đồng ý trao phần thưởng "${existing.itemName}" cho ${existing.childName}! ${effectiveCashback > 0 ? "+$effectiveCashback ⭐ đã tích lũy vào Hũ Niềm Vui!" : ""}',
+            '$guardianName đã đồng ý trao phần thưởng "${existing.itemName}" cho ${existing.childName}! ${effectiveCashback > 0 ? "+$effectiveCashback ⭐ đã tích lũy vào Heo Đất Gia Đình!" : ""}',
         bodyEn:
-            '$guardianName approved your reward "${existing.itemName}"! ${effectiveCashback > 0 ? "+$effectiveCashback ⭐ added to Family Pot!" : ""}',
+            '$guardianName approved your reward "${existing.itemName}"! ${effectiveCashback > 0 ? "+$effectiveCashback ⭐ added to Family Piggy Bank!" : ""}',
         type: 'wishlist_approved',
       ),
     );
@@ -1683,9 +1690,11 @@ class StarEconomyService {
       effectiveIsGuardian = false;
     }
 
-    if (!effectiveIsGuardian) {
+    final bool isTaskCreator =
+        resolvedCreatorId.isNotEmpty && resolvedCreatorId == reviewerId;
+    if (!effectiveIsGuardian && !isTaskCreator) {
       throw StateError(
-        'ANTI_EXPLOIT_GUARDIAN_REQUIRED: Chỉ Người giám hộ (Bố Mẹ, Ông Bà) mới có quyền duyệt việc và thưởng sao.',
+        'ANTI_EXPLOIT_GUARDIAN_REQUIRED: Chỉ Người giám hộ (Bố Mẹ, Ông Bà) hoặc Người giao việc mới có quyền duyệt việc và thưởng sao.',
       );
     }
 

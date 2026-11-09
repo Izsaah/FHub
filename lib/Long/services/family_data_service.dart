@@ -863,10 +863,51 @@ class FamilyDataService implements IFamilyService {
     }
 
     try {
-      await _firestore
+      final memRef = _firestore
           .collection('family_members')
-          .doc('${targetFamId}_$targetUserId')
-          .update({'status': newStatus.code});
+          .doc('${targetFamId}_$targetUserId');
+      final famRef = _firestore.collection('families').doc(targetFamId);
+
+      await _firestore.runTransaction((tx) async {
+        final memSnap = await tx.get(memRef);
+        final famSnap = await tx.get(famRef);
+
+        if (memSnap.exists) {
+          final isOwner = memSnap.data()?['isOwner'] == true;
+          if (isOwner && newStatus != MemberStatus.active) {
+            throw Exception('Chủ hộ không thể tự vô hiệu hóa tài khoản của chính mình.');
+          }
+        }
+
+        int activeDelta = 0;
+        if (newStatus == MemberStatus.active) {
+          activeDelta = 1;
+        } else if (newStatus == MemberStatus.deactivated) {
+          activeDelta = -1;
+        }
+
+        tx.update(memRef, {'status': newStatus.code});
+
+        if (famSnap.exists && activeDelta != 0) {
+          final data = famSnap.data() as Map<String, dynamic>;
+          final currentActive = (data['activeMemberCount'] as int?) ??
+              (data['memberCount'] as int?) ??
+              1;
+          final newActive = (currentActive + activeDelta) > 1
+              ? (currentActive + activeDelta)
+              : 1;
+          final famUpdates = <String, dynamic>{
+            'activeMemberCount': newActive,
+          };
+          if (newActive <= 4 &&
+              (data['accessMode'] == 'overCapacityFrozen' ||
+                  data['isOverCapacityFrozen'] == true)) {
+            famUpdates['accessMode'] = 'freeStandard';
+            famUpdates['isOverCapacityFrozen'] = false;
+          }
+          tx.update(famRef, famUpdates);
+        }
+      });
     } catch (_) {
       await _mock.updateMemberStatus(targetUserId, newStatus,
           familyId: targetFamId);

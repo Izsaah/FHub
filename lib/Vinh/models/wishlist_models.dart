@@ -330,9 +330,9 @@ class StarLedgerEntryModel {
       case 'TASK_REWARD':
         return 'Thưởng hoàn thành công việc';
       case 'JACKPOT_WIN':
-        return 'Trúng thưởng Nổ Hũ Sao ⭐';
+        return 'Thưởng Heo Đất Gia Đình ⭐';
       case 'JACKPOT_CONTRIBUTE':
-        return 'Tích lũy vào Hũ Sao Gia Đình';
+        return 'Tích lũy vào Heo Đất Gia Đình';
       case 'WISHLIST_CLAIM':
         return 'Đổi quà: ${itemName ?? 'Phúc lợi thực tế'}';
       case 'CLAIM_REFUND':

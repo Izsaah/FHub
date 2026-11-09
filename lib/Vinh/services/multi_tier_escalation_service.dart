@@ -355,7 +355,12 @@ class MultiTierEscalationService {
       _fireSnoozeFollowUpIfStillPending(reminder.id, fallbackReminder: reminder);
     });
 
-    final ctx = context ?? _lastContext ?? navigatorKey.currentContext;
+    BuildContext? ctx = context ?? _lastContext;
+    if (ctx == null) {
+      try {
+        ctx = navigatorKey.currentContext;
+      } catch (_) {}
+    }
     if (ctx != null && ctx.mounted) {
       try {
         final mins = snoozeDuration.inMinutes > 0
@@ -902,4 +907,107 @@ class MultiTierEscalationService {
   }
 
   int get activeEscalationCount => _activeTimers.length;
+
+  List<ReminderModel> get trackedReminders => List.unmodifiable(_trackedReminders);
+
+  @visibleForTesting
+  void setTrackedRemindersForTesting(List<ReminderModel> reminders) {
+    _trackedReminders = List<ReminderModel>.from(reminders);
+  }
+
+  /// Xử lý Phụ huynh bấm "Gia hạn thêm giờ" (+1h hoặc +2h) neo vào DateTime.now()
+  Future<void> extendOverdueTask({
+    required String reminderId,
+    required int additionalHours,
+    String? familyId,
+  }) async {
+    final now = DateTime.now();
+    final newDueAt = now.add(Duration(hours: additionalHours));
+    final timeStr =
+        '${newDueAt.hour.toString().padLeft(2, '0')}:${newDueAt.minute.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${newDueAt.day.toString().padLeft(2, '0')}/${newDueAt.month.toString().padLeft(2, '0')}/${newDueAt.year}';
+
+    snoozedOnceReminderIds.remove(reminderId);
+    _safeFollowUpActiveIds.remove(reminderId);
+    snoozeDueAt.remove(reminderId);
+
+    final idx = _trackedReminders.indexWhere((r) => r.id == reminderId);
+    if (idx != -1) {
+      _trackedReminders[idx] = _trackedReminders[idx].copyWith(
+        status: ReminderStatus.pending,
+        date: dateStr,
+        time: timeStr,
+      );
+    }
+
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        await FirebaseFirestore.instance.collection('reminders').doc(reminderId).update({
+          'status': ReminderStatus.pending,
+          'date': dateStr,
+          'time': timeStr,
+          'dueDate': Timestamp.fromDate(newDueAt),
+          'overdueAt': Timestamp.fromDate(newDueAt.add(snoozeDuration)),
+          'escalationCount': 0,
+          'extendedByParentAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('[extendOverdueTask] Firestore update error: $e');
+      }
+    }
+  }
+
+  /// Chuyển thành Việc Xung Phong (Bounty Pool): Cho phép thành viên khác nhận làm thay kèm thưởng sao
+  Future<void> convertToVolunteerBounty({
+    required String reminderId,
+    int bonusStars = 5,
+  }) async {
+    final idx = _trackedReminders.indexWhere((r) => r.id == reminderId);
+    int currentReward = 0;
+    if (idx != -1) {
+      currentReward = _trackedReminders[idx].rewardStars;
+      _trackedReminders[idx] = _trackedReminders[idx].copyWith(
+        assignedTo: 'OPEN',
+        status: ReminderStatus.open,
+        rewardStars: currentReward + bonusStars,
+      );
+    }
+
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        await FirebaseFirestore.instance.collection('reminders').doc(reminderId).update({
+          'assignedTo': 'OPEN',
+          'status': ReminderStatus.open,
+          'isOpenTask': true,
+          'rewardStars': currentReward + bonusStars,
+          'bountyBonusStars': bonusStars,
+          'convertedToBountyAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('[convertToVolunteerBounty] Firestore update error: $e');
+      }
+    }
+  }
+
+  /// Đóng việc khi bỏ lỡ hạn
+  Future<void> closeMissedTask({required String reminderId}) async {
+    final idx = _trackedReminders.indexWhere((r) => r.id == reminderId);
+    if (idx != -1) {
+      _trackedReminders[idx] = _trackedReminders[idx].copyWith(
+        status: ReminderStatus.overdue,
+      );
+    }
+
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        await FirebaseFirestore.instance.collection('reminders').doc(reminderId).update({
+          'status': ReminderStatus.overdue,
+          'closedMissedAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('[closeMissedTask] Firestore update error: $e');
+      }
+    }
+  }
 }

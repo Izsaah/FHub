@@ -64,7 +64,7 @@ class DanhPaymentEntry {
     );
   }
 
-  /// Điều hướng tới Hũ Niềm Vui Gia Đình (Shopee Shake) - Tính năng độc quyền Premium
+  /// Điều hướng tới Heo Đất Gia Đình (Piggy Bank) - Tính năng độc quyền Premium
   static Future<void> openFamilyJackpot(BuildContext context) {
     if (!_ensureHasFamily(context)) return Future.value();
     if (!service.isPremium) {
@@ -72,8 +72,8 @@ class DanhPaymentEntry {
         SnackBar(
           content: Text(
             AppLanguage.text(
-              '🌟 Vui lòng nâng cấp lên Gói Premium để mở khóa Hũ Niềm Vui Gia Đình!',
-              '🌟 Please upgrade to Premium to unlock Family Jackpot!',
+              '🌟 Vui lòng nâng cấp lên Gói Premium để mở khóa Heo Đất Gia Đình!',
+              '🌟 Please upgrade to Premium to unlock Family Piggy Bank!',
             ),
           ),
           backgroundColor: DanhColors.brand800,
@@ -251,12 +251,12 @@ class DanhPaymentEntry {
                         Text(
                           isPremium
                               ? AppLanguage.text(
-                                  'Đã mở rộng tối đa 10 thành viên & mở khóa Hũ Niềm Vui',
-                                  'Expanded up to 10 members & Family Jackpot unlocked',
+                                  'Đã mở rộng tối đa 10 thành viên & mở khóa Heo Đất Gia Đình',
+                                  'Expanded up to 10 members & Family Piggy Bank unlocked',
                                 )
                               : AppLanguage.text(
-                                  'Mở rộng tối đa lên 10 thành viên & Hũ Niềm Vui Gia Đình',
-                                  'Expand up to 10 members & Family Jackpot',
+                                  'Mở rộng tối đa lên 10 thành viên & Heo Đất Gia Đình',
+                                  'Expand up to 10 members & Family Piggy Bank',
                                 ),
                           style: const TextStyle(
                             fontSize: 11,
@@ -314,12 +314,12 @@ class DanhPaymentEntry {
                         child: Text(
                           isPremium
                               ? AppLanguage.text(
-                                  'Hũ Niềm Vui Gia Đình • Vào nạp quỹ & Lắc 30s nổ hũ!',
-                                  'Family Jackpot • Deposit & Shake 30s to win!',
+                                  'Heo Đất Gia Đình • Nuôi heo chăm ngoan & Mở thưởng',
+                                  'Family Piggy Bank • Feed with chores & Open rewards',
                                 )
                               : AppLanguage.text(
-                                  'Hũ Niềm Vui Gia Đình (Đặc quyền gói Premium)',
-                                  'Family Jackpot (Exclusive to Premium plan)',
+                                  'Heo Đất Gia Đình (Đặc quyền gói Premium)',
+                                  'Family Piggy Bank (Exclusive to Premium plan)',
                                 ),
                           style: TextStyle(
                             fontSize: 12,
@@ -353,7 +353,7 @@ class DanhPaymentEntry {
                   ),
                   child: Row(
                     children: [
-                      const Text('🎁', style: TextStyle(fontSize: 20)),
+                      const Icon(Icons.card_giftcard_rounded, color: Color(0xFF2E7D32), size: 22),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(

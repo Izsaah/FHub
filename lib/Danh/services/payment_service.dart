@@ -58,6 +58,10 @@ class PaymentService extends ChangeNotifier {
 
   bool get isPremium => _currentSubscription.isPremium;
   int get memberLimit => _currentSubscription.maxMembers;
+  FamilyAccessMode get accessMode => _currentSubscription.resolveAccessMode(DateTime.now());
+  int get graceDaysRemaining => _currentSubscription.graceDaysRemaining(DateTime.now());
+  bool get isOverCapacityFrozen => accessMode == FamilyAccessMode.overCapacityFrozen;
+  bool get isGracePeriod => accessMode == FamilyAccessMode.gracePeriodWarning;
 
   /// Tự động tìm familyId của user đang đăng nhập nếu chưa được gán thủ công
   Future<void> _autoResolveFamilyId() async {
@@ -147,22 +151,7 @@ class PaymentService extends ChangeNotifier {
           if (!snapshot.exists || snapshot.data() == null) return;
           final data = snapshot.data()!;
 
-          final bool isPrem = data['isPremium'] as bool? ?? false;
-          final String plan = data['planName'] as String? ?? (isPrem ? 'Family Hub Premium' : 'Gói Cơ Bản (Free)');
-          final int maxMem = data['maxMembers'] as int? ?? (isPrem ? 10 : 4);
-          final dynamic endAt = data['subscriptionEndDate'] ?? data['endDate'];
-
-          DateTime? parsedEnd;
-          if (endAt is Timestamp) parsedEnd = endAt.toDate();
-          if (endAt is String) parsedEnd = DateTime.tryParse(endAt);
-
-          _currentSubscription = FamilySubscriptionModel(
-            familyId: familyId,
-            isPremium: isPrem,
-            planName: plan,
-            maxMembers: maxMem,
-            endDate: parsedEnd,
-          );
+          _currentSubscription = FamilySubscriptionModel.fromMap(familyId, data);
           notifyListeners();
         },
         onError: (e) {

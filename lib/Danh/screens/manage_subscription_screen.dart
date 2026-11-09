@@ -84,7 +84,7 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
     FamilyJackpotService.instance.onPremiumLost();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Đã đặt lại về Gói Cơ Bản (Free). Hũ Niềm Vui chưa lắc đã bị tiêu hủy!'),
+        content: Text('Đã đặt lại về Gói Cơ Bản (Free). Số sao trong Heo Đất vẫn được bảo toàn!'),
         backgroundColor: DanhColors.warning,
       ),
     );
@@ -268,7 +268,7 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
             ),
             const SizedBox(height: 18),
 
-            // Đặc quyền Hũ Niềm Vui Gia Đình (Shopee Shake)
+            // Đặc quyền Heo Đất Gia Đình (Piggy Bank)
             InkWell(
               borderRadius: BorderRadius.circular(20),
               onTap: () {
@@ -305,7 +305,7 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
                           Row(
                             children: [
                               Text(
-                                'Hũ Niềm Vui Gia Đình',
+                                'Heo Đất Gia Đình',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w900,
@@ -329,8 +329,8 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
                           const SizedBox(height: 4),
                           Text(
                             isPremium
-                                ? 'Nạp quỹ VietQR • Đại gia đình phát lệnh • Lắc 30s nổ hũ'
-                                : 'Đặc quyền riêng cho gói Premium (Mất gói là mất hũ!)',
+                                ? 'Tích sao điểm danh • Mở thưởng chia đều & nỗ lực cho các bé'
+                                : 'Đặc quyền riêng cho gói Premium (Bảo toàn số sao tích lũy)',
                             style: TextStyle(
                               fontSize: 12,
                               color: isPremium ? const Color(0xFF663C00) : Colors.grey.shade600,
@@ -384,7 +384,7 @@ class _ManageSubscriptionScreenState extends State<ManageSubscriptionScreen> {
                 },
                 icon: DanhSvgs.goldenPot(size: 22),
                 label: const Text(
-                  'Vào Hũ Niềm Vui Gia Đình Ngay',
+                  'Vào Heo Đất Gia Đình Ngay',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
               ),

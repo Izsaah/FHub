@@ -390,6 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
               // Inactivity monitoring: look for any members inactive for > 24 hours
               final inactiveMembers = members.where((m) {
                 if (!m.isActive || m.isMemorialized) return false;
+                if (m.user.id == currentUserId) return false;
                 if (m.lastCheckInAt == null) return true;
                 return DateTime.now().difference(m.lastCheckInAt!).inHours >= 24;
               }).toList();
@@ -573,6 +574,38 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
+                    ],
+
+                    if (!isCheckedInToday) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFC8E6C9)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.shield_outlined,
+                                color: Color(0xFF2E7D32), size: 22),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                LongStrings.t(
+                                  'Hôm nay bạn chưa điểm danh. Hãy điểm danh để báo an toàn cho gia đình nhé!',
+                                  'You haven\'t checked in today. Check in now to notify your family!',
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF1B5E20),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                     ],
 
                     // Module 3: CheckInButton

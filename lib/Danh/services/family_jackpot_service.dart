@@ -358,6 +358,7 @@ class FamilyJackpotService extends ChangeNotifier {
   bool _isTransitioningPhase = false;
   String? _resolvedUserName;
   final Map<String, String> _cachedFamilyMembers = {};
+  final Map<String, String> _cachedMemberRoles = {};
   Map<String, String> get cachedFamilyMembers => Map.unmodifiable(_cachedFamilyMembers);
 
   FamilyJackpotModel _jackpot = const FamilyJackpotModel(
@@ -883,6 +884,7 @@ class FamilyJackpotService extends ChangeNotifier {
               continue;
             }
             loaded[uid] = name;
+            _cachedMemberRoles[uid] = m.hierarchyRole.code;
           }
         }
       } catch (_) {}
@@ -905,6 +907,9 @@ class FamilyJackpotService extends ChangeNotifier {
           // Nếu đã có tên thật từ FamilyDataService -> giữ nguyên
           if (loaded.containsKey(uid) && loaded[uid]!.isNotEmpty) continue;
 
+          final rawRole = (d['role'] as String? ?? 'PARENT').toUpperCase();
+          _cachedMemberRoles[uid] = rawRole;
+
           // Thử đọc tên từ users collection
           try {
             final userDoc = await _firestore!.collection('users').doc(uid).get();
@@ -917,7 +922,6 @@ class FamilyJackpotService extends ChangeNotifier {
           } catch (_) {}
 
           // Fallback tên vai trò tiếng Việt rõ ràng, tránh hiển thị thô "PARENT"
-          final rawRole = (d['role'] as String? ?? 'PARENT').toUpperCase();
           final isOwner = d['isOwner'] as bool? ?? false;
           String fallbackRole;
           if (isOwner) {
@@ -1656,7 +1660,74 @@ class FamilyJackpotService extends ChangeNotifier {
     ));
   }
 
-  /// Thực thi chia sao Hũ Sao Gia Đình ngay lập tức và cộng vào StarEconomyService
+  /// Phân bổ sao Heo Đất Gia Đình theo thuật toán tất định (60% Effort + 40% Lucky, loại trừ phụ huynh)
+  JackpotDistributionResult _computeDeterministicPiggyDistribution({
+    required int poolAmount,
+    required Map<String, int> shakes,
+    required List<String> participantIds,
+    required String roundId,
+  }) {
+    if (poolAmount <= 0 || participantIds.isEmpty) {
+      return const JackpotDistributionResult(prizes: {});
+    }
+
+    // Lọc danh sách con cái: Loại trừ chủ gia đình, bố mẹ, người giám hộ
+    final childUids = <String>[];
+    for (final uid in participantIds) {
+      final role = (_cachedMemberRoles[uid] ?? '').toUpperCase();
+      final isParent = role.contains('PARENT') ||
+          role.contains('OWNER') ||
+          role.contains('GUARDIAN') ||
+          role.contains('BỐ') ||
+          role.contains('MẸ');
+      if (!isParent) {
+        childUids.add(uid);
+      }
+    }
+
+    // Dự phòng: Nếu gia đình chỉ có các tài khoản người lớn thử nghiệm, chia cho các tài khoản không phải initiator hoặc tất cả
+    final targetChildren = childUids.isNotEmpty ? childUids : participantIds;
+
+    final shares = JackpotAlgorithm.computeDeterministicPartition(
+      totalPot: poolAmount,
+      checkinCounts: shakes,
+      childUids: targetChildren,
+      settlementId: roundId,
+    );
+
+    if (shares.isEmpty) {
+      return const JackpotDistributionResult(prizes: {});
+    }
+
+    String? topShakerId;
+    int maxShakes = 0;
+    for (final uid in targetChildren) {
+      final c = shakes[uid] ?? 0;
+      if (c > maxShakes) {
+        maxShakes = c;
+        topShakerId = uid;
+      }
+    }
+
+    String? topWinnerId;
+    int maxStars = 0;
+    for (final entry in shares.entries) {
+      if (entry.value > maxStars) {
+        maxStars = entry.value;
+        topWinnerId = entry.key;
+      }
+    }
+
+    return JackpotDistributionResult(
+      prizes: shares,
+      topShakerId: topShakerId,
+      topShakeCount: maxShakes,
+      firstPrizeWinnerId: topWinnerId,
+      isTopShakerUnlucky: false,
+    );
+  }
+
+  /// Thực thi chia sao Heo Đất Gia Đình ngay lập tức và cộng vào StarEconomyService
   Future<JackpotDistributionResult> distributeStarPotNow({
     Map<String, int>? overrideShakeCounts,
     List<String>? overrideParticipantIds,
@@ -1670,19 +1741,20 @@ class FamilyJackpotService extends ChangeNotifier {
                 : (overrideShakeCounts?.keys.toList() ?? <String>[])));
     final shakes = overrideShakeCounts ?? _jackpot.shakeCounts;
     final poolStars = _jackpot.totalPoolAmount;
+    final effectiveRoundId =
+        roundId ?? 'piggy_${DateTime.now().microsecondsSinceEpoch}';
 
-    final result = JackpotAlgorithm.calculate(
-      totalAmount: poolStars,
-      shakeCounts: shakes,
+    final result = _computeDeterministicPiggyDistribution(
+      poolAmount: poolStars,
+      shakes: shakes,
       participantIds: participants,
+      roundId: effectiveRoundId,
     );
 
     if (result.prizes.isEmpty) {
       return result;
     }
 
-    final effectiveRoundId =
-        roundId ?? 'round_${DateTime.now().microsecondsSinceEpoch}';
     final famId = _currentFamilyId ?? 'f1';
     final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
 
@@ -1715,6 +1787,61 @@ class FamilyJackpotService extends ChangeNotifier {
     notifyListeners();
     await _saveToFirestore();
     return result;
+  }
+
+  /// Quyết toán Heo Đất Gia Đình theo thuật toán chia sao tất định (INV-01, INV-02)
+  Future<Map<String, int>> settlePiggyBankPartition({
+    required List<String> childUids,
+    String? settlementId,
+  }) async {
+    final poolStars = _jackpot.totalPoolAmount;
+    if (poolStars <= 0 || childUids.isEmpty) {
+      return {};
+    }
+
+    // Kiểm tra tính lũy đẳng (Idempotency): Nếu đã ở trạng thái finished/settled thì không chia lại
+    if (_jackpot.status == JackpotStatus.finished) {
+      return _jackpot.prizeResults;
+    }
+
+    final shares = JackpotAlgorithm.computeDeterministicPartition(
+      totalPot: poolStars,
+      checkinCounts: _jackpot.shakeCounts,
+      childUids: childUids,
+      settlementId: settlementId ?? 'piggy_${DateTime.now().millisecondsSinceEpoch}',
+    );
+
+    if (shares.isEmpty) return {};
+
+    final effectiveRoundId = settlementId ?? 'piggy_${DateTime.now().millisecondsSinceEpoch}';
+    final famId = _currentFamilyId ?? 'f1';
+    final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
+
+    for (final entry in shares.entries) {
+      final uid = entry.key;
+      final wonStars = entry.value;
+      if (wonStars > 0) {
+        updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonStars;
+        await StarEconomyService.instance.creditJackpotStarWin(
+          familyId: famId,
+          winnerId: uid,
+          winnerName: _jackpot.memberNames[uid] ?? 'Bé',
+          wonStars: wonStars,
+          roundId: effectiveRoundId,
+          isFirstPrize: false,
+        );
+      }
+    }
+
+    _jackpot = _jackpot.copyWith(
+      totalPoolAmount: 0,
+      status: JackpotStatus.finished,
+      prizeResults: shares,
+      memberWallets: updatedWallets,
+    );
+    notifyListeners();
+    await _saveToFirestore();
+    return shares;
   }
 
   /// Bắt đầu 30s Nổ Hũ (participantIds: danh sách thành viên tham gia)
@@ -1949,10 +2076,12 @@ class FamilyJackpotService extends ChangeNotifier {
             participantIds.add(currentUserId);
           }
 
-          final result = JackpotAlgorithm.calculate(
-            totalAmount: poolAmount,
-            shakeCounts: finalShakes,
+          final roundId = 'piggy_${DateTime.now().microsecondsSinceEpoch}';
+          final result = _computeDeterministicPiggyDistribution(
+            poolAmount: poolAmount,
+            shakes: finalShakes,
             participantIds: participantIds,
+            roundId: roundId,
           );
           finalResult = result;
 
@@ -2015,8 +2144,8 @@ class FamilyJackpotService extends ChangeNotifier {
               _recordTransaction(
                 type: WalletTransactionType.prize,
                 amount: wonAmount,
-                title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
-                description: 'Phần thưởng chia từ quỹ Hũ Sao',
+                title: isTop1 ? 'Thưởng Heo Đất Xuất Sắc 👑' : 'Thưởng Heo Đất gia đình',
+                description: 'Phần thưởng chia từ quỹ Heo Đất Sao',
                 targetUserId: uid,
                 targetUserName: mName,
               );
@@ -2031,10 +2160,10 @@ class FamilyJackpotService extends ChangeNotifier {
             );
             unawaited(NotificationService.instance.addNotification(
               familyId: _currentFamilyId ?? 'f1',
-              title: 'Kết quả Nổ Hũ Gia Đình! ✨',
-              titleEn: 'Family Pot Battle Results! ✨',
-              body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize ⭐!',
-              bodyEn: '$winnerName won 1st Prize with a reward of $formattedPrize ⭐!',
+              title: 'Kết quả Mở Heo Đất Gia Đình! ✨',
+              titleEn: 'Family Piggy Bank Results! ✨',
+              body: '$winnerName và các bé đã nhận $formattedPrize ⭐ từ Heo Đất!',
+              bodyEn: '$winnerName and the children received $formattedPrize ⭐ from the Piggy Bank!',
               type: 'jackpot_win',
             ));
           }
@@ -2052,10 +2181,12 @@ class FamilyJackpotService extends ChangeNotifier {
           finalShakes[currentUserId] = _localMyShakeCount;
         }
 
-        final result = JackpotAlgorithm.calculate(
-          totalAmount: _jackpot.totalPoolAmount,
-          shakeCounts: finalShakes,
+        final roundId = 'piggy_${DateTime.now().microsecondsSinceEpoch}';
+        final result = _computeDeterministicPiggyDistribution(
+          poolAmount: _jackpot.totalPoolAmount,
+          shakes: finalShakes,
           participantIds: participantIds,
+          roundId: roundId,
         );
 
         if (result.prizes.isEmpty) {
@@ -2074,7 +2205,6 @@ class FamilyJackpotService extends ChangeNotifier {
         }
 
         final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
-        final roundId = 'round_${DateTime.now().microsecondsSinceEpoch}';
         final famId = _currentFamilyId ?? 'f1';
         result.prizes.forEach((uid, wonAmount) {
           updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonAmount;
@@ -2094,8 +2224,8 @@ class FamilyJackpotService extends ChangeNotifier {
             _recordTransaction(
               type: WalletTransactionType.prize,
               amount: wonAmount,
-              title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
-              description: 'Phần thưởng chia từ quỹ Hũ Sao',
+              title: isTop1 ? 'Thưởng Heo Đất Xuất Sắc 👑' : 'Thưởng Heo Đất gia đình',
+              description: 'Phần thưởng chia từ quỹ Heo Đất Sao',
               targetUserId: uid,
               targetUserName: mName,
             );
