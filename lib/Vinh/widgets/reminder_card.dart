@@ -218,13 +218,13 @@ class ReminderCard extends StatelessWidget {
     if (dt == null) return null;
     final now = DateTime.now();
     final diff = dt.difference(now);
-    if (diff.isNegative) {
+    if (diff.isNegative || diff.inSeconds <= 0) {
       return null;
     }
     if (diff.inMinutes < 60) {
       return AppLanguage.text(
-        'còn ${diff.inMinutes}p',
-        '${diff.inMinutes}m left',
+        'còn ${(diff.inSeconds / 60).ceil()}p',
+        '${(diff.inSeconds / 60).ceil()}m left',
       );
     } else if (diff.inHours < 24 && dt.day == now.day) {
       return AppLanguage.text(
@@ -566,7 +566,27 @@ class ReminderCard extends StatelessWidget {
                                         ],
                                       ),
                                     ),
-                                  if (reminder.isOverdue)
+                                  if (reminder.isClosedMissed)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFECEFF1),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        AppLanguage.text(
+                                          'Đã đóng',
+                                          'Closed',
+                                        ),
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF546E7A),
+                                        ),
+                                      ),
+                                    )
+                                  else if (reminder.isOverdue)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 6, vertical: 1),
@@ -650,7 +670,25 @@ class ReminderCard extends StatelessWidget {
                             },
                           ),
                         ],
-                        if (canComplete && onComplete != null)
+                        if (reminder.isSubmitted)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF6750A4),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.rate_review_outlined, size: 16),
+                              label: Text(
+                                AppLanguage.text('Duyệt ngay', 'Review'),
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: onTap,
+                            ),
+                          )
+                        else if (canComplete && onComplete != null)
                           IconButton(
                             icon: Icon(
                               reminder.requiresProofImage

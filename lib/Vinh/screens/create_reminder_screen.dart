@@ -12,6 +12,7 @@ import '../services/reminder_validator.dart';
 import '../widgets/chore_reward_card.dart';
 import '../widgets/member_picker_bottom_sheet.dart';
 import '../widgets/voice_recorder_widget.dart';
+import '../../Danh/danh_payment_entry.dart';
 
 class CreateReminderScreen extends StatefulWidget {
   final String familyId;
@@ -234,6 +235,49 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     return '$h:$m';
   }
 
+  String _localizeValidationMessage(String raw) {
+    if (raw.contains('Reminder time must be in the future') ||
+        raw.contains('Thời gian lời nhắc') ||
+        raw.contains('tương lai') ||
+        raw == ReminderValidator.futureTimeErrorMessage) {
+      return AppLanguage.text(
+        'Thời gian lời nhắc phải ở tương lai.',
+        'Reminder time must be in the future.',
+      );
+    }
+    if (raw.contains('Title is required') || raw.contains('Title cannot exceed')) {
+      return AppLanguage.text(
+        'Tiêu đề lời nhắc không hợp lệ hoặc để trống.',
+        'Invalid or empty reminder title.',
+      );
+    }
+    if (raw.contains('Assigned member is required')) {
+      return AppLanguage.text(
+        'Vui lòng chọn người nhận việc.',
+        'Assigned member is required.',
+      );
+    }
+    if (raw.contains('Assigned member must belong to current Family')) {
+      return AppLanguage.text(
+        'Người nhận việc phải thuộc gia đình này.',
+        'Assigned member must belong to current Family.',
+      );
+    }
+    if (raw.contains('Only the creator or a parent/owner can edit this reminder')) {
+      return AppLanguage.text(
+        'Chỉ người tạo hoặc Phụ huynh/Chủ nhà mới có quyền sửa lời nhắc này.',
+        'Only the creator or a parent/owner can edit this reminder.',
+      );
+    }
+    if (raw.contains('Only the creator can set their ID as creator')) {
+      return AppLanguage.text(
+        'Bạn chỉ có thể tạo lời nhắc cho chính mình.',
+        'Only the creator can set their ID as creator.',
+      );
+    }
+    return raw;
+  }
+
   bool _validateDateTime() {
     if (_selectedDate == null || _selectedTime == null) {
       setState(() {
@@ -245,12 +289,34 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       return false;
     }
 
-    final err = widget.isEditing
-        ? null
-        : ReminderValidator.validateFutureDateTime(
-            _selectedDate,
-            _selectedTime,
-          );
+    final scheduledDateTime = DateTime(
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
+      _selectedTime!.hour,
+      _selectedTime!.minute,
+    );
+
+    bool shouldCheckFuture = true;
+    if (widget.isEditing && widget.existingReminder?.dueDateTime != null) {
+      final existingDue = widget.existingReminder!.dueDateTime!;
+      final isSameMoment = existingDue.year == scheduledDateTime.year &&
+          existingDue.month == scheduledDateTime.month &&
+          existingDue.day == scheduledDateTime.day &&
+          existingDue.hour == scheduledDateTime.hour &&
+          existingDue.minute == scheduledDateTime.minute;
+      if (isSameMoment) {
+        shouldCheckFuture = false;
+      }
+    }
+
+    String? err;
+    if (shouldCheckFuture && !scheduledDateTime.isAfter(DateTime.now())) {
+      err = AppLanguage.text(
+        'Thời gian lời nhắc phải ở tương lai.',
+        'Reminder time must be in the future.',
+      );
+    }
 
     setState(() {
       _dateTimeError = err;
@@ -343,6 +409,30 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   }
 
   Future<void> _submit() async {
+    if (DanhPaymentEntry.isOverCapacityFrozen) {
+      await DanhPaymentEntry.showOverCapacityFrozenDialog(context);
+      return;
+    }
+
+    if (_selectedMember != null && _selectedMember!.id != 'OPEN') {
+      if (_selectedMember!.isMemorialized || _selectedMember!.isDeactivated) {
+        final statusVn = _selectedMember!.isMemorialized ? 'đã khuất' : 'đã tạm ngưng';
+        final statusEn = _selectedMember!.isMemorialized ? 'deceased' : 'inactive';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                'Không thể giao việc cho thành viên $statusVn.',
+                'Cannot assign tasks to $statusEn members.',
+              ),
+            ),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+        return;
+      }
+    }
+
     if (_activeFamilyId.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -418,14 +508,42 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     final targetRole = _selectedMember?.role ?? 'Member';
     final targetLevel = _selectedMember?.id == 'OPEN' ? 0 : getMemberHierarchyLevel(targetRole);
 
-    if (taskTypeEnum == TaskType.assign && creatorLevel < targetLevel) {
+    final isCreatorChild = _currentMember?.isChild == true ||
+        creatorLevel <= 1 ||
+        creatorRole.toUpperCase().contains('CHILD') ||
+        widget.currentUserId.toLowerCase().contains('child');
+    final isSelfAssign = _selectedMember?.id == widget.currentUserId;
+
+    // Anti-exploit: Prevent CHILD self-assignment with stars
+    if (isCreatorChild && isSelfAssign && _rewardStars > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             AppLanguage.text(
-              'Trẻ em không được giao việc bắt buộc có thưởng/phạt cho người lớn. Hãy chọn chế độ "Nhờ vả (FAVOR)".',
-              'Children cannot assign mandatory chores to elders. Please select "Favor".',
+              'Trẻ em không được tự tạo việc cho mình để nhận sao.',
+              'Children cannot self-assign tasks to receive stars.',
             ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
+
+    if (taskTypeEnum == TaskType.assign &&
+        (creatorLevel < targetLevel || !_canAssignChores || isCreatorChild)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            !_canAssignChores || isCreatorChild
+                ? AppLanguage.text(
+                    'Chỉ Người giám hộ (Bố Mẹ, Ông Bà) mới có quyền giao việc bắt buộc có thưởng/phạt. Hãy chọn chế độ "Nhờ vả (FAVOR)".',
+                    'Only Guardians (Parents, Grandparents) can assign mandatory chores. Please select "Favor".',
+                  )
+                : AppLanguage.text(
+                    'Trẻ em không được giao việc bắt buộc có thưởng/phạt cho người lớn. Hãy chọn chế độ "Nhờ vả (FAVOR)".',
+                    'Children cannot assign mandatory chores to elders. Please select "Favor".',
+                  ),
           ),
           backgroundColor: const Color(0xFFBA1A1A),
         ),
@@ -600,9 +718,14 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final rawMsg = e
+            .toString()
+            .replaceFirst('Exception: ', '')
+            .replaceFirst('ReminderValidationException: ', '');
+        final localizedMsg = _localizeValidationMessage(rawMsg);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            content: Text(localizedMsg),
             backgroundColor: const Color(0xFFBA1A1A),
           ),
         );
@@ -894,8 +1017,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                                 onSelectionChanged: (newSelection) {
                                   setState(() {
                                     _selectedTaskType = newSelection.first;
-                                    if (_selectedTaskType == TaskType.favor.dbValue ||
-                                        _selectedTaskType == TaskType.care.dbValue) {
+                                    if (_selectedTaskType == TaskType.favor.dbValue) {
                                       _rewardStars = 0;
                                       _requiresProofImage = false;
                                     } else if (_rewardStars == 0) {
@@ -1333,7 +1455,7 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                                 const SizedBox(height: 10),
                                 Wrap(
                                   spacing: 8,
-                                  children: [1, 2, 3, 5].map((star) {
+                                  children: [1, 2, 3, 4, 5].map((star) {
                                     final isSelected = _rewardStars == star;
                                     return ChoiceChip(
                                       label: Text(
@@ -1411,6 +1533,59 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
                                     final sample = title.isNotEmpty ? title : 'Uống thuốc huyết áp sau ăn';
                                     AiSpeechPlatform.instance.speak("Kính mời Ông Bà: $sample", isEnglish: false);
                                   },
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFBDC9C4)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star_rounded, color: Colors.amber, size: 24),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        AppLanguage.text('Thưởng sao chăm sóc (1 - 5 ⭐)', 'Care Star Reward (1 - 5 ⭐)'),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textPrimary),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  children: [1, 2, 3, 4, 5].map((star) {
+                                    final isSelected = _rewardStars == star;
+                                    return ChoiceChip(
+                                      label: Text(
+                                        '$star ⭐',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: isSelected ? Colors.amber.shade900 : textPrimary,
+                                        ),
+                                      ),
+                                      selected: isSelected,
+                                      selectedColor: Colors.amber.shade100,
+                                      backgroundColor: Colors.grey.shade50,
+                                      side: BorderSide(
+                                        color: isSelected ? Colors.amber.shade700 : const Color(0xFFBDC9C4),
+                                      ),
+                                      onSelected: (selected) {
+                                        if (selected) setState(() => _rewardStars = star);
+                                      },
+                                    );
+                                  }).toList(),
                                 ),
                               ],
                             ),

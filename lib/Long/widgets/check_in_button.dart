@@ -67,7 +67,9 @@ class CheckInButton extends StatelessWidget {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
-                  isCheckedIn ? "You're already checked in" : "✓ I'M OK",
+                  isCheckedIn
+                      ? "Bạn đã điểm danh an toàn hôm nay"
+                      : "✓ I'M OK",
                   maxLines: 1,
                   style: TextStyle(
                     fontSize: 19,

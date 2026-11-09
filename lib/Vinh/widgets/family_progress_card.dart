@@ -66,7 +66,7 @@ class FamilyProgressCard extends StatelessWidget {
                       children: [
                         Icon(
                           isAllDone
-                              ? Icons.celebration_outlined
+                              ? Icons.verified_rounded
                               : Icons.task_alt_outlined,
                           color: isAllDone ? primaryColor : accentOrange,
                           size: 20,
@@ -76,8 +76,8 @@ class FamilyProgressCard extends StatelessWidget {
                           child: Text(
                             isAllDone
                                 ? AppLanguage.text(
-                                    'Cả nhà đã hoàn thành hết việc! 🎉',
-                                    'All family tasks completed! 🎉',
+                                    'Cả nhà đã hoàn thành xuất sắc mục tiêu hôm nay',
+                                    'All family tasks completed!',
                                   )
                                 : AppLanguage.text(
                                     'Tiến độ gia đình ($displayDateTitle)',

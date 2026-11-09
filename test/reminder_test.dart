@@ -10,7 +10,7 @@ import 'package:fhub/Vinh/screens/calendar_page.dart';
 import 'package:fhub/Vinh/screens/family_ai_chat_screen.dart';
 import 'package:fhub/Vinh/screens/views/reminder_list_view.dart';
 import 'package:fhub/Vinh/services/family_ai_assistant_service.dart';
-import 'package:fhub/Vinh/services/family_memory_service.dart';
+import 'package:fhub/Ai/services/family_memory_service.dart';
 import 'package:fhub/Vinh/widgets/chore_reward_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_scope_filter_chips.dart';
@@ -20,8 +20,24 @@ import 'package:fhub/Vinh/widgets/family_progress_card.dart';
 import 'package:fhub/Vinh/widgets/reminder_detail_bottom_sheet.dart';
 import 'package:fhub/Vinh/widgets/multi_tier_simulation_dialog.dart';
 import 'package:fhub/Vinh/widgets/voice_reminder_player.dart';
+import 'package:fhub/Vinh/services/quiet_hours_engine.dart';
+import 'package:fhub/Vinh/services/alarm_sound_service.dart';
+import 'package:fhub/Vinh/services/multi_tier_escalation_service.dart';
+export 'package:fhub/Vinh/services/quiet_hours_engine.dart';
 
 void main() {
+  setUp(() {
+    AlarmSoundService.instance.disableAudioPlayerForTest = true;
+    MultiTierEscalationService.instance.stopClock();
+    MultiTierEscalationService.instance.cancelAll();
+  });
+
+  tearDown(() {
+    MultiTierEscalationService.instance.stopClock();
+    MultiTierEscalationService.instance.cancelAll();
+    AlarmSoundService.instance.stopAlarm();
+  });
+
   group('Reminder Validator Tests (Lab 11 Cases)', () {
     test('Empty reminder title fails validation (Case 3)', () {
       final resEmpty = ReminderValidator.validateTitle('');
@@ -316,6 +332,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.tap(find.text('Tất cả'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Tổ Ấm Yêu Thương'), findsOneWidget);
       expect(find.text('CHỜ THỰC HIỆN'), findsOneWidget);
       expect(find.text('ĐÃ HOÀN THÀNH'), findsOneWidget);
@@ -351,6 +370,78 @@ void main() {
       expect(find.byType(WeeklyCalendarStrip), findsOneWidget);
       expect(find.byType(FamilyProgressCard), findsOneWidget);
       expect(find.text('Tất cả'), findsOneWidget);
+    });
+
+    testWidgets(
+        'ReminderListScreen defaults to Today and toggles to All on chip tap',
+        (tester) async {
+      final now = DateTime.now();
+      final todayStr =
+          '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+      final tomorrow = now.add(const Duration(days: 1));
+      final tomorrowStr =
+          '${tomorrow.day.toString().padLeft(2, '0')}/${tomorrow.month.toString().padLeft(2, '0')}/${tomorrow.year}';
+
+      final repo = InMemoryReminderRepository(initialReminders: [
+        ReminderModel(
+          id: 'rem_today',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Today Task Clean Room',
+          date: todayStr,
+          time: '09:00',
+          status: ReminderStatus.pending,
+        ),
+        ReminderModel(
+          id: 'rem_tomorrow',
+          familyId: 'f1',
+          creatorId: 'user_minh',
+          assignedTo: 'user_minh',
+          assignedToName: 'Minh',
+          title: 'Tomorrow Task Wash Car',
+          date: tomorrowStr,
+          time: '14:00',
+          status: ReminderStatus.pending,
+        ),
+      ]);
+
+      const members = [
+        FamilyMember(
+          id: 'user_minh',
+          name: 'Minh',
+          role: 'Owner',
+          familyId: 'f1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReminderListScreen(
+            familyId: 'f1',
+            currentUserId: 'user_minh',
+            familyMembers: members,
+            repository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Assert today's reminder is visible, tomorrow's reminder is NOT visible
+      expect(find.text('Today Task Clean Room'), findsOneWidget);
+      expect(find.text('Tomorrow Task Wash Car'), findsNothing);
+
+      // Tap "Tất cả" chip in WeeklyCalendarStrip
+            await tester.tap(find.text('Tất cả'));
+      await tester.pumpAndSettle();
+            await tester.pumpAndSettle();
+
+      // Assert both today's and tomorrow's reminders are visible
+      expect(find.text('Today Task Clean Room'), findsOneWidget);
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+            expect(find.text('Tomorrow Task Wash Car'), findsOneWidget);
     });
 
     testWidgets('CalendarPage renders MonthlyCalendarGrid and tasks',
@@ -735,16 +826,6 @@ void main() {
 
       all = await repo.getReminders(familyId: 'f1');
       expect(all.firstWhere((r) => r.id == 'rem_del_1').isPending, isTrue);
-    });
-  });
-
-  group('Supabase Repository Fallback Tests', () {
-    test(
-        'SupabaseReminderRepository falls back to in-memory gracefully when offline',
-        () async {
-      final repo = SupabaseReminderRepository();
-      final reminders = await repo.getReminders(familyId: 'f1');
-      expect(reminders, isNotNull);
     });
   });
 
@@ -1843,6 +1924,7 @@ void main() {
             currentUserName: 'Lương Diệu Vinh',
             familyMembers: members,
             repository: repo,
+            initialShowAll: true,
           ),
         ),
       );
@@ -2097,13 +2179,14 @@ void main() {
             currentUserId: 'user_vinh',
             currentUserName: 'Vinh',
             repository: repo,
+            initialShowAll: true,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
       // 1. Default selected family is "Gia Đình An Bình" (first alphabetically)
-      expect(find.text('Gia Đình An Bình'), findsOneWidget);
+      expect(find.text('Gia Đình An Bình'), findsAtLeastNWidgets(1));
       expect(find.text('Mua trái cây cho Gia Đình An Bình'), findsOneWidget);
       // Does NOT show reminder from "Gia Đình Ngoại" in general view when "Gia Đình An Bình" is selected
       expect(find.text('Biếu thuốc bổ cho Gia Đình Ngoại'), findsNothing);
@@ -3338,58 +3421,6 @@ class RejectionResetEngine {
     }
 
     t.status = 'APPROVED';
-  }
-}
-
-class NotificationChannelConfig {
-  final String channelId;
-  final String soundFileName;
-  final bool enableTtsReadout;
-  final bool isQuietHoursImmune;
-
-  NotificationChannelConfig({
-    required this.channelId,
-    required this.soundFileName,
-    required this.enableTtsReadout,
-    required this.isQuietHoursImmune,
-  });
-}
-
-class QuietHoursEngine {
-  DateTime calculateEffectiveAlarmTime({
-    required DateTime scheduledTime,
-    required String taskType,
-  }) {
-    if (taskType == 'CARE') {
-      return scheduledTime;
-    }
-
-    final h = scheduledTime.hour;
-    if (h >= 22) {
-      final nextDay = scheduledTime.add(const Duration(days: 1));
-      return DateTime(nextDay.year, nextDay.month, nextDay.day, 7, 0, 0);
-    } else if (h < 6) {
-      return DateTime(scheduledTime.year, scheduledTime.month, scheduledTime.day, 7, 0, 0);
-    }
-
-    return scheduledTime;
-  }
-
-  NotificationChannelConfig getNotificationChannelConfig({required String taskType}) {
-    if (taskType == 'CARE') {
-      return NotificationChannelConfig(
-        channelId: 'CARE_CHANNEL',
-        soundFileName: 'nhac_uong_thuoc.mp3',
-        enableTtsReadout: true,
-        isQuietHoursImmune: true,
-      );
-    }
-    return NotificationChannelConfig(
-      channelId: 'DEFAULT_CHANNEL',
-      soundFileName: 'default_chime.mp3',
-      enableTtsReadout: false,
-      isQuietHoursImmune: false,
-    );
   }
 }
 

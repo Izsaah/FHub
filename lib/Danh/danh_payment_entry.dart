@@ -1,3 +1,7 @@
+import '../Long/services/family_data_service.dart';
+import '../Long/models/family_member_model.dart';
+import '../Vinh/screens/wishlist_and_ledger_screen.dart';
+import '../Vinh/models/family_member.dart';
 import 'package:flutter/material.dart';
 import 'screens/premium_plan_screen.dart';
 import 'screens/manage_subscription_screen.dart';
@@ -60,7 +64,7 @@ class DanhPaymentEntry {
     );
   }
 
-  /// Điều hướng tới Hũ Niềm Vui Gia Đình (Shopee Shake) - Tính năng độc quyền Premium
+  /// Điều hướng tới Heo Đất Gia Đình (Piggy Bank) - Tính năng độc quyền Premium
   static Future<void> openFamilyJackpot(BuildContext context) {
     if (!_ensureHasFamily(context)) return Future.value();
     if (!service.isPremium) {
@@ -68,8 +72,8 @@ class DanhPaymentEntry {
         SnackBar(
           content: Text(
             AppLanguage.text(
-              '🌟 Vui lòng nâng cấp lên Gói Premium để mở khóa Hũ Niềm Vui Gia Đình!',
-              '🌟 Please upgrade to Premium to unlock Family Jackpot!',
+              '🌟 Vui lòng nâng cấp lên Gói Premium để mở khóa Heo Đất Gia Đình!',
+              '🌟 Please upgrade to Premium to unlock Family Piggy Bank!',
             ),
           ),
           backgroundColor: DanhColors.brand800,
@@ -102,6 +106,116 @@ class DanhPaymentEntry {
   /// Xóa ngữ cảnh gia đình khi User chưa có hoặc đã rời hết tất cả gia đình
   static void clearFamilyContext() {
     service.clearFamily();
+  }
+
+  /// Điều hướng tới Cửa Hàng Đổi Sao & Sổ Cái Phúc Lợi Thực Tế
+  static Future<void> openWishlistAndLedger(BuildContext context) async {
+    final familyDataService = FamilyDataService();
+    final family = await familyDataService.getCurrentFamily();
+    final familyId = (family != null && family.id.trim().isNotEmpty)
+        ? family.id
+        : service.currentFamilyId;
+
+    if (familyId.trim().isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                'Vui lòng chọn hoặc tham gia một gia đình trước!',
+                'Please select or join a family first!',
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final user = await familyDataService.getCurrentUser();
+    final members = await familyDataService.getFamilyMembers(familyId: familyId);
+    FamilyMemberModel? me;
+    for (final m in members) {
+      if (m.user.id == user.id) {
+        me = m;
+        break;
+      }
+    }
+    final roleCode = me?.hierarchyRole.code ?? 'PARENT';
+
+    final convertedMembers = members.map((m) {
+      return FamilyMember(
+        id: m.user.id,
+        name: m.user.name,
+        role: m.hierarchyRole.code,
+        familyId: familyId,
+        rewardStarsTotal: m.rewardStarsTotal,
+      );
+    }).toList();
+
+    if (!context.mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WishlistAndLedgerScreen(
+          familyId: familyId,
+          familyName: family?.name,
+          currentUserId: user.id,
+          currentUserName: user.name,
+          currentUserRole: roleCode,
+          familyMembers: convertedMembers,
+        ),
+      ),
+    );
+  }
+
+  /// Widget hiển thị tiến trình hạn mức và trạng thái gói cho TOÀN BỘ thành viên trong Family
+  /// Kiểm tra xem gia đình có đang bị đóng băng vượt ghế sau 7 ngày ân hạn hay không
+  static bool get isOverCapacityFrozen => service.isOverCapacityFrozen;
+  static bool get isGracePeriod => service.isGracePeriod;
+
+  /// Hiển thị thông báo khi tính năng bị tạm khóa do vượt ghế
+  /// Điều hướng tới Cửa Hàng Đổi Sao (Alias cho openWishlistAndLedger)
+  static Future<void> openWishlistShop(BuildContext context) => openWishlistAndLedger(context);
+
+  static Future<void> showOverCapacityFrozenDialog(BuildContext context) {
+    return showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.lock_clock_rounded, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(AppLanguage.text('Tạm Khóa Tính Năng', 'Feature Frozen')),
+          ],
+        ),
+        content: Text(
+          AppLanguage.text(
+            'Gia đình đã vượt quá hạn mức 4 người của gói Miễn phí và hết thời gian ân hạn.\n\nTính năng tạo lời nhắc mới và điểm danh tạm thời bị khóa. Vui lòng nâng cấp gói Premium (10 người) hoặc chuyển bớt thành viên sang Tạm ngưng để tiếp tục sử dụng miễn phí!',
+            'Family has exceeded 4-member limit and grace period expired.\n\nCreating new tasks and check-ins are temporarily frozen. Please upgrade to Premium (10 members) or set members to inactive to continue for free!',
+          ),
+          style: const TextStyle(fontSize: 13.5, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppLanguage.text('Đóng', 'Close')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF005F50),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              openPremiumPlans(context);
+            },
+            child: Text(AppLanguage.text('Nâng cấp 10 người', 'Upgrade to 10')),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Widget hiển thị tiến trình hạn mức và trạng thái gói cho TOÀN BỘ thành viên trong Family
@@ -186,12 +300,12 @@ class DanhPaymentEntry {
                         Text(
                           isPremium
                               ? AppLanguage.text(
-                                  'Đã mở rộng tối đa 10 thành viên & mở khóa Hũ Niềm Vui',
-                                  'Expanded up to 10 members & Family Jackpot unlocked',
+                                  'Đã mở rộng tối đa 10 thành viên & mở khóa Heo Đất Gia Đình',
+                                  'Expanded up to 10 members & Family Piggy Bank unlocked',
                                 )
                               : AppLanguage.text(
-                                  'Mở rộng tối đa lên 10 thành viên & Hũ Niềm Vui Gia Đình',
-                                  'Expand up to 10 members & Family Jackpot',
+                                  'Mở rộng tối đa lên 10 thành viên & Heo Đất Gia Đình',
+                                  'Expand up to 10 members & Family Piggy Bank',
                                 ),
                           style: const TextStyle(
                             fontSize: 11,
@@ -249,12 +363,12 @@ class DanhPaymentEntry {
                         child: Text(
                           isPremium
                               ? AppLanguage.text(
-                                  'Hũ Niềm Vui Gia Đình • Vào nạp quỹ & Lắc 30s nổ hũ!',
-                                  'Family Jackpot • Deposit & Shake 30s to win!',
+                                  'Heo Đất Gia Đình • Nuôi heo chăm ngoan & Mở thưởng',
+                                  'Family Piggy Bank • Feed with chores & Open rewards',
                                 )
                               : AppLanguage.text(
-                                  'Hũ Niềm Vui Gia Đình (Đặc quyền gói Premium)',
-                                  'Family Jackpot (Exclusive to Premium plan)',
+                                  'Heo Đất Gia Đình (Đặc quyền gói Premium)',
+                                  'Family Piggy Bank (Exclusive to Premium plan)',
                                 ),
                           style: TextStyle(
                             fontSize: 12,
@@ -267,6 +381,61 @@ class DanhPaymentEntry {
                         isPremium ? Icons.arrow_forward_ios_rounded : Icons.lock_outline_rounded,
                         size: 14,
                         color: isPremium ? const Color(0xFFE65100) : DanhColors.brand800,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              InkWell(
+                key: const Key('btn_profile_open_wishlist'),
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => openWishlistAndLedger(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF81C784),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.card_giftcard_rounded, color: Color(0xFF2E7D32), size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              AppLanguage.text(
+                                'Cửa Hàng Đổi Sao & Phúc Lợi Thực Tế ⭐',
+                                'Star Reward Shop & Real Wishlist ⭐',
+                              ),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1B5E20),
+                              ),
+                            ),
+                            Text(
+                              AppLanguage.text(
+                                'Đổi sao lấy quà thực tế • Sổ cái minh bạch',
+                                'Redeem stars for real rewards • Transparent ledger',
+                              ),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF388E3C),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                        color: Color(0xFF1B5E20),
                       ),
                     ],
                   ),

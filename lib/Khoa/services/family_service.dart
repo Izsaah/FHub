@@ -57,6 +57,7 @@ class FamilyService {
   Future<Family> createFamily({
     required String name,
     String role = FamilyMember.roleParent,
+    bool isPeerGroup = false,
   }) async {
     final uid = currentUserId;
     final trimmedName = name.trim();
@@ -72,12 +73,26 @@ class FamilyService {
       final userRef = _firestore.collection('users').doc(uid);
       final batch = _firestore.batch();
 
+      final userDoc = await userRef.get();
+      final bool isUserPrem = userDoc.data()?['isPremium'] as bool? ?? false;
+      final String plan = userDoc.data()?['planName'] as String? ?? 'Family Hub Premium';
+      final int maxMem = (userDoc.data()?['maxMembers'] as int?) ?? 10;
+      final endAt = userDoc.data()?['subscriptionEndDate'];
+
       batch.set(familyRef, {
         'name': trimmedName,
         'joinCode': joinCode,
         'ownerId': uid,
+        'isPeerGroup': false,
+        'familyType': 'FAMILY',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        if (isUserPrem) ...{
+          'isPremium': true,
+          'planName': plan,
+          'maxMembers': maxMem,
+          'subscriptionEndDate': ?endAt,
+        },
       });
       batch.set(memberRef, {
         'familyId': familyRef.id,
@@ -107,6 +122,7 @@ class FamilyService {
         joinCode: joinCode,
         ownerId: uid,
         createdAt: DateTime.now(),
+        isPeerGroup: isPeerGroup,
       );
     } on FirebaseException catch (e) {
       throw Exception(_friendlyFirebaseError(e, 'Không thể tạo gia đình.'));
@@ -501,6 +517,74 @@ class FamilyService {
     transaction.update(userRef, update);
   }
 
+  /// Thay đổi trạng thái hoạt động (Active/Inactive) của thành viên gia đình (Kiểm soát ghế Seat Limit):
+  /// - Giao dịch "Reads first, writes after": Đọc cả family và member trước khi ghi.
+  /// - Quyền miễn trừ của Chủ hộ (Owner Immunity): Chủ hộ tuyệt đối không thể tự vô hiệu hóa tài khoản của chính mình.
+  /// - Tự động cập nhật [activeMemberCount] và mở khóa [overCapacityFrozen] khi số ghế hợp lệ (<= 4).
+  Future<void> setMemberActiveStatus({
+    required String familyId,
+    required String memberId,
+    required bool isActive,
+    required String operatorUid,
+  }) async {
+    final status = isActive ? FamilyMember.statusActive : FamilyMember.statusDeactivated;
+    final familyRef = _families.doc(familyId);
+    final memberRef = _members.doc(_membershipId(familyId, memberId));
+
+    await _firestore.runTransaction((transaction) async {
+      // 1. Reads first
+      final famSnap = await transaction.get(familyRef);
+      final memSnap = await transaction.get(memberRef);
+
+      if (!famSnap.exists) throw Exception('Không tìm thấy gia đình.');
+      if (!memSnap.exists) throw Exception('Không tìm thấy thành viên.');
+
+      final famData = famSnap.data() as Map<String, dynamic>;
+      final memData = memSnap.data() as Map<String, dynamic>;
+
+      final ownerId = famData['ownerId'] ?? famData['owner_id'] ?? famData['createdBy'];
+      final isOwner = operatorUid == ownerId;
+      if (!isOwner) {
+        throw Exception('Chỉ Chủ hộ mới có quyền thay đổi trạng thái thành viên.');
+      }
+
+      // Owner immunity check
+      if ((memData['isOwner'] == true || memberId == ownerId) && !isActive) {
+        throw Exception('Chủ hộ không thể tự vô hiệu hóa tài khoản của chính mình.');
+      }
+
+      final prevStatus = memData['status'] ?? FamilyMember.statusActive;
+      final wasActive = prevStatus == FamilyMember.statusActive;
+      if (wasActive == isActive) return; // Không đổi
+
+      int currentActiveCount = (famData['activeMemberCount'] as int?) ??
+          (famData['memberCount'] as int?) ??
+          1;
+      int newActiveCount = isActive ? (currentActiveCount + 1) : (currentActiveCount > 1 ? currentActiveCount - 1 : 1);
+
+      // 2. Writes after
+      transaction.update(memberRef, {
+        'status': status,
+        'isActive': isActive,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      final famUpdates = <String, dynamic>{
+        'activeMemberCount': newActiveCount,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (newActiveCount <= 4 &&
+          (famData['accessMode'] == 'overCapacityFrozen' ||
+              famData['isOverCapacityFrozen'] == true)) {
+        famUpdates['accessMode'] = 'freeStandard';
+        famUpdates['isOverCapacityFrozen'] = false;
+      }
+
+      transaction.update(familyRef, famUpdates);
+    });
+  }
+
   /// Owner can deactivate or memorialize a member. Historical data is not deleted.
   Future<void> updateMemberStatus({
     required String familyId,
@@ -812,15 +896,19 @@ class FamilyService {
     }
   }
 
-  void _validateRole(String role) {
+  static void validateRole(String role) {
     if (![
       FamilyMember.roleGrandparent,
       FamilyMember.roleParent,
+      FamilyMember.roleRelative,
       FamilyMember.roleChild,
+      FamilyMember.roleMember,
     ].contains(role)) {
       throw Exception('Vui lòng chọn vai vế hợp lệ.');
     }
   }
+
+  void _validateRole(String role) => validateRole(role);
 
   DateTime? _dateTimeFrom(dynamic value) {
     if (value is Timestamp) return value.toDate();

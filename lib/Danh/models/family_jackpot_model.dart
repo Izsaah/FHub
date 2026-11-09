@@ -28,6 +28,16 @@ class FamilyJackpotModel {
   final DateTime? shakeStartTime; // Thời điểm bắt đầu 30s đếm ngược
   final DateTime? suspenseStartTime; // Thời điểm bắt đầu 10s đếm ngược hồi hộp trao thưởng
   final bool lostDueToPremiumExpired; // Đánh dấu nếu hũ bị mất/hủy do gói Premium hết hạn
+  final String lobbyStatus; // 'idle' | 'waiting' | 'started' | 'expired'
+  final String? lobbyInitiatorId; // Người phát động nổ hũ
+  final String? lobbyInitiatorName; // Tên người phát động
+  final DateTime? lobbyCreatedAt; // Thời điểm phát động phiếu chờ
+  final DateTime? lobbyExpiresAt; // Thời điểm hết hạn phiếu chờ (5 phút)
+  final List<String> lobbyTargetMemberIds; // Danh sách thành viên được phụ huynh chọn tham gia
+  final List<String> lobbyAcceptedMemberIds; // Danh sách thành viên đã bấm xác nhận tham gia
+  final String? lastDailyCheckInAwardedDate; // Ngày gần nhất hũ đã nhận +10 ⭐ điểm danh (YYYY-MM-DD)
+  final List<String> dailyCheckInAwardedDates; // Danh sách các ngày đã được cộng sao điểm danh (chống cộng lặp)
+  final List<String> dailyCheckedInMemberIds; // Danh sách ID thành viên gia đình đã điểm danh hôm nay
 
   const FamilyJackpotModel({
     required this.familyId,
@@ -46,6 +56,16 @@ class FamilyJackpotModel {
     this.shakeStartTime,
     this.suspenseStartTime,
     this.lostDueToPremiumExpired = false,
+    this.lobbyStatus = 'idle',
+    this.lobbyInitiatorId,
+    this.lobbyInitiatorName,
+    this.lobbyCreatedAt,
+    this.lobbyExpiresAt,
+    this.lobbyTargetMemberIds = const [],
+    this.lobbyAcceptedMemberIds = const [],
+    this.lastDailyCheckInAwardedDate,
+    this.dailyCheckInAwardedDates = const [],
+    this.dailyCheckedInMemberIds = const [],
   });
 
   FamilyJackpotModel copyWith({
@@ -70,6 +90,20 @@ class FamilyJackpotModel {
     DateTime? suspenseStartTime,
     bool clearSuspenseStartTime = false,
     bool? lostDueToPremiumExpired,
+    String? lobbyStatus,
+    String? lobbyInitiatorId,
+    bool clearLobbyInitiatorId = false,
+    String? lobbyInitiatorName,
+    DateTime? lobbyCreatedAt,
+    bool clearLobbyCreatedAt = false,
+    DateTime? lobbyExpiresAt,
+    bool clearLobbyExpiresAt = false,
+    List<String>? lobbyTargetMemberIds,
+    List<String>? lobbyAcceptedMemberIds,
+    String? lastDailyCheckInAwardedDate,
+    bool clearLastDailyCheckInAwardedDate = false,
+    List<String>? dailyCheckInAwardedDates,
+    List<String>? dailyCheckedInMemberIds,
   }) {
     return FamilyJackpotModel(
       familyId: familyId ?? this.familyId,
@@ -88,13 +122,55 @@ class FamilyJackpotModel {
       shakeStartTime: clearShakeStartTime ? null : (shakeStartTime ?? this.shakeStartTime),
       suspenseStartTime: clearSuspenseStartTime ? null : (suspenseStartTime ?? this.suspenseStartTime),
       lostDueToPremiumExpired: lostDueToPremiumExpired ?? this.lostDueToPremiumExpired,
+      lobbyStatus: lobbyStatus ?? this.lobbyStatus,
+      lobbyInitiatorId: clearLobbyInitiatorId ? null : (lobbyInitiatorId ?? this.lobbyInitiatorId),
+      lobbyInitiatorName: lobbyInitiatorName ?? this.lobbyInitiatorName,
+      lobbyCreatedAt: clearLobbyCreatedAt ? null : (lobbyCreatedAt ?? this.lobbyCreatedAt),
+      lobbyExpiresAt: clearLobbyExpiresAt ? null : (lobbyExpiresAt ?? this.lobbyExpiresAt),
+      lobbyTargetMemberIds: lobbyTargetMemberIds ?? this.lobbyTargetMemberIds,
+      lobbyAcceptedMemberIds: lobbyAcceptedMemberIds ?? this.lobbyAcceptedMemberIds,
+      lastDailyCheckInAwardedDate: clearLastDailyCheckInAwardedDate ? null : (lastDailyCheckInAwardedDate ?? this.lastDailyCheckInAwardedDate),
+      dailyCheckInAwardedDates: dailyCheckInAwardedDates ?? this.dailyCheckInAwardedDates,
+      dailyCheckedInMemberIds: dailyCheckedInMemberIds ?? this.dailyCheckedInMemberIds,
     );
+  }
+
+  /// Kiểm tra xem ngày cụ thể đã được cộng sao điểm danh cả nhà vào hũ chưa
+  bool isDailyCheckInAwardedForDate(String dateKey) {
+    if (lastDailyCheckInAwardedDate == dateKey) return true;
+    return dailyCheckInAwardedDates.contains(dateKey);
+  }
+
+  /// Kiểm tra xem hôm nay hũ đã nhận +10 ⭐ từ nhiệm vụ Cả nhà điểm danh chưa
+  bool get isDailyCheckInAwardedToday {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return isDailyCheckInAwardedForDate(todayKey);
   }
 
   bool get isIdle => status == JackpotStatus.idle;
   bool get isShaking => status == JackpotStatus.shaking;
   bool get isSuspense => status == JackpotStatus.suspense;
   bool get isFinished => status == JackpotStatus.finished;
+
+  /// Kiểm tra phòng chờ nổ hũ (Lobby 5 phút) có đang hoạt động hay không
+  bool get isLobbyActive =>
+      status == JackpotStatus.idle &&
+      lobbyStatus == 'waiting' &&
+      lobbyExpiresAt != null &&
+      DateTime.now().isBefore(lobbyExpiresAt!);
+
+  /// Số giây còn lại của phòng chờ nổ hũ (Tối đa 300 giây = 5 phút)
+  int get remainingLobbySeconds {
+    if (!isLobbyActive || lobbyExpiresAt == null) return 0;
+    final left = lobbyExpiresAt!.difference(DateTime.now()).inSeconds;
+    return left > 0 ? left : 0;
+  }
+
+  /// Kiểm tra toàn bộ thành viên trong danh sách được phụ huynh chọn đã bấm tham gia đầy đủ chưa
+  bool get hasAllTargetMembersAccepted =>
+      isLobbyActive &&
+      lobbyTargetMemberIds.isNotEmpty &&
+      lobbyTargetMemberIds.every((id) => lobbyAcceptedMemberIds.contains(id));
 
   /// Số giây còn lại trong hiệp 30s lắc
   int get remainingShakeSeconds {
@@ -127,11 +203,17 @@ class FamilyJackpotModel {
     return topShakerId != firstPrizeWinnerId;
   }
 
-  /// Tổng số tiền thưởng tích lũy trong ví chưa được rút của toàn bộ thành viên trong gia đình
+  /// Tổng số tiền thưởng / sao tích lũy trong ví chưa được rút của toàn bộ thành viên trong gia đình
   int get totalUnclaimedPrizes {
     if (memberWallets.isEmpty) return 0;
     return memberWallets.values.fold(0, (total, val) => total + val);
   }
+
+  /// Tổng số sao trong quỹ Hũ Sao Gia Đình (tương đương totalPoolAmount)
+  int get totalPoolStars => totalPoolAmount;
+
+  /// Tổng số sao thắng được chưa đổi của cả nhà
+  int get totalUnclaimedStars => totalUnclaimedPrizes;
 
   /// Kiểm tra xem một thành viên đã rút hết tiền thưởng hay chưa
   bool isMemberWithdrawn(String uid) {
@@ -157,6 +239,16 @@ class FamilyJackpotModel {
       'shakeStartTime': shakeStartTime != null ? Timestamp.fromDate(shakeStartTime!) : null,
       'suspenseStartTime': suspenseStartTime != null ? Timestamp.fromDate(suspenseStartTime!) : null,
       'lostDueToPremiumExpired': lostDueToPremiumExpired,
+      'lobbyStatus': lobbyStatus,
+      'lobbyInitiatorId': lobbyInitiatorId,
+      'lobbyInitiatorName': lobbyInitiatorName,
+      'lobbyCreatedAt': lobbyCreatedAt != null ? Timestamp.fromDate(lobbyCreatedAt!) : null,
+      'lobbyExpiresAt': lobbyExpiresAt != null ? Timestamp.fromDate(lobbyExpiresAt!) : null,
+      'lobbyTargetMemberIds': lobbyTargetMemberIds,
+      'lobbyAcceptedMemberIds': lobbyAcceptedMemberIds,
+      'lastDailyCheckInAwardedDate': lastDailyCheckInAwardedDate,
+      'dailyCheckInAwardedDates': dailyCheckInAwardedDates,
+      'dailyCheckedInMemberIds': dailyCheckedInMemberIds,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -191,8 +283,22 @@ class FamilyJackpotModel {
 
     DateTime? parseDate(dynamic val) {
       if (val is Timestamp) return val.toDate();
+      if (val is DateTime) return val;
       if (val is String) return DateTime.tryParse(val);
       return null;
+    }
+
+    List<String> parseStringList(dynamic val) {
+      if (val is List) {
+        return val.map((e) => e.toString()).toList();
+      }
+      return const [];
+    }
+
+    final rawLastAwarded = data['lastDailyCheckInAwardedDate'] as String?;
+    final awardedDates = parseStringList(data['dailyCheckInAwardedDates']).toSet();
+    if (rawLastAwarded != null && rawLastAwarded.isNotEmpty) {
+      awardedDates.add(rawLastAwarded);
     }
 
     return FamilyJackpotModel(
@@ -212,6 +318,16 @@ class FamilyJackpotModel {
       shakeStartTime: parseDate(data['shakeStartTime']),
       suspenseStartTime: parseDate(data['suspenseStartTime']),
       lostDueToPremiumExpired: data['lostDueToPremiumExpired'] as bool? ?? false,
+      lobbyStatus: data['lobbyStatus'] as String? ?? 'idle',
+      lobbyInitiatorId: data['lobbyInitiatorId'] as String?,
+      lobbyInitiatorName: data['lobbyInitiatorName'] as String?,
+      lobbyCreatedAt: parseDate(data['lobbyCreatedAt']),
+      lobbyExpiresAt: parseDate(data['lobbyExpiresAt']),
+      lobbyTargetMemberIds: parseStringList(data['lobbyTargetMemberIds']),
+      lobbyAcceptedMemberIds: parseStringList(data['lobbyAcceptedMemberIds']),
+      lastDailyCheckInAwardedDate: rawLastAwarded,
+      dailyCheckInAwardedDates: awardedDates.toList(),
+      dailyCheckedInMemberIds: parseStringList(data['dailyCheckedInMemberIds']),
     );
   }
 }

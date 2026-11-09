@@ -1,3 +1,5 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../Long/models/family_member_model.dart';
 import '../../Thinh/theme/app_language.dart';
 import 'dart:async';
 import 'dart:math';
@@ -8,6 +10,7 @@ import '../models/user_bank_info.dart';
 import '../models/notification_model.dart';
 import '../models/wallet_transaction_model.dart';
 import '../services/notification_service.dart';
+import '../../Long/services/family_data_service.dart';
 import '../services/family_jackpot_service.dart';
 import '../services/payment_config.dart';
 import '../services/bank_directory.dart';
@@ -16,8 +19,12 @@ import '../services/sepay_service.dart';
 import '../theme/danh_colors.dart';
 import '../theme/danh_svgs.dart';
 import 'premium_plan_screen.dart';
+import '../danh_payment_entry.dart';
+import '../../Vinh/screens/reminder_list_screen.dart';
+import '../../Vinh/screens/wishlist_and_ledger_screen.dart';
+import '../../Vinh/models/family_member.dart' as vinh_member;
 
-/// Màn hình Hũ Niềm Vui Gia Đình (Nổ Hũ Shopee Shake)
+/// Màn hình Heo Đất Gia Đình (Piggy Bank)
 /// Tính năng độc quyền cho gói Tổ Ấm Premium
 class FamilyJackpotScreen extends StatefulWidget {
   const FamilyJackpotScreen({super.key});
@@ -30,15 +37,20 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     with SingleTickerProviderStateMixin {
   final FamilyJackpotService _jackpotService = FamilyJackpotService();
   late AnimationController _shakeAnimController;
+  String _familyName = '';
   bool _hasShownYTroiDialog = false;
   int _lastRenderedShakeCount = 0;
   double? _lastMouseX;
   DateTime? _lastMouseShakeTime;
+  bool _isCurrentUserParent = true;
+  List<FamilyMemberModel> _currentFamilyMembers = [];
 
   @override
   void initState() {
     super.initState();
-    _jackpotService.initForFamily(PaymentService().currentFamilyId);
+    final famId = PaymentService().currentFamilyId;
+    _jackpotService.initForFamily(famId);
+    _loadFamilyContext();
     _lastRenderedShakeCount = _jackpotService.myShakeCount;
     _shakeAnimController = AnimationController(
       vsync: this,
@@ -46,6 +58,76 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
       lowerBound: -0.12,
       upperBound: 0.12,
     );
+  }
+
+  Future<void> _loadFamilyContext() async {
+    try {
+      final fam = await FamilyDataService().getCurrentFamily();
+      final effectiveFamId = (fam != null && fam.id.isNotEmpty)
+          ? fam.id
+          : (PaymentService().currentFamilyId.isNotEmpty
+              ? PaymentService().currentFamilyId
+              : 'f1');
+
+      if (PaymentService().currentFamilyId != effectiveFamId) {
+        PaymentService().setFamilyId(effectiveFamId);
+      }
+      _jackpotService.initForFamily(effectiveFamId);
+
+      if (mounted && fam != null && fam.name.isNotEmpty) {
+        setState(() => _familyName = fam.name);
+      }
+
+      final members = await FamilyDataService().getFamilyMembers(familyId: effectiveFamId);
+      if (mounted) {
+        setState(() {
+          _currentFamilyMembers = members;
+          final myUid = _jackpotService.currentUserId;
+          String? currentEmail;
+          try {
+            currentEmail = FirebaseAuth.instance.currentUser?.email;
+          } catch (_) {}
+          for (final m in members) {
+            if (m.user.id == myUid || (currentEmail != null && m.user.email == currentEmail)) {
+              _isCurrentUserParent = m.isParent || m.isOwner || m.isGuardian;
+              break;
+            }
+          }
+        });
+      }
+
+      final isParent = await _jackpotService.isUserParent(familyId: effectiveFamId);
+      if (mounted) {
+        setState(() => _isCurrentUserParent = isParent);
+      }
+
+      _syncCheckInFromHome(effectiveFamId);
+    } catch (e) {
+      debugPrint('Error loading family context in jackpot: $e');
+    }
+  }
+
+  String? _getMemberName(String uid) {
+    for (final m in _currentFamilyMembers) {
+      if (m.user.id == uid) return m.user.name;
+    }
+    return null;
+  }
+
+  String? _getMemberRoleLabel(String uid) {
+    for (final m in _currentFamilyMembers) {
+      if (m.user.id == uid) return m.roleLabel;
+    }
+    return null;
+  }
+
+  Future<void> _syncCheckInFromHome(String famId) async {
+    try {
+      final members = await FamilyDataService().getFamilyMembers(familyId: famId);
+      await _jackpotService.syncCheckInsFromMembers(members);
+    } catch (e) {
+      debugPrint('_syncCheckInFromHome error: $e');
+    }
   }
 
   @override
@@ -117,13 +199,28 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
             title: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(
-                AppLanguage.text('Hũ Niềm Vui Gia Đình', 'Family Happiness Pot'),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: DanhColors.brand800,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    AppLanguage.text('Heo Đất Gia Đình', 'Family Piggy Bank'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: DanhColors.brand800,
+                    ),
+                  ),
+                  if (_familyName.isNotEmpty)
+                    Text(
+                      _familyName,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: DanhColors.brand700.withValues(alpha: 0.8),
+                      ),
+                    ),
+                ],
               ),
             ),
             actions: [
@@ -192,7 +289,13 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                       children: [
                         Icon(Icons.receipt_long_rounded, size: 18, color: DanhColors.brand800),
                         SizedBox(width: 10),
-                        Text('Lịch sử ví & quỹ (15 ngày)', style: TextStyle(fontSize: 13)),
+                        Expanded(
+                          child: Text(
+                            'Lịch sử ví & quỹ (15 ngày)',
+                            style: TextStyle(fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -202,7 +305,13 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                       children: [
                         Icon(Icons.account_balance_wallet_rounded, size: 18, color: DanhColors.brand800),
                         SizedBox(width: 10),
-                        Text('Ví thưởng & Rút tiền', style: TextStyle(fontSize: 13)),
+                        Expanded(
+                          child: Text(
+                            'Ví thưởng & rút tiền',
+                            style: TextStyle(fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -252,9 +361,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
   }
 
-  /// Thẻ Hũ Vàng trung tâm với biểu tượng SVG và tổng quỹ A + Ví cá nhân
+  /// Thẻ Hũ Vàng trung tâm với biểu tượng SVG và tổng quỹ Sao Gia Đình
   Widget _buildPotHeaderCard(FamilyJackpotModel jackpot) {
-    final formattedAmount = '${jackpot.totalPoolAmount} đ'.replaceAllMapped(
+    final formattedAmount = '${jackpot.totalPoolAmount} ⭐'.replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (Match m) => '${m[1]}.',
     );
@@ -284,10 +393,10 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      AppLanguage.text('TỔNG QUỸ HŨ NIỀM VUI', 'TOTAL HAPPINESS POT'),
+                      AppLanguage.text('TỔNG SAO TRONG HEO ĐẤT GIA ĐÌNH', 'FAMILY PIGGY BANK STARS'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF8A5300),
@@ -312,39 +421,6 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               ),
             ],
           ),
-          if (jackpot.totalUnclaimedPrizes > 0) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFFFB74D), width: 1.2),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.savings_outlined, color: Color(0xFFE65100), size: 16),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      AppLanguage.text(
-                        'Chưa rút cả nhà: ${jackpot.totalUnclaimedPrizes.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ',
-                        'Unclaimed: ${jackpot.totalUnclaimedPrizes.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ',
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFB75B00),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -373,185 +449,6 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               ],
             ),
           ),
-          const SizedBox(height: 14),
-
-          // Thẻ hiển thị Ví cá nhân tích lũy & Nút Rút tiền về Ngân hàng (Adaptive Layout chống tràn nút)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: DanhColors.gold.withValues(alpha: 0.6)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x0A000000),
-                  blurRadius: 8,
-                  offset: Offset(0, 3),
-                ),
-              ],
-            ),
-            child: LayoutBuilder(
-              builder: (ctx, constraints) {
-                final isNarrow = constraints.maxWidth < 460;
-
-                final walletInfo = Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF3E0),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.account_balance_wallet_rounded,
-                        color: Color(0xFFE65100),
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            AppLanguage.text('Ví Thưởng Của Tôi', 'My Reward Wallet'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11, color: DanhColors.textMuted),
-                          ),
-                          Text(
-                            '${_jackpotService.myWalletBalance.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFE65100),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-
-                if (isNarrow) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      walletInfo,
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SizedBox(
-                              height: 32,
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFFFF3E0),
-                                  foregroundColor: const Color(0xFFE65100),
-                                  side: const BorderSide(color: Color(0xFFFFB74D), width: 1.2),
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                onPressed: _openWalletHistoryModal,
-                                child: Text(
-                                  AppLanguage.text('Lịch Sử', 'History'),
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SizedBox(
-                              height: 32,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFE65100),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  elevation: 0,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                onPressed: _openBankAndWithdrawModal,
-                                child: Text(
-                                  AppLanguage.text('Rút Tiền', 'Withdraw'),
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
-                }
-
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(child: walletInfo),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              height: 32,
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFFFF3E0),
-                                  foregroundColor: const Color(0xFFE65100),
-                                  side: const BorderSide(color: Color(0xFFFFB74D), width: 1.2),
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                onPressed: _openWalletHistoryModal,
-                                child: Text(
-                                  AppLanguage.text('Lịch Sử', 'History'),
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            SizedBox(
-                              height: 32,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFE65100),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  elevation: 0,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                onPressed: _openBankAndWithdrawModal,
-                                child: Text(
-                                  AppLanguage.text('Rút Tiền', 'Withdraw'),
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
         ],
       ),
     );
@@ -559,10 +456,6 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
 
   /// Trạng thái 1: Chuẩn bị & Nạp tiền vào hũ (Qua VietQR SePay)
   Widget _buildIdleSection(FamilyJackpotModel jackpot) {
-    // Chỉ người nạp nhiều nhất thực tế mới có quyền phát lệnh Nổ Hũ
-    final isTopContributor = jackpot.totalPoolAmount > 0 &&
-        (jackpot.topContributorId == _jackpotService.currentUserId);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -573,7 +466,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           runSpacing: 4,
           children: [
             Text(
-              AppLanguage.text('1. Nạp Tiền Vào Quỹ Hũ (VietQR)', '1. Deposit into Pot (VietQR)'),
+              AppLanguage.text('1. Tích Lũy Sao Nuôi Heo Đất ⭐', '1. Contribute Stars into Piggy Bank ⭐'),
               style: TextStyle(
                 fontSize: 15.5,
                 fontWeight: FontWeight.bold,
@@ -583,15 +476,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: Colors.amber.shade50,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200, width: 0.8),
+                border: Border.all(color: Colors.amber.shade300, width: 0.8),
               ),
               child: Text(
-                'MBBank 0000000001',
+                '🐷 Heo Đất Gia Đình',
                 style: TextStyle(
                   fontSize: 11,
-                  color: Colors.blue.shade800,
+                  color: Colors.amber.shade900,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -599,19 +492,53 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           ],
         ),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            _buildQuickDepositButton(20000, '+20.000 đ'),
-            const SizedBox(width: 8),
-            _buildQuickDepositButton(50000, '+50.000 đ'),
-            const SizedBox(width: 8),
-            _buildQuickDepositButton(100000, '+100.000 đ'),
-          ],
-        ),
-        const SizedBox(height: 24),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFDE7),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFFFE082)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.stars_rounded, color: Color(0xFFF57F17), size: 20),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      AppLanguage.text('Quy chế tích lũy sao nuôi heo', 'How piggy bank stars accumulate'),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: Color(0xFFE65100),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                AppLanguage.text(
+                                  '• Cả nhà hoàn thành điểm danh mỗi ngày: +10 ⭐ vào heo đất.\n'
+                                  '• Đổi phúc lợi từ shop: Tích điểm hoàn 10% tổng số sao vào heo đất khi phụ huynh duyệt quà.',
+                                  '• Daily family check-in completed: +10 ⭐ to piggy bank.\n'
+                                  '• Wishlist reward redeemed: 10% cashback added to piggy bank once approved by parents.',
+                                ),
+                                style: const TextStyle(fontSize: 12, height: 1.4, color: Color(0xFF5D4037)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildDailyCheckInCard(jackpot),
+                        const SizedBox(height: 24),
 
         Text(
-          AppLanguage.text('2. Bảng Vinh Danh Thành Viên Đóng Góp', '2. Contributor Leaderboard'),
+          AppLanguage.text('2. Bảng Đóng Góp Nuôi Heo Đất', '2. Piggy Bank Contributors'),
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -622,59 +549,794 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         _buildContributionsList(jackpot),
         const SizedBox(height: 24),
 
-        // Nút Bắt Đầu Nổ Hũ (30 Giây) - Chỉ người nạp nhiều nhất mới được phát lệnh
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: (isTopContributor && jackpot.totalPoolAmount > 0)
-                  ? const Color(0xFFE65100)
-                  : Colors.grey.shade400,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: (isTopContributor && jackpot.totalPoolAmount > 0) ? 4 : 0,
+        Text(
+          AppLanguage.text('3. Thành Viên Tham Gia Mở Heo Đất', '3. Piggy Bank Participants'),
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: DanhColors.brand900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _buildParticipantsList(jackpot),
+        const SizedBox(height: 24),
+
+        // Nút chính: Phát động phiếu chờ 5 phút / Xác nhận tham gia / Bắt đầu ngay
+        _buildMainActionButton(jackpot),
+      ],
+    );
+  }
+
+  /// Mục 3: Danh sách thành viên tham gia mở heo (Giới hạn tối đa 5 tên, cuộn mượt nếu > 5)
+  Widget _buildParticipantsList(FamilyJackpotModel jackpot) {
+    final isLobby = jackpot.isLobbyActive;
+    final acceptedIds = jackpot.lobbyAcceptedMemberIds.toSet();
+    final targetIds = jackpot.lobbyTargetMemberIds.toSet();
+
+    final List<Map<String, dynamic>> items = [];
+
+    if (isLobby) {
+      final allLobbyUids = <String>{};
+      allLobbyUids.addAll(targetIds);
+      allLobbyUids.addAll(acceptedIds);
+      for (final m in _currentFamilyMembers) {
+        allLobbyUids.add(m.user.id);
+      }
+      for (final k in jackpot.memberNames.keys) {
+        if (k != 'system_daily_mission') allLobbyUids.add(k);
+      }
+      for (final k in _jackpotService.cachedFamilyMembers.keys) {
+        if (k != 'system_daily_mission') allLobbyUids.add(k);
+      }
+      if (allLobbyUids.isEmpty && _jackpotService.currentUserId.isNotEmpty) {
+        allLobbyUids.add(_jackpotService.currentUserId);
+      }
+
+      for (final uid in allLobbyUids) {
+        final name = jackpot.memberNames[uid] ?? _getMemberName(uid) ?? 'Thành viên';
+        final isAccepted = acceptedIds.contains(uid);
+        final isInitiator = uid == jackpot.lobbyInitiatorId;
+        items.add({
+          'uid': uid,
+          'name': name,
+          'isAccepted': isAccepted,
+          'isInitiator': isInitiator,
+        });
+      }
+
+      items.sort((a, b) {
+        if (a['isInitiator'] == true) return -1;
+        if (b['isInitiator'] == true) return 1;
+        if (a['isAccepted'] == true && b['isAccepted'] != true) return -1;
+        if (a['isAccepted'] != true && b['isAccepted'] == true) return 1;
+        return 0;
+      });
+    } else {
+      final allUids = jackpot.memberNames.keys
+          .where((k) => k != 'system_daily_mission')
+          .toSet();
+      for (final m in _currentFamilyMembers) {
+        allUids.add(m.user.id);
+      }
+      for (final k in _jackpotService.cachedFamilyMembers.keys) {
+        if (k != 'system_daily_mission') allUids.add(k);
+      }
+      if (allUids.isEmpty && _jackpotService.currentUserId.isNotEmpty) {
+        allUids.add(_jackpotService.currentUserId);
+      }
+      for (final uid in allUids) {
+        final name = jackpot.memberNames[uid] ?? _getMemberName(uid) ?? 'Thành viên';
+        items.add({
+          'uid': uid,
+          'name': name,
+          'isAccepted': false,
+          'isReady': true,
+        });
+      }
+    }
+
+    if (items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: DanhColors.brand200),
+        ),
+        child: const Center(
+          child: Text(
+            'Chưa có thành viên nào trong danh sách gia đình.',
+            style: TextStyle(fontSize: 12, color: DanhColors.textMuted),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isLobby ? const Color(0xFFFFB74D) : DanhColors.brand200,
+          width: isLobby ? 1.5 : 1.0,
+        ),
+        boxShadow: isLobby
+            ? [
+                BoxShadow(
+                  color: const Color(0xFFFF9800).withValues(alpha: 0.12),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : DanhColors.fhubCardShadow,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Scrollbar(
+          thumbVisibility: items.length > 5,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            shrinkWrap: true,
+            itemCount: items.length,
+            separatorBuilder: (context, index) => Divider(
+              height: 1,
+              thickness: 0.7,
+              color: Colors.grey.shade100,
+              indent: 52,
             ),
-            icon: (isTopContributor && jackpot.totalPoolAmount > 0)
-                ? const Icon(Icons.play_circle_fill_rounded, size: 22)
-                : const Icon(Icons.lock_clock_rounded, size: 22),
-            label: Text(
-              jackpot.totalPoolAmount <= 0
-                  ? AppLanguage.text('Hãy Nạp Tiền Vào Hũ Trước Khi Lắc', 'Deposit into Pot Before Shaking')
-                  : (isTopContributor
-                      ? AppLanguage.text('BẮT ĐẦU NỔ HŨ (30 GIÂY LẮC)', 'START POT SHAKE (30 SECONDS)')
-                      : AppLanguage.text('Chờ ${jackpot.topContributorName} phát động Nổ Hũ', 'Waiting for ${jackpot.topContributorName} to start shake')),
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-            onPressed: () {
-              if (jackpot.totalPoolAmount <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Quỹ Hũ hiện đang là 0 đ! Hãy nạp tiền vào hũ trước khi phát lệnh lắc.',
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final name = item['name'] as String;
+              final uid = item['uid'] as String;
+              final isAccepted = item['isAccepted'] as bool? ?? false;
+              final isInitiator = item['isInitiator'] as bool? ?? false;
+              final isMe = uid == _jackpotService.currentUserId;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: isAccepted
+                          ? const Color(0xFFE8F5E9)
+                          : (isLobby ? const Color(0xFFFFF3E0) : DanhColors.brand50),
+                      child: Text(
+                        name.isNotEmpty ? name[0].toUpperCase() : '?',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: isAccepted
+                              ? const Color(0xFF2E7D32)
+                              : (isLobby ? const Color(0xFFE65100) : DanhColors.brand800),
+                        ),
+                      ),
                     ),
-                    backgroundColor: DanhColors.warning,
-                  ),
-                );
-                return;
-              }
-              if (!isTopContributor) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Chỉ người đóng góp nhiều nhất (${jackpot.topContributorName}) mới có quyền phát lệnh Nổ Hũ!',
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13.5,
+                                    color: DanhColors.textPrimary,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isMe) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: DanhColors.brand800,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'Tôi',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (isInitiator) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFF8F00),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'Phát động',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (_getMemberRoleLabel(uid) != null) ...[
+                            const SizedBox(height: 1),
+                            Text(
+                              _getMemberRoleLabel(uid)!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: DanhColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                    backgroundColor: DanhColors.warning,
-                  ),
-                );
-                return;
-              }
-              _hasShownYTroiDialog = false;
-              _jackpotService.startShakeBattle();
+                    if (isLobby) ...[
+                      if (isAccepted)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF81C784)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF2E7D32)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Đã tham gia',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3E0),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFFB74D)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.hourglass_empty_rounded, size: 13, color: Color(0xFFE65100)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Đang chờ...',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFE65100),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'Sẵn sàng',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: DanhColors.brand800,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
             },
           ),
         ),
-      ],
+      ),
+    );
+  }
+
+  /// Nút chính: Chuyển đổi trạng thái linh hoạt theo thời gian thực (5 phút đếm ngược)
+  Widget _buildMainActionButton(FamilyJackpotModel jackpot) {
+    final hasPool = jackpot.totalPoolAmount > 0;
+    final isLobby = jackpot.isLobbyActive;
+    final myUid = _jackpotService.currentUserId;
+    final hasUserAccepted = jackpot.lobbyAcceptedMemberIds.contains(myUid);
+    final isParent = _isCurrentUserParent;
+
+    final totalMembers = _currentFamilyMembers.isNotEmpty ? _currentFamilyMembers.length : _jackpotService.totalFamilyMembersCount;
+    final isSoleMember = totalMembers <= 1;
+
+    if (!isLobby) {
+      if (isSoleMember) {
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: !hasPool ? Colors.grey.shade400 : const Color(0xFFE65100),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: hasPool ? 4 : 0,
+            ),
+            icon: Icon(
+              !hasPool ? Icons.lock_clock_rounded : Icons.savings_rounded,
+              size: 22,
+            ),
+            label: Text(
+              !hasPool
+                  ? AppLanguage.text('Heo Đất Trống (0 ⭐) - Điểm Danh Nuôi Heo', 'Piggy Empty (0 ⭐) - Add Stars to Open')
+                  : AppLanguage.text('MỞ HEO ĐẤT NGAY (1 THÀNH VIÊN)', 'OPEN PIGGY BANK NOW (1 MEMBER)'),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+            onPressed: () async {
+              if (!hasPool) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      AppLanguage.text(
+                        'Heo Đất hiện đang là 0 ⭐! Hoàn thành Điểm danh mỗi ngày (+10 ⭐) để nuôi heo trước khi mở nhé!',
+                        'Piggy Bank currently has 0 ⭐! Complete daily check-in (+10 ⭐) to feed the pig before opening!',
+                      ),
+                    ),
+                    backgroundColor: const Color(0xFFE65100),
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+                return;
+              }
+              try {
+                await _jackpotService.initiateJackpotLobby(
+                  initiatorId: _jackpotService.currentUserId,
+                  initiatorName: _jackpotService.currentUserName,
+                  targetMemberIds: [_jackpotService.currentUserId],
+                );
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+          ),
+        );
+      }
+
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: !hasPool
+                ? Colors.grey.shade400
+                : (isParent ? const Color(0xFFE65100) : Colors.grey.shade400),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: (hasPool && isParent) ? 4 : 0,
+          ),
+          icon: Icon(
+            !hasPool
+                ? Icons.lock_clock_rounded
+                : (isParent ? Icons.savings_rounded : Icons.hourglass_empty_rounded),
+            size: 22,
+          ),
+          label: Text(
+            !hasPool
+                ? AppLanguage.text('Heo Đất Trống (0 ⭐) - Điểm Danh Nuôi Heo', 'Piggy Empty (0 ⭐) - Add Stars to Open')
+                : (isParent
+                    ? AppLanguage.text('PHÁT ĐỘNG MỞ HEO ĐẤT (5 PHÚT CHỜ)', 'START PIGGY OPENING (5-MIN LOBBY)')
+                    : AppLanguage.text('CHỜ BỐ MẸ PHÁT ĐỘNG MỞ HEO', 'WAITING FOR PARENTS TO OPEN')),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          onPressed: () {
+            if (!hasPool) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    AppLanguage.text(
+                      'Heo Đất hiện đang là 0 ⭐! Cả nhà cùng hoàn thành Điểm danh mỗi ngày (+10 ⭐) hoặc Đổi phúc lợi trong Shop (+10% hoàn sao) để nuôi heo trước khi mở nhé!',
+                      'Piggy Bank currently has 0 ⭐! Complete daily check-in (+10 ⭐) or redeem shop items (+10% stars) to feed the pig before opening!',
+                    ),
+                  ),
+                  backgroundColor: const Color(0xFFE65100),
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+              return;
+            }
+            if (!isParent) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Chỉ Bố hoặc Mẹ mới có quyền phát động mở Heo Đất cho cả gia đình!',
+                  ),
+                  backgroundColor: DanhColors.warning,
+                ),
+              );
+              return;
+            }
+            _showLobbyParticipantPickerModal();
+          },
+        ),
+      );
+    }
+
+    final remSecs = jackpot.remainingLobbySeconds;
+    final mm = (remSecs ~/ 60).toString().padLeft(2, '0');
+    final ss = (remSecs % 60).toString().padLeft(2, '0');
+    final countdownStr = '$mm:$ss';
+    final acceptedCount = jackpot.lobbyAcceptedMemberIds.length;
+    final targetCount = max(jackpot.lobbyTargetMemberIds.length, acceptedCount);
+
+    if (!hasUserAccepted) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF2E7D32),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 4,
+          ),
+          icon: const Icon(Icons.check_circle_rounded, size: 22),
+          label: Text(
+            AppLanguage.text(
+              'XÁC NHẬN THAM GIA MỞ HEO ($countdownStr)',
+              'JOIN PIGGY OPENING ($countdownStr)',
+            ),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          onPressed: () async {
+            try {
+              await _jackpotService.acceptJackpotLobby(
+                userId: myUid,
+                userName: _jackpotService.currentUserName,
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Bạn đã xác nhận tham gia mở Heo Đất thành công!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+                );
+              }
+            }
+          },
+        ),
+      );
+    }
+
+    if (isParent) {
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE65100),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 4,
+              ),
+              icon: const Icon(Icons.rocket_launch_rounded, size: 22),
+              label: Text(
+                AppLanguage.text(
+                  'BẮT ĐẦU MỞ HEO NGAY ($acceptedCount/$targetCount) - ($countdownStr)',
+                  'START PIGGY OPENING NOW ($acceptedCount/$targetCount) - ($countdownStr)',
+                ),
+                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+              ),
+              onPressed: () async {
+                _hasShownYTroiDialog = false;
+                await _jackpotService.startShakeBattleEarly(initiatorId: myUid);
+              },
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            AppLanguage.text(
+              'Bố Mẹ có thể bấm bắt đầu ngay với $acceptedCount thành viên đã có mặt hoặc chờ đủ cả nhà.',
+              'Parents can start now with $acceptedCount present members or wait for everyone.',
+            ),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 11.5, color: DanhColors.textSecondary),
+          ),
+        ],
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.amber.shade100,
+          foregroundColor: const Color(0xFFE65100),
+          disabledBackgroundColor: Colors.amber.shade100,
+          disabledForegroundColor: const Color(0xFFE65100),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFFFB74D), width: 1.5),
+          ),
+          elevation: 0,
+        ),
+        icon: const Icon(Icons.hourglass_top_rounded, size: 22),
+        label: Text(
+          AppLanguage.text(
+            'ĐÃ THAM GIA - CHỜ CẢ NHÀ ($acceptedCount/$targetCount) - ($countdownStr)',
+            'JOINED - WAITING FOR FAMILY ($acceptedCount/$targetCount) - ($countdownStr)',
+          ),
+          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+        ),
+        onPressed: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Bạn đã có mặt trong phòng chờ! Phiên mở heo sẽ bắt đầu khi cả nhà sẵn sàng.'),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Modal chọn danh sách thành viên tham gia mở heo dành cho Bố Mẹ
+  void _showLobbyParticipantPickerModal() async {
+    final currentJackpot = _jackpotService.jackpot;
+    final allMembers = <String, String>{};
+
+    for (final m in _currentFamilyMembers) {
+      if (m.user.id.isNotEmpty && m.user.name.isNotEmpty) {
+        allMembers[m.user.id] = m.user.name;
+      }
+    }
+    for (final entry in _jackpotService.cachedFamilyMembers.entries) {
+      if (entry.key != 'system_daily_mission' && entry.value.isNotEmpty) {
+        allMembers.putIfAbsent(entry.key, () => entry.value);
+      }
+    }
+    for (final entry in currentJackpot.memberNames.entries) {
+      if (entry.key != 'system_daily_mission' && entry.value.isNotEmpty) {
+        allMembers.putIfAbsent(entry.key, () => entry.value);
+      }
+    }
+    if (allMembers.length <= 1) {
+      try {
+        final mems = await FamilyDataService().getFamilyMembers(
+          familyId: PaymentService().currentFamilyId.isNotEmpty
+              ? PaymentService().currentFamilyId
+              : null,
+        );
+        for (final m in mems) {
+          if (m.user.id.isNotEmpty && m.user.name.isNotEmpty) {
+            allMembers[m.user.id] = m.user.name;
+          }
+        }
+      } catch (_) {}
+    }
+    if (_jackpotService.currentUserId.isNotEmpty) {
+      allMembers.putIfAbsent(_jackpotService.currentUserId, () => _jackpotService.currentUserName);
+    }
+
+    final selectedIds = Set<String>.from(allMembers.keys);
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Icon(Icons.group_add_rounded, color: Color(0xFFE65100), size: 24),
+                        const SizedBox(width: 8),
+                        Text(
+                          AppLanguage.text('Chọn Thành Viên Tham Gia Mở Heo', 'Select Participants for Piggy Opening'),
+                          style: const TextStyle(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.bold,
+                            color: DanhColors.brand900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      AppLanguage.text(
+                        'Phiếu chờ có hiệu lực trong 5 phút. Cả nhà vào xác nhận để cùng tham gia mở Heo Đất!',
+                        'Ticket is valid for 5 minutes. Family members will receive an invite to join!',
+                      ),
+                      style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.3),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Đã chọn: ${selectedIds.length}/${allMembers.length} thành viên',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFE65100),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setModalState(() {
+                              if (selectedIds.length == allMembers.length) {
+                                selectedIds.clear();
+                                if (_jackpotService.currentUserId.isNotEmpty) {
+                                  selectedIds.add(_jackpotService.currentUserId);
+                                }
+                              } else {
+                                selectedIds.addAll(allMembers.keys);
+                              }
+                            });
+                          },
+                          child: Text(
+                            selectedIds.length == allMembers.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 1),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 240),
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: allMembers.entries.map((entry) {
+                          final uid = entry.key;
+                          final name = entry.value;
+                          final isSelected = selectedIds.contains(uid);
+                          final isMe = uid == _jackpotService.currentUserId;
+
+                          return CheckboxListTile(
+                            dense: true,
+                            value: isSelected,
+                            activeColor: const Color(0xFFE65100),
+                            title: Row(
+                              children: [
+                                Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                                if (isMe) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: DanhColors.brand800,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'Bố / Mẹ',
+                                      style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            onChanged: (val) {
+                              setModalState(() {
+                                if (val == true) {
+                                  selectedIds.add(uid);
+                                } else {
+                                  if (selectedIds.length > 1) {
+                                    selectedIds.remove(uid);
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Cần ít nhất 1 thành viên tham gia!'),
+                                        duration: Duration(seconds: 1),
+                                      ),
+                                    );
+                                  }
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE65100),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        icon: const Icon(Icons.send_rounded),
+                        label: Text(
+                          AppLanguage.text('PHÁT ĐỘNG PHIẾU CHỜ (5 PHÚT)', 'START 5-MIN LOBBY TICKET'),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                        ),
+                        onPressed: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          Navigator.pop(ctx);
+                          try {
+                            await _jackpotService.initiateJackpotLobby(
+                              initiatorId: _jackpotService.currentUserId,
+                              initiatorName: _jackpotService.currentUserName,
+                              targetMemberIds: selectedIds.toList(),
+                            );
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Đã phát động phiếu chờ 5 phút! Thông báo đã gửi tới cả gia đình.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('Lỗi: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -739,7 +1401,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                       ],
                     ),
                     child: Text(
-                      '$remaining GIÂY CUỐI CÙNG - TĂNG TỐC LẮC!',
+                      '$remaining GIÂY CUỐI CÙNG - TĂNG TỐC MỞ HEO!',
                       style: const TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w900,
@@ -793,8 +1455,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 const SizedBox(height: 16),
                 Text(
                   isUrgent
-                      ? 'HẾT GIỜ TỚI NƠI RỒI! LẮC NHIỆT TÌNH LÊN CẢ NHÀ ƠI!'
-                      : 'CẦM ĐIỆN THOẠI LẮC THẬT MẠNH!\n(Trên Laptop: Lắc chuột vào vòng tròn, nhấn phím Space hoặc bấm nút bên dưới)',
+                      ? 'HẾT GIỜ TỚI NƠI RỒI! CÙNG GÕ HEO NHIỆT TÌNH LÊN CẢ NHÀ ƠI!'
+                      : 'CÙNG ĐẬP HEO ĐẤT GIA ĐÌNH!\n(Cầm điện thoại lắc, lắc chuột trên Laptop, nhấn Space hoặc bấm nút bên dưới)',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13.5,
@@ -879,7 +1541,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     ),
                     icon: const Icon(Icons.touch_app_rounded),
                     label: Text(
-                      isUrgent ? 'LẮC NGAY BÂY GIỜ! ($remaining GIÂY CUỐI)' : 'Lắc Ngay (+1 Lượt / Phím Space)',
+                      isUrgent ? 'MỞ HEO NGAY! ($remaining GIÂY CUỐI)' : 'Gõ Heo Đất (+1 Lượt / Phím Space)',
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     onPressed: _onManualShake,
@@ -930,7 +1592,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                     DanhSvgs.crown(size: 18),
                     const SizedBox(width: 6),
                     const Text(
-                      '🏆 QUÁN QUÂN LẮC TAY ĐÃ LỘ DIỆN!',
+                      '🏆 THÀNH VIÊN TÍCH CỰC ĐÃ LỘ DIỆN!',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w900,
@@ -954,7 +1616,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               ),
               const SizedBox(height: 6),
               Text(
-                'Đã lắc thần tốc $topShakerCount lần (nhiều nhất gia đình!) 🔥',
+                'Đã tích cực đóng góp $topShakerCount lượt gõ mở heo!',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 14,
@@ -966,7 +1628,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
 
               // Đếm ngược 10s hồi hộp
               const Text(
-                '⏳ THẦN MAY MẮN ĐANG PHÂN XỬ GIẢI THƯỞNG...',
+                '⏳ HỆ THỐNG ĐANG PHÂN BỔ SAO TỪ HEO ĐẤT CHO CÁC BÉ...',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
@@ -994,7 +1656,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               ),
               const SizedBox(height: 14),
               const Text(
-                'Liệu quán quân lắc tay có ôm trọn Giải Nhất 3/4 quỹ hũ\nhay sẽ phải đón nhận tấm poster "Ý TRỜI"? Cùng nín thở chờ xem! 🎁',
+                'Thuật toán Heo Đất đang chia 60% nỗ lực điểm danh + 40% may mắn cho các bé!\nBố Mẹ không nhận sao, toàn bộ sao trao cho các con chăm ngoan. ⭐',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12.5,
@@ -1032,7 +1694,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               DanhSvgs.checkSuccess(size: 54),
               const SizedBox(height: 12),
               const Text(
-                'NỔ HŨ THÀNH CÔNG! 🎉',
+                'MỞ HEO THÀNH CÔNG! ✨',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
@@ -1040,10 +1702,13 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Tiền thưởng đã được cộng trực tiếp vào Ví App của từng thành viên!\nCó thể rút về tài khoản ngân hàng cá nhân bất cứ lúc nào.',
+              Text(
+                AppLanguage.text(
+                  'Sao thưởng từ Heo Đất đã được chia công bằng (60% nỗ lực + 40% may mắn) cho các bé!\nCác bé dùng sao để đổi những phần quà & phúc lợi từ Bố Mẹ.',
+                  'Reward stars from the Piggy Bank have been partitioned fairly to the children!\nUse stars to redeem rewards & wishes from Parents.',
+                ),
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12.5, color: DanhColors.textSecondary, height: 1.4),
+                style: const TextStyle(fontSize: 12.5, color: DanhColors.textSecondary, height: 1.4),
               ),
               const Divider(height: 28),
 
@@ -1054,15 +1719,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 final shakes = jackpot.shakeCounts[uid] ?? 0;
                 final isWinner = uid == firstWinnerId;
                 final isTopShaker = uid == topShakerId;
-                final remainingWallet = jackpot.memberWallets[uid] ?? 0;
-                final isWithdrawn = jackpot.isMemberWithdrawn(uid);
                 final isMe = uid == _jackpotService.currentUserId;
 
                 final formattedAmount = amount.toString().replaceAllMapped(
-                  RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-                  (Match m) => '${m[1]}.',
-                );
-                final formattedRemaining = remainingWallet.toString().replaceAllMapped(
                   RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
                   (Match m) => '${m[1]}.',
                 );
@@ -1133,7 +1792,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                             ],
                           ),
                           Text(
-                            '+$formattedAmount đ',
+                            '+$formattedAmount ⭐',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
@@ -1143,66 +1802,29 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         ],
                       ),
                       const SizedBox(height: 10),
-                      // Thanh trạng thái rút tiền & Nút rút riêng của từng người (Adaptive Wrap chống tràn trên mọi độ phân giải)
-                      Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isWithdrawn ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isWithdrawn ? const Color(0xFF81C784) : const Color(0xFFFFB74D),
+                      // Trạng thái cộng sao vào ví thành viên
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF81C784)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.stars_rounded, size: 15, color: Color(0xFF2E7D32)),
+                            const SizedBox(width: 5),
+                            Text(
+                              AppLanguage.text('Đã nhận thưởng vào Ví Sao', 'Credited to Star Wallet'),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2E7D32),
                               ),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  isWithdrawn ? Icons.check_circle_rounded : Icons.schedule_rounded,
-                                  size: 13,
-                                  color: isWithdrawn ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  isWithdrawn
-                                      ? AppLanguage.text('Đã nhận thưởng', 'Claimed')
-                                      : AppLanguage.text('Chưa rút: $formattedRemaining đ', 'Unclaimed: $formattedRemaining đ'),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: isWithdrawn ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (isMe && !isWithdrawn && remainingWallet > 0)
-                            SizedBox(
-                              height: 28,
-                              child: ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFE65100),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                  elevation: 0,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                icon: const Icon(Icons.download_rounded, size: 14),
-                                label: Text(
-                                  AppLanguage.text('Rút phần của tôi', 'Claim My Share'),
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                                ),
-                                onPressed: _openBankAndWithdrawModal,
-                              ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -1248,45 +1870,80 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           ),
         ],
 
-        // Nút Rút tiền về Ngân hàng (Chỉ hiển thị khi ví còn tiền thưởng)
-        if (_jackpotService.myWalletBalance > 0) ...[
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE65100),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              icon: const Icon(Icons.account_balance_rounded),
-              label: Text(
-                'Rút Tiền Thưởng Về Ngân Hàng (${_jackpotService.myWalletBalance.toString().replaceAllMapped(RegExp(r"(\d{1,3})(?=(\d{3})+(?!\d))"), (Match m) => "${m[1]}.")} đ)',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-              ),
-              onPressed: _openBankAndWithdrawModal,
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
+        // Nút Nhận sao từ hũ (thay cho Rút tiền thưởng về ngân hàng)
+        Builder(
+          builder: (ctx) {
+            final myPrize = jackpot.prizeResults[_jackpotService.currentUserId] ?? 0;
+            final myBal = _jackpotService.myWalletBalance;
+            final displayStars = myPrize > 0 ? myPrize : myBal;
+            final starSuffix = displayStars > 0 ? ' (+$displayStars ⭐)' : '';
 
-        // Nút Tạo Hũ Mới
+            return Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE65100),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 3,
+                    ),
+                    icon: const Icon(Icons.stars_rounded, size: 22, color: Colors.amber),
+                    label: Text(
+                      AppLanguage.text(
+                        'Vào Cửa Hàng Đổi Quà$starSuffix',
+                        'Open Reward Shop$starSuffix',
+                      ),
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () async {
+                      _hasShownYTroiDialog = false;
+                      await _jackpotService.resetJackpot();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              AppLanguage.text(
+                                'Đã cộng ${displayStars > 0 ? "$displayStars ⭐" : "sao thưởng"} vào Ví Sao của bạn! Đang mở Cửa Hàng Đổi Quà...',
+                                'Added ${displayStars > 0 ? "$displayStars ⭐" : "reward stars"} into your Star Wallet! Opening Reward Shop...',
+                              ),
+                            ),
+                            backgroundColor: const Color(0xFF2E7D32),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                        // Điều hướng trực tiếp tới Cửa Hàng Đổi Sao & Sổ Cái Phúc Lợi Thực Tế
+                        await DanhPaymentEntry.openWishlistAndLedger(context);
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+            );
+          },
+        ),
+
+        // Nút Nuôi Heo Đất Đợt Mới
         SizedBox(
           width: double.infinity,
-          child: OutlinedButton(
+          child: OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: DanhColors.brand800),
+              side: const BorderSide(color: DanhColors.brand800, width: 1.5),
               foregroundColor: DanhColors.brand800,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
+            icon: const Icon(Icons.savings_outlined, size: 20),
             onPressed: () {
               _hasShownYTroiDialog = false;
               _jackpotService.resetJackpot();
             },
-            child: const Text(
-              'Góp Vui Hũ Mới & Chơi Tiếp',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            label: Text(
+              AppLanguage.text('Nuôi Heo Đất đợt mới', 'Feed new Piggy Bank round'),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
           ),
         ),
@@ -1294,28 +1951,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
   }
 
-  Widget _buildQuickDepositButton(int amount, String label) {
-    return Expanded(
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-          side: const BorderSide(color: DanhColors.brand500),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          backgroundColor: Colors.white,
-        ),
-        onPressed: () => _openDepositQrDialog(amount),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: DanhColors.brand800),
-          ),
-        ),
-      ),
-    );
-  }
 
   /// DIALOG NẠP TIỀN VÀO HŨ BẰNG VIETQR SEPAY + TỰ ĐỘNG BẮT GIAO DỊCH
+  // ignore: unused_element
   void _openDepositQrDialog(int amount) {
     final depositOrderCode = 'FHUBPOT${Random().nextInt(899999) + 100000}';
     final qrUrl = PaymentConfig.buildVietQrUrl(orderCode: depositOrderCode, amount: amount);
@@ -1341,8 +1979,8 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           SnackBar(
             content: Text(
               simulated
-                  ? '🎉 Mô phỏng nạp thành công $amount đ vào Hũ Niềm Vui!'
-                  : '🎉 Nạp thành công $amount đ vào Hũ Niềm Vui!',
+                  ? '✨ Mô phỏng nạp thành công $amount đ vào Hũ Niềm Vui!'
+                  : '✨ Nạp thành công $amount đ vào Hũ Niềm Vui!',
             ),
             backgroundColor: DanhColors.brand800,
           ),
@@ -1781,7 +2419,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                                 ),
                               ),
                               Text(
-                                '$prefix${tx.amount} đ',
+                                '$prefix${tx.amount} ⭐',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.bold,
@@ -1882,7 +2520,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('Số Dư Ví Khả Dụng', style: TextStyle(fontSize: 12, color: Color(0xFF8A5300))),
-                                Text('Tiền thưởng sau các lần nổ hũ', style: TextStyle(fontSize: 10, color: Color(0xFF8A5300))),
+                                Text('Sao thưởng sau các lần mở heo đất', style: TextStyle(fontSize: 10, color: Color(0xFF8A5300))),
                               ],
                             ),
                           ),
@@ -2067,7 +2705,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           if (balance <= 0) {
                             setSheetState(() {
                               sheetSuccess = null;
-                              sheetError = 'Số dư ví của bạn hiện đang là 0 đ. Hãy tham gia Nổ Hũ để nhận thưởng trước khi rút!';
+                              sheetError = 'Số dư ví của bạn hiện đang là 0 đ. Hãy tham gia Mở Heo Đất để nhận thưởng trước khi rút!';
                             });
                             return;
                           }
@@ -2239,6 +2877,114 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
     );
   }
 
+  Widget _buildDailyCheckInCard(FamilyJackpotModel jackpot) {
+    final uid = _jackpotService.currentUserId;
+    final hasCheckedIn = _jackpotService.hasUserCheckedInToday(uid);
+    final checkInCount = _jackpotService.getTodayCheckInCount();
+    final isCompleted = _jackpotService.isDailyCheckInCompletedToday();
+    final totalMembers = jackpot.memberNames.isNotEmpty
+        ? jackpot.memberNames.length
+        : 1;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isCompleted ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isCompleted ? const Color(0xFF81C784) : const Color(0xFFFFB74D),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.fact_check_rounded, color: Color(0xFFE65100), size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppLanguage.text(
+                    'Nhiệm Vụ Hằng Ngày: Cả nhà điểm danh (+10 ⭐)',
+                    'Daily Mission: Family Check-in (+10 ⭐)',
+                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                ),
+              ),
+              if (isCompleted)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E7D32),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'ĐÃ NHẬN +10 ⭐',
+                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isCompleted
+                ? AppLanguage.text(
+                    '✨ Toàn bộ thành viên gia đình đã hoàn thành điểm danh hôm nay! Hũ đã nhận +10 ⭐.',
+                    '✨ All family members checked in today! +10 ⭐ added to the pot.',
+                  )
+                : AppLanguage.text(
+                    'Đã điểm danh: $checkInCount/$totalMembers thành viên. Cả nhà cùng điểm danh để nhận +10 ⭐ vào hũ!',
+                    'Checked in: $checkInCount/$totalMembers members. All check in to add +10 ⭐ to pot!',
+                  ),
+            style: const TextStyle(fontSize: 12, color: Colors.black87),
+          ),
+          if (!isCompleted) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                key: const Key('btn_jackpot_daily_checkin'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: hasCheckedIn ? Colors.grey.shade400 : const Color(0xFFE65100),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: Icon(hasCheckedIn ? Icons.check_circle_rounded : Icons.touch_app_rounded, size: 18),
+                label: Text(
+                  hasCheckedIn
+                      ? AppLanguage.text('Bạn đã điểm danh hôm nay (Chờ cả nhà)', 'You checked in today (Waiting for others)')
+                      : AppLanguage.text('Điểm danh hôm nay (+10 ⭐ cả nhà)', 'Check in today (+10 ⭐ for family)'),
+                ),
+                onPressed: hasCheckedIn
+                    ? null
+                    : () async {
+                        final awarded = await _jackpotService.checkInDaily(
+                          userId: _jackpotService.currentUserId,
+                          userName: _jackpotService.currentUserName,
+                          totalFamilyMembers: totalMembers,
+                        );
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              awarded
+                                  ? '✨ Cả nhà đã điểm danh đủ! Heo Đất Gia Đình được cộng +10 ⭐!'
+                                  : '✅ Bạn đã điểm danh hôm nay thành công!',
+                            ),
+                            backgroundColor: awarded ? const Color(0xFF2E7D32) : const Color(0xFF005F50),
+                          ),
+                        );
+                      },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildContributionsList(FamilyJackpotModel jackpot) {
     final list = jackpot.contributions.entries.toList();
     if (list.isEmpty) {
@@ -2251,7 +2997,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
         ),
         child: const Center(
           child: Text(
-            'Chưa có ai nạp quỹ. Hãy quét VietQR để nạp và làm Đại Gia Đình!',
+            'Chưa có ai góp sao. Hãy góp sao để làm Đại Gia Đình!',
             style: TextStyle(fontSize: 12, color: DanhColors.textMuted),
           ),
         ),
@@ -2266,14 +3012,19 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
       ),
       child: Column(
         children: list.map((e) {
-          final name = jackpot.memberNames[e.key] ?? 'Thành viên';
-          final isTop = e.key == jackpot.topContributorId;
+          final isSystem = e.key == 'system_daily_mission' || e.key.startsWith('system_');
+          final name = isSystem
+              ? AppLanguage.text('Quỹ thưởng điểm danh (Hệ thống)', 'Daily Check-in Reward (System)')
+              : (jackpot.memberNames[e.key] ?? 'Thành viên');
+          final isTop = !isSystem && e.key == jackpot.topContributorId;
           return ListTile(
             dense: true,
-            leading: isTop ? DanhSvgs.crown(size: 20) : DanhSvgs.coin(size: 18),
+            leading: isSystem
+                ? const Icon(Icons.stars_rounded, color: Color(0xFFF57F17), size: 20)
+                : (isTop ? DanhSvgs.crown(size: 20) : DanhSvgs.coin(size: 18)),
             title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             trailing: Text(
-              '${e.value} đ',
+              '${e.value} ⭐',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
@@ -2629,6 +3380,16 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         } else if (n.type == 'wallet_withdraw') {
                           iconData = Icons.account_balance_rounded;
                           iconColor = const Color(0xFF1565C0);
+                        } else if (n.type.startsWith('task_') ||
+                            n.type == 'reminder' ||
+                            n.type.contains('escalation') ||
+                            n.type.contains('overdue')) {
+                          iconData = Icons.alarm_rounded;
+                          iconColor = const Color(0xFFD32F2F);
+                        } else if (n.type.startsWith('wishlist_') ||
+                            n.type.contains('star')) {
+                          iconData = Icons.stars_rounded;
+                          iconColor = const Color(0xFFFFA000);
                         } else {
                           iconData = Icons.info_outline_rounded;
                           iconColor = DanhColors.brand800;
@@ -2638,6 +3399,42 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           onTap: () {
                             if (!n.isRead) {
                               NotificationService.instance.markAsRead(familyId, n.id);
+                            }
+                            Navigator.pop(ctx);
+
+                            if (n.type.startsWith('task_') ||
+                                n.type == 'reminder' ||
+                                n.type.contains('escalation') ||
+                                n.type.contains('overdue')) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ReminderListScreen(
+                                    familyId: familyId,
+                                  ),
+                                ),
+                              );
+                            } else if (n.type.startsWith('wishlist_') ||
+                                n.type.contains('star')) {
+                              final myMember = _currentFamilyMembers.cast<FamilyMemberModel?>().firstWhere(
+                                (m) => m?.user.id == currentUserId,
+                                orElse: () => null,
+                              );
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => WishlistAndLedgerScreen(
+                                    familyId: familyId,
+                                    currentUserId: currentUserId,
+                                    currentUserName: myMember?.user.name ?? 'Tôi',
+                                    currentUserRole: myMember?.memberRole ?? 'PARENT',
+                                    familyMembers: _currentFamilyMembers.map((m) => vinh_member.FamilyMember(
+                                      id: m.user.id,
+                                      name: m.user.name,
+                                      role: m.memberRole,
+                                      familyId: m.familyId,
+                                    )).toList(),
+                                  ),
+                                ),
+                              );
                             }
                           },
                           child: Padding(
@@ -2735,7 +3532,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                 children: [
                   Expanded(
                     child: Text(
-                      AppLanguage.text('Luật Chơi Hũ Niềm Vui Gia Đình 📜', 'Family Pot Rules & Guidelines 📜'),
+                      AppLanguage.text('Quy Chế Heo Đất Gia Đình 📜', 'Family Piggy Bank Guidelines 📜'),
                       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: DanhColors.brand900),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -2750,13 +3547,14 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               const Flexible(
                 child: SingleChildScrollView(
                   child: Text(
-                    '1. Thành viên cùng nạp tiền vào Quỹ Hũ bằng mã VietQR Napas (SePay) realtime.\n'
-                    '2. Người nạp nhiều nhất trở thành "Đại Gia Đình" và có quyền bấm Nổ Hũ.\n'
-                    '3. Trận chiến Lắc 30s: Cả nhà cùng lắc điện thoại (hoặc bấm Lắc Ngay). Mỗi lần lắc = +1 vé may mắn!\n'
-                    '4. Vừa hết 30s: Lộ diện ngay "Quán Quân Lắc Tay", sau đó 10s thần may mắn công bố kết quả trao thưởng.\n'
-                    '5. Công thức chia thưởng tổng quỹ A: Giải Nhất nhận 3/4 của A, Giải Nhì nhận 3/5 phần còn lại, tiếp theo nhận 3/4 của 2 phần còn lại, chia trọn vẹn 100% quỹ cho cả nhà.\n'
-                    '6. Đặc biệt: Nếu mất gói Premium khi hũ chưa lắc -> Toàn bộ tiền trong hũ bị tiêu hủy!\n'
-                    '7. Ai lắc nhiều nhất nhà mà trượt Giải Nhất sẽ nhận thêm tấm Poster "Ý TRỜI"! 🤣',
+                    '1. Tích lũy sao nuôi heo: Cả nhà cùng hoàn thành Điểm danh mỗi ngày (+10 ⭐) và nhận hoàn 10% sao khi phụ huynh duyệt quà từ Wishlist.\n'
+                    '2. Mở Heo Đất Gia Đình: Bố Mẹ phát động phiên mở heo cuối tuần hoặc khi heo đã đầy sao để khen thưởng các con.\n'
+                    '3. Thuật toán chia sao giáo dục (Tất định 100%):\n'
+                    '   • 60% Nỗ lực (Effort Pool): Chia theo tỷ lệ đóng góp điểm danh và hoàn thành việc nhà chăm chỉ của các con.\n'
+                    '   • 40% May mắn (Lucky Pool): Chia đều cho tất cả các con tham gia.\n'
+                    '   • Bố Mẹ không nhận sao từ heo đất, 100% số sao thuộc về các con.\n'
+                    '4. Đổi quà thực tế: Số sao nhận được được cộng trực tiếp vào Ví Sao của con để đổi những phần quà yêu thích trong Cửa Hàng Phúc Lợi.\n'
+                    '5. Bảo toàn sao: Số sao trong heo luôn được bảo toàn nguyên vẹn ngay cả khi gia đình thay đổi gói dịch vụ!',
                     style: TextStyle(fontSize: 13, height: 1.45, color: DanhColors.textPrimary),
                   ),
                 ),
@@ -2801,16 +3599,16 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'HŨ ĐÃ BỊ TIÊU HỦY DO MẤT GÓI PREMIUM!',
+                  'SAO TRONG HEO ĐẤT ĐƯỢC BẢO TOÀN!',
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.bold,
-                    color: DanhColors.error,
+                    color: DanhColors.brand900,
                   ),
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Theo quy định: Hũ Niềm Vui Gia Đình chỉ duy trì khi gia đình sở hữu Gói Premium. Khi gói hết hạn hoặc bị hủy trước khi nổ hũ, toàn bộ số tiền quỹ trong hũ đã bị tiêu hủy!',
+                  'Khi gói Premium hết hạn, số sao đã tích lũy trong Heo Đất vẫn được giữ nguyên vẹn. Bạn chỉ cần gia hạn gói Premium để tiếp tục cùng gia đình mở heo!',
                   style: TextStyle(
                     fontSize: 12,
                     color: DanhColors.textSecondary,
@@ -2857,7 +3655,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
           ),
           const SizedBox(height: 8),
           const Text(
-            'Hũ Niềm Vui Gia Đình là đặc quyền dành riêng cho gia đình sở hữu Gói Premium.\n\n⚠️ Lưu ý nghiêm ngặt: Trong quá trình tích lũy hũ, nếu gia đình hết hạn Premium trước khi bấm nổ hũ thì toàn bộ số tiền trong hũ sẽ bị mất!',
+            'Heo Đất Gia Đình là đặc quyền dành riêng cho gia đình sở hữu Gói Premium.\n\n⭐ Lưu ý: Khi hết hạn Premium, số sao đã tích trữ trong heo vẫn được BẢO TOÀN NGUYÊN VẸN. Nhiệm vụ điểm danh vẫn đồng bộ nhưng chỉ tăng sao vào heo khi kích hoạt lại gói Premium!',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12.5,

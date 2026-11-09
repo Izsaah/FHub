@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fhub/Ai/services/gemini_chat_service.dart';
 import 'package:fhub/Danh/screens/family_jackpot_screen.dart';
+import 'package:fhub/Danh/screens/payment_checkout_screen.dart';
 import 'package:fhub/Danh/services/family_jackpot_service.dart';
 import 'package:fhub/Danh/services/payment_service.dart';
-import 'package:fhub/Vinh/models/family_member.dart';
-import 'package:fhub/Vinh/services/family_ai_assistant_service.dart';
-import 'package:fhub/Vinh/services/reminder_repository.dart';
+import 'package:fhub/Danh/services/payment_config.dart';
 
 void main() {
   group('End-User Simulation Tests (Mobile 360px & Virtual 3-Button Navigation Bar)', () {
@@ -15,7 +14,7 @@ void main() {
       FamilyJackpotService.instance.initForFamily('f1');
     });
 
-    testWidgets('1. Mobile 360px viewport: AppBar title, Wallet Card buttons, and Deposit header render without overflow', (tester) async {
+    testWidgets('1. Mobile 360px viewport: AppBar title, Star Jackpot header, rules and leaderboard render without overflow', (tester) async {
       tester.view.physicalSize = const Size(360, 780);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -39,21 +38,16 @@ void main() {
       // Verify AppBar Title exists and is not truncated
       expect(find.text('Hũ Niềm Vui Gia Đình'), findsOneWidget);
 
-      // Verify Actions: Bell notification icon and Help icon
+      // Verify Actions: Bell notification icon, Help icon, and More options
       expect(find.byIcon(Icons.notifications_outlined), findsOneWidget);
       expect(find.byIcon(Icons.help_outline_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.more_vert_rounded), findsOneWidget);
 
-      // Verify Adaptive Wallet Card: Both 'Lịch Sử' and 'Rút Tiền' are visible
-      expect(find.text('Ví Thưởng Của Tôi'), findsOneWidget);
-      expect(find.text('Lịch Sử'), findsOneWidget);
-      expect(find.text('Rút Tiền'), findsOneWidget);
-
-      // Verify Deposit Section: Clean wrap layout without overlap
-      expect(find.text('1. Nạp Tiền Vào Quỹ Hũ (VietQR)'), findsOneWidget);
-      expect(find.text('MBBank 0000000001'), findsOneWidget);
-      expect(find.text('+20.000 đ'), findsOneWidget);
-      expect(find.text('+50.000 đ'), findsOneWidget);
-      expect(find.text('+100.000 đ'), findsOneWidget);
+      // Verify Star Jackpot Pool & Accumulation rules render cleanly without overflow
+      expect(find.text('TỔNG QUỸ HŨ SAO GIA ĐÌNH'), findsOneWidget);
+      expect(find.text('1. Tích Lũy Sao Vào Hũ Niềm Vui ⭐'), findsOneWidget);
+      expect(find.text('Quy chế tích lũy sao vào hũ'), findsOneWidget);
+      expect(find.text('2. Bảng Vinh Danh Thành Viên Đóng Góp'), findsOneWidget);
 
       // Verify no flame / tacky icons in idle state
       expect(find.byIcon(Icons.whatshot_rounded), findsNothing);
@@ -132,7 +126,7 @@ void main() {
       expect(find.text('Thông Báo Gia Đình'), findsNothing);
     });
 
-    testWidgets('4. End-user opens Wallet History & Withdrawal Modals: Safe Area bottom padding applied', (tester) async {
+    testWidgets('4. End-user opens Wallet History & Withdrawal Modals via AppBar options: Safe Area bottom padding applied', (tester) async {
       tester.view.physicalSize = const Size(360, 780);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -153,8 +147,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Tap 'Lịch Sử' button on Wallet Card
-      await tester.tap(find.text('Lịch Sử'));
+      // Open PopupMenuButton
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
+
+      // Tap 'Lịch sử ví gia đình'
+      expect(find.text('Lịch sử ví & quỹ (15 ngày)'), findsOneWidget);
+      await tester.tap(find.text('Lịch sử ví & quỹ (15 ngày)'));
       await tester.pumpAndSettle();
 
       expect(find.text('Lịch Sử Biến Động Ví & Quỹ'), findsOneWidget);
@@ -163,8 +162,13 @@ void main() {
       await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pumpAndSettle();
 
-      // Tap 'Rút Tiền' button on Wallet Card
-      await tester.tap(find.text('Rút Tiền'));
+      // Open PopupMenuButton again
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
+
+      // Tap 'Cài đặt rút tiền'
+      expect(find.text('Ví thưởng & rút tiền'), findsOneWidget);
+      await tester.tap(find.text('Ví thưởng & rút tiền'));
       await tester.pumpAndSettle();
 
       expect(find.text('Ví Thưởng & Rút Tiền Về Ngân Hàng'), findsOneWidget);
@@ -214,7 +218,7 @@ void main() {
       expect(roleMsg2.text, contains('Danh'));
     });
 
-    testWidgets('6. End-user opens Deposit VietQR Dialog on narrow screen: Renders QR, check status Wrap and copy button without RenderFlex overflow', (tester) async {
+    testWidgets('6. End-user opens PaymentCheckoutScreen on narrow screen: Renders VietQR, SePay polling, check status and simulation button without RenderFlex overflow', (tester) async {
       tester.view.physicalSize = const Size(360, 780);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -229,77 +233,56 @@ void main() {
               size: Size(360, 780),
               padding: EdgeInsets.only(top: 24, bottom: 48),
             ),
-            child: const FamilyJackpotScreen(),
+            child: const PaymentCheckoutScreen(),
           ),
         ),
       );
-      await tester.pumpAndSettle();
-
-      // Tap +20.000 đ chip to open VietQR Modal
-      await tester.tap(find.text('+20.000 đ'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Verify Modal Dialog rendered
-      expect(find.text('Quét VietQR Nạp Quỹ Hũ'), findsOneWidget);
-      expect(find.text('Đang tự động kiểm tra SePay...'), findsOneWidget);
+      // Verify Header and Zoom Hint
+      expect(find.text('Thanh Toán VietQR'), findsOneWidget);
+      expect(find.text('Nhấp vào mã QR để phóng to'), findsOneWidget);
+
+      // Verify Bank Account Info
+      expect(find.text('Ngân hàng:'), findsOneWidget);
+      expect(find.text('MBBank'), findsOneWidget);
+      expect(find.text('Số tài khoản:'), findsOneWidget);
+      expect(find.text(PaymentConfig.accountNo), findsOneWidget);
+
+      // Verify SePay Realtime status card
+      expect(find.text('Đang tự động lắng nghe SePay (mỗi 2s)...'), findsOneWidget);
       expect(find.text('Kiểm tra ngay'), findsOneWidget);
 
-      // Verify Simulation Deposit Button works without overflow
-      expect(find.text('Mô Phỏng Nạp Thành Công (Thử Nghiệm)'), findsOneWidget);
-      await tester.tap(find.text('Mô Phỏng Nạp Thành Công (Thử Nghiệm)'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      // Dialog is dismissed and pot updated
-      expect(find.text('Quét VietQR Nạp Quỹ Hũ'), findsNothing);
+      // Verify simulation action button
+      expect(find.text('Mô phỏng thanh toán thành công (Thử nghiệm)'), findsOneWidget);
     });
 
     test('7. End-user inquiries: AI does NOT hallucinate tasks for questions, handles Dad role and compliments', () async {
-      final vinhAi = FamilyAiAssistantService.instance;
-      final members = [
-        const FamilyMember(id: 'u_vinh', name: 'Lương Diệu Vinh', role: FamilyMember.roleParent, familyId: 'f1'),
-        const FamilyMember(id: 'u_khoa', name: 'Khoa', role: FamilyMember.roleChild, familyId: 'f1'),
-      ];
-      final repo = InMemoryReminderRepository();
+      final ai = GeminiChatService.instance;
 
-      // User asks question about role and delegation permission: Must NOT create tasks!
-      final roleInquiry = await vinhAi.processMessage(
+      // Setup Parent/Dad identity
+      await ai.initChat(
         familyId: 'f1',
-        currentUserId: 'u_vinh',
-        currentUserName: 'Lương Diệu Vinh',
-        familyMembers: members,
-        repository: repo,
-        userMessage: 'tôi đóng vai trò gì trong căn nhà này, tôi có thể giao việc cho ai không',
+        userId: 'u_bo_hung',
+        userName: 'Bố Hùng',
+        userRole: 'Bố Mẹ',
+        familyName: 'Tổ Ấm',
       );
-      expect(roleInquiry.attachedReminder, isNull);
-      expect(roleInquiry.attachedReminders, isEmpty);
-      expect(roleInquiry.text, isNot(contains('Dạ em đã soạn và tạo xong 2 công việc')));
-      expect(roleInquiry.text, contains('vai trò của bạn là'));
 
-      // User asks specific role query: Must be "Phụ huynh (Quản trị gia đình)", NEVER "Bố Mẹ"
-      final roleMsg = await vinhAi.processMessage(
-        familyId: 'f1',
-        currentUserId: 'u_vinh',
-        currentUserName: 'Lương Diệu Vinh',
-        familyMembers: members,
-        repository: repo,
-        userMessage: 'vai trò của tôi trong gia đình là gì',
-      );
-      expect(roleMsg.text, contains('Phụ huynh (Quản trị gia đình)'));
-      expect(roleMsg.text, isNot(contains('vai trò của bạn là **Bố Mẹ**')));
+      // Question: inquiring about chores
+      final askMsg = await ai.sendMessage('Hôm nay nhà mình có việc gì chưa làm không?');
+      expect(askMsg.createdTask, isNull);
+      expect(askMsg.text, isNot(contains('chào mẹ')));
+      expect(askMsg.text, isNot(contains('Chào mẹ')));
 
-      // User asks compliment/self-esteem question: Must give witty 10/10 praise!
-      final praiseMsg = await vinhAi.processMessage(
-        familyId: 'f1',
-        currentUserId: 'u_vinh',
-        currentUserName: 'Lương Diệu Vinh',
-        familyMembers: members,
-        repository: repo,
-        userMessage: 'tôi đẹp trai không',
-      );
-      expect(praiseMsg.text, contains('10/10'));
-      expect(praiseMsg.text, isNot(contains('chia sẻ dự định nấu ăn')));
+      // Inquiring about memories
+      final memMsg = await ai.sendMessage('Bố thường hay để chìa khóa ở đâu nhỉ?');
+      expect(memMsg.createdTask, isNull);
+
+      // Compliment / casual talk
+      final praiseMsg = await ai.sendMessage('Cảm ơn bạn nhé, bạn thông minh lắm!');
+      expect(praiseMsg.createdTask, isNull);
     });
   });
 }

@@ -4,6 +4,8 @@ class FamilyMember {
   static const roleGrandparent = 'GRANDPARENT';
   static const roleParent = 'PARENT';
   static const roleChild = 'CHILD';
+  static const roleRelative = 'RELATIVE';
+  static const roleMember = 'MEMBER';
 
   static const statusActive = 'ACTIVE';
   static const statusDeactivated = 'DEACTIVATED';
@@ -51,11 +53,31 @@ class FamilyMember {
       role.toUpperCase().contains('CHILD') ||
       role.toUpperCase().contains('CON');
 
+  bool get isRelative =>
+      role == roleRelative ||
+      role.toUpperCase() == roleRelative ||
+      role.toUpperCase().contains('RELATIVE') ||
+      role.toUpperCase().contains('UNCLE') ||
+      role.toUpperCase().contains('AUNT');
+
+  bool get isMember =>
+      role.toUpperCase() == roleMember ||
+      role.toUpperCase().contains('MEMBER') ||
+      role.toUpperCase().contains('BẠN') ||
+      role.toUpperCase().contains('THÀNH VIÊN');
+
   /// isKid: mặc định true đối với trẻ nhỏ (isChild), false với người lớn nếu không chỉ định
   bool get isKid => _rawIsKid ?? isChild;
 
   /// Guardian bao gồm: Chủ hộ (isOwner), Bố Mẹ (isParent), và Ông Bà (isGrandparent)
-  bool get isGuardian => isOwner || isParent || isGrandparent;
+  bool get isGuardian => (isOwner || isParent || isGrandparent) && !isRelative;
+
+  int get hierarchyLevel {
+    if (isGrandparent) return 3;
+    if (isParent || isOwner) return 2;
+    if (isRelative) return 2;
+    return 1;
+  }
 
   factory FamilyMember.fromMap(Map<String, dynamic> map) {
     final rawIsKid = map['isKid'] ?? map['is_kid'];

@@ -32,15 +32,119 @@ class CalendarPage extends StatefulWidget {
   State<CalendarPage> createState() => _CalendarPageState();
 }
 
-class _CalendarPageState extends State<CalendarPage> {
+class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver {
   DateTime _currentMonth =
       DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
   Timer? _deleteSnackBarTimer;
+  Timer? _clockTicker;
+  List<ReminderModel> _lastLoadedReminders = [];
+  Stream<List<ReminderModel>>? _remindersStream;
+  String? _cachedStreamFamilyId;
+
+  Stream<List<ReminderModel>> _getRemindersStream() {
+    if (_remindersStream == null || _cachedStreamFamilyId != widget.familyId) {
+      _cachedStreamFamilyId = widget.familyId;
+      _remindersStream = widget.repository.watchReminders(familyId: widget.familyId);
+    }
+    return _remindersStream!;
+  }
+
+  String _normalizeName(String s) {
+    var res = s.trim().toLowerCase();
+    const accents = {
+      'à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ': 'a',
+      'è|é|ề|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ': 'e',
+      'ì|í|ị|ỉ|ĩ': 'i',
+      'ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ': 'o',
+      'ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ': 'u',
+      'ỳ|ý|ỵ|ỷ|ỹ': 'y',
+      'đ': 'd',
+    };
+    for (final entry in accents.entries) {
+      res = res.replaceAll(RegExp(entry.key), entry.value);
+    }
+    return res.replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    MultiTierEscalationService.instance.clockTick.addListener(_onClockTick);
+    _startClockTicker();
+  }
+
+  void _startClockTicker() {
+    _clockTicker?.cancel();
+    MultiTierEscalationService.instance.ensureClockRunning();
+    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      try {
+        _checkDueReminders();
+      } catch (e) {
+        debugPrint('CalendarPage clock ticker error: $e');
+      }
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      MultiTierEscalationService.instance.ensureClockRunning(forceRestart: true);
+      _checkDueReminders();
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _onClockTick() {
+    if (!mounted) return;
+    try {
+      _checkDueReminders();
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    _startClockTicker();
+  }
+
+  void _checkDueReminders() {
+    if (_lastLoadedReminders.isEmpty || !mounted) return;
+    String memberId = '';
+    String memberName = '';
+    for (final m in widget.familyMembers) {
+      if (m.id == widget.currentUserId ||
+          _normalizeName(m.name) == _normalizeName(widget.currentUserName)) {
+        memberId = m.id;
+        memberName = m.name;
+        break;
+      }
+    }
+    MultiTierEscalationService.instance.syncReminders(
+      _lastLoadedReminders,
+      currentUserId: widget.currentUserId,
+      currentUserName: widget.currentUserName,
+      currentUserMemberId: memberId,
+      currentUserFamilyName: memberName,
+      context: context,
+      onOpenDetail: _showDetailBottomSheet,
+    );
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    MultiTierEscalationService.instance.clockTick.removeListener(_onClockTick);
+    _clockTicker?.cancel();
+    _clockTicker = null;
     _deleteSnackBarTimer?.cancel();
+    // Global escalation service continues running in background for active family members
     super.dispose();
   }
 
@@ -77,6 +181,28 @@ class _CalendarPageState extends State<CalendarPage> {
         if (proofUrl == null) {
           return;
         }
+      }
+
+      if (reminder.requiresProofImage && proofUrl != null) {
+        await widget.repository.submitTaskWithProof(
+          taskId: reminder.id,
+          proofImageUrl: proofUrl,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLanguage.text(
+                  '📸 Đã nộp ảnh nghiệm thu! Đang chờ Bố Mẹ/Ông Bà duyệt sao.',
+                  '📸 Proof submitted! Waiting for Guardian approval and stars.',
+                ),
+              ),
+              backgroundColor: const Color(0xFF0D7A68),
+            ),
+          );
+          setState(() {});
+        }
+        return;
       }
 
       await widget.repository.completeReminder(
@@ -340,15 +466,38 @@ class _CalendarPageState extends State<CalendarPage> {
             ),
           ),
           body: StreamBuilder<List<ReminderModel>>(
-            stream: widget.repository.watchReminders(familyId: widget.familyId),
+            stream: _getRemindersStream(),
             builder: (context, snapshot) {
               final allReminders = snapshot.data ?? [];
-              final dayReminders = allReminders
-                  .where((r) => r.date == selectedDateStr && !r.isDeleted)
-                  .toList();
+              _lastLoadedReminders = allReminders;
+              String memberId = '';
+              String memberName = '';
+              for (final m in widget.familyMembers) {
+                if (m.id == widget.currentUserId ||
+                    _normalizeName(m.name) == _normalizeName(widget.currentUserName)) {
+                  memberId = m.id;
+                  memberName = m.name;
+                  break;
+                }
+              }
+              MultiTierEscalationService.instance.syncReminders(
+                allReminders,
+                currentUserId: widget.currentUserId,
+                currentUserName: widget.currentUserName,
+                currentUserMemberId: memberId,
+                currentUserFamilyName: memberName,
+                context: context,
+                onOpenDetail: _showDetailBottomSheet,
+              );
+              return ValueListenableBuilder<DateTime>(
+                valueListenable: MultiTierEscalationService.instance.clockTick,
+                builder: (context, nowTick, _) {
+                  final dayReminders = allReminders
+                      .where((r) => r.date == selectedDateStr && !r.isDeleted)
+                      .toList();
 
               final overdueList = dayReminders
-                  .where((r) => r.isOverdue && !r.isCompleted)
+                  .where((r) => r.isOverdue && !r.isCompleted && !r.isSubmitted)
                   .toList();
 
               final openList = dayReminders
@@ -361,6 +510,10 @@ class _CalendarPageState extends State<CalendarPage> {
                       !r.isOverdue &&
                       !r.isOpen &&
                       !r.isCompleted)
+                  .toList();
+
+              final submittedList = dayReminders
+                  .where((r) => r.isSubmitted && !r.isCompleted)
                   .toList();
 
               final completedList =
@@ -547,6 +700,32 @@ class _CalendarPageState extends State<CalendarPage> {
                                 ),
                               ],
 
+                              // 2b. SUBMITTED / PENDING APPROVAL
+                              if (submittedList.isNotEmpty) ...[
+                                ReminderSectionHeader(
+                                  title: AppLanguage.text(
+                                    'CHỜ DUYỆT NGHIỆM THU',
+                                    'PENDING APPROVAL',
+                                  ),
+                                  count: submittedList.length,
+                                  color: const Color(0xFF6750A4),
+                                  icon: Icons.rate_review_rounded,
+                                ),
+                                ...submittedList.map(
+                                  (reminder) => ReminderCard(
+                                    reminder: reminder,
+                                    currentUserId: widget.currentUserId,
+                                    onTap: () =>
+                                        _showDetailBottomSheet(reminder),
+                                    onDelete: (reminder.creatorId ==
+                                                widget.currentUserId ||
+                                            _isParentOrOwner)
+                                        ? () => _confirmAndDelete(reminder)
+                                        : null,
+                                  ),
+                                ),
+                              ],
+
                               // 3. PENDING
                               if (pendingList.isNotEmpty) ...[
                                 ReminderSectionHeader(
@@ -615,6 +794,8 @@ class _CalendarPageState extends State<CalendarPage> {
                     ],
                   ),
                 ),
+              );
+                },
               );
             },
           ),

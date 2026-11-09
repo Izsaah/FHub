@@ -93,10 +93,14 @@ class GeminiChatService {
   bool get _isChild => !_canAssignChores;
 
   static const List<String> _candidateModels = [
-    'gemini-3.1-flash-lite',
-    'gemini-3.5-flash',
-    'gemini-3.5-flash-lite',
     'gemini-3.8-flash',
+    'gemini-3.1-pro',
+    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-pro',
+    'gemini-1.5-flash',
   ];
 
   String? _customApiKey;
@@ -875,16 +879,16 @@ class GeminiChatService {
           final data = jDoc.data()!;
           final pool = data['totalPoolAmount'] ?? 0;
           final topName = data['topContributorName'] ?? 'Chưa có';
-          jackpotInfo.writeln('- Tổng quỹ Hũ hiện tại: $pool đ');
-          jackpotInfo.writeln('- Người đóng góp nhiều nhất: $topName (Nắm giữ quyền phát lệnh nổ hũ 30 giây)');
+          jackpotInfo.writeln('- Tổng sao trong Heo Đất hiện tại: $pool ⭐');
+          jackpotInfo.writeln('- Người đóng góp nhiều nhất: $topName (Góp nhiều sao nhất nuôi heo)');
         } else {
-          jackpotInfo.writeln('- Hũ Niềm Vui hiện tại: 0 đ');
+          jackpotInfo.writeln('- Heo Đất Gia Đình hiện tại: 0 ⭐');
         }
       } catch (_) {
-        jackpotInfo.writeln('- Hũ Niềm Vui đang được cập nhật.');
+        jackpotInfo.writeln('- Heo Đất Gia Đình đang được cập nhật.');
       }
     } else {
-      jackpotInfo.writeln('- Hũ Niềm Vui hiện tại: 0 đ');
+      jackpotInfo.writeln('- Heo Đất Gia Đình hiện tại: 0 ⭐');
     }
 
     // 4. Đọc thói quen sở thích
@@ -960,7 +964,7 @@ $membersInfo
 === DANH SÁCH VIỆC NHÀ TRONG GIA ĐÌNH HÔM NAY ===
 $tasksInfo
 
-=== THÔNG TIN HŨ NIỀM VUI GIA ĐÌNH ===
+=== THÔNG TIN HEO ĐẤT GIA ĐÌNH ===
 $jackpotInfo
 
 === BỘ NHỚ THÓI QUEN & SỞ THÍCH GIA ĐÌNH (FAMILY MEMORY) ===
@@ -975,7 +979,7 @@ $memoriesInfo
 - BẢN CHẤT CỦA BẠN: Bạn là Trợ lý AI Gia đình thông minh của ứng dụng FHub. Bạn CHỈ hỗ trợ các vấn đề gắn kết tổ ấm và sinh hoạt gia đình:
   1. Quản lý việc nhà, phân công trách nhiệm, nhắc nhở sinh hoạt, kiểm tra tiến độ việc nhà.
   2. Điểm danh an toàn gia đình (Check-in I'm OK).
-  3. Hũ Niềm Vui (thông tin số dư, người nạp nhiều nhất, luật lắc hũ 30 giây).
+  3. Heo Đất Gia Đình (thông tin số dư sao tích lũy, người đóng góp nhiều nhất, quy chế mở heo chia thưởng cho các con).
   4. Thói quen gia đình, gợi ý bữa cơm nhà ấm cúng, mẹo vặt nhà cửa và gắn kết tình cảm tổ ấm.
 - TỪ CHỐI TUYỆT ĐỐI CÁC CÂU HỎI NGOẠI PHẠM ĐỂ BẢO VỆ TOKEN HỆ THỐNG:
   + CẤM giải bài tập học tập (Toán, Lý, Hóa, Văn, bài tập về nhà, thuật toán, bài thi trường lớp...).
@@ -983,7 +987,7 @@ $memoriesInfo
   + CẤM viết bài luận văn, phân tích kiến trúc phần mềm, dịch tài liệu dài hoặc chém gió học thuật ngoài lề.
 - CÁCH THỨC TỪ CHỐI: Ngắn gọn (tối đa 1-2 câu), ấm áp, xưng hô chuẩn mực theo vai vế của người dùng (Bố/Mẹ/Ông/Bà/tên con), và khéo léo hướng họ quay về công việc hoặc lịch sinh hoạt gia đình. KHÔNG sinh mã code, KHÔNG giải thích kiến thức ngoài luồng để tiết kiệm token tối đa.
 - CẤM TỰ Ý TÍCH HOÀN THÀNH VIỆC NHÀ (Complete Reminder): AI không thể làm thay việc nhà ngoài đời thực. Nếu người dùng bảo "tích xong việc nhà hộ tôi", hãy giải thích lịch sự rằng thành viên cần tự làm việc thực tế và tích hoàn thành trong ứng dụng (kèm ảnh nghiệm thu nếu có).
-- GIỚI HẠN DUY NHẤT VỀ HŨ NIỀM VUI (JACKPOT): Bạn nắm rõ thông tin Hũ, nhưng bạn KHÔNG THỂ VÀ KHÔNG ĐƯỢC PHÉP tự bấm lắc hũ giùm người dùng! Lắc hũ là tính năng tương tác thực tế giữa các thành viên: mỗi người phải tự cầm điện thoại thật của mình lên và lắc cơ học trong 30 giây (hoặc bấm nút Lắc trên màn hình Hũ) để tranh giải. Nếu người dùng bảo bạn "lắc hũ đi", "nổ hũ hộ tôi", hãy giải thích vui vẻ rằng bạn không có tay để lắc điện thoại hộ được, và mời họ vào tab Hũ Niềm Vui để cùng cả nhà lắc!
+- GIỚI HẠN VỀ HEO ĐẤT GIA ĐÌNH (PIGGY BANK): Bạn nắm rõ thông tin số sao Heo Đất, nhưng bạn KHÔNG THỂ VÀ KHÔNG ĐƯỢC PHÉP tự bấm mở heo giùm người dùng! Heo Đất được mở bởi Bố Mẹ khi tổng kết tuần. Sao trong heo được chia công bằng (60% nỗ lực + 40% may mắn) cho các con để đổi quà trong Cửa Hàng Phúc Lợi (Wishlist). Nếu người dùng bảo bạn "mở heo đi", hãy giải thích vui vẻ rằng bạn không có tay để mở hộ được, và mời họ vào tab Heo Đất Gia Đình để cùng cả nhà mở nhé!
 
 === CÁC CHỈ DẪN TRẢ LỜI NGHIỆP VỤ ===
 1. Khi người dùng hỏi "ai đã điểm danh", "hôm nay ai chưa check-in", "tình hình điểm danh":
@@ -991,9 +995,9 @@ $memoriesInfo
 2. Khi người dùng hỏi "tóm tắt tiến độ công việc", "tình hình việc nhà hôm nay", "hôm nay có việc gì":
    Báo cáo tổng kết súc tích: việc nào đã xong, việc nào chưa xong, ai phụ trách.
 3. Khi người dùng hỏi về vai trò hoặc quyền hạn của mình trong gia đình:
-   Trả lời chính xác theo vai trò thực tế của họ (quyền giao việc, quyền nổ hũ, nhận sao thưởng).
-4. Khi người dùng hỏi về Hũ Niềm Vui:
-   Cung cấp số dư hũ, ai nạp nhiều nhất và quy tắc lắc 30s (nhắc rõ AI không lắc hũ hộ được).
+   Trả lời chính xác theo vai trò thực tế của họ (quyền giao việc, quyền mở heo đất, nhận sao thưởng).
+4. Khi người dùng hỏi về Heo Đất Gia Đình:
+   Cung cấp số dư sao heo đất, ai đóng góp nhiều nhất và quy chế chia sao cho các bé đổi quà.
 5. Khi người dùng muốn giao việc mở cho các con: Gọi tool createFamilyTask với assignedTo: "ALL".
 6. Luôn giao tiếp lịch sự, ngắn gọn, tự nhiên và giàu cảm xúc gia đình.
 ''';
@@ -1475,9 +1479,9 @@ $memoriesInfo
       }
 
       final desc = isParent
-          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho các con, tạo việc chung, nạp quỹ hũ và phát lệnh Nổ Hũ 30 giây cho cả nhà! 👑'
+          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho các con, tạo việc chung, duyệt quà đổi sao và mở Heo Đất khen thưởng cho cả nhà! 👑'
           : (isChild
-              ? 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận việc chung, hoàn thành nhiệm vụ để tích lũy sao thưởng và tham gia lắc hũ nhận thưởng về ví cá nhân nhé! 🌟'
+              ? 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận việc chung, hoàn thành nhiệm vụ để tích lũy sao thưởng nuôi Heo Đất và đổi những món quà mơ ước trong Cửa hàng phúc lợi nhé! 🌟'
               : 'Bạn là **Thành viên yêu thương của gia đình**: Có thể gắn kết, chia sẻ việc nhà và cùng tham gia các hoạt động ấm cúng! 🏡');
 
       return ChatMessageModel(
@@ -1488,10 +1492,13 @@ $memoriesInfo
       );
     }
 
-    // 4. HỎI VỀ HŨ NIỀM VUI GIA ĐÌNH
-    if (lower.contains('hũ niềm vui') ||
+    // 4. HỎI VỀ HEO ĐẤT GIA ĐÌNH
+    if (lower.contains('heo đất') ||
+        lower.contains('hũ niềm vui') ||
         lower.contains('quỹ hũ') ||
         lower.contains('nổ hũ') ||
+        lower.contains('nuôi heo') ||
+        lower.contains('mở heo') ||
         lower.contains('lắc hũ')) {
       int pool = 0;
       String topName = 'Chưa có';
@@ -1518,10 +1525,10 @@ $memoriesInfo
 
       return ChatMessageModel(
         id: 'msg_${now.millisecondsSinceEpoch}',
-        text: '🎁 **HŨ NIỀM VUI GIA ĐÌNH**:\n'
-            '• Tổng quỹ hiện tại: **$poolStr đ**.\n'
-            '• Người nạp nhiều nhất: **$topName** (giữ quyền phát lệnh Nổ Hũ 30s).\n'
-            '• Khi nổ hũ, cả nhà cùng lắc điện thoại trong 30 giây! Ai lắc nhiều nhất nhận Giải Nhất, tiền thưởng cộng thẳng vào Ví cá nhân và có thể rút về ngân hàng bất cứ lúc nào! 💰',
+        text: '🐷 **HEO ĐẤT GIA ĐÌNH**:\n'
+            '• Tổng quỹ sao hiện tại: **$poolStr ⭐**.\n'
+            '• Người đóng góp nhiều nhất: **$topName**.\n'
+            '• Khi Bố Mẹ mở heo, toàn bộ số sao sẽ được chia công bằng cho các con (60% nỗ lực + 40% may mắn) và cộng thẳng vào Ví Sao để đổi quà trong Cửa Hàng Phúc Lợi! ✨',
         sender: ChatSender.ai,
         timestamp: now,
       );

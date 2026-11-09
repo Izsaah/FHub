@@ -128,6 +128,58 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                   ),
                 ],
               ),
+              if (paymentService.isGracePeriod) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.shade700),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.timer_outlined, size: 16, color: Color(0xFFE65100)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          AppLanguage.text(
+                            'Gói Premium đã hết hạn. Còn ${paymentService.graceDaysRemaining} ngày ân hạn để gia hạn!',
+                            'Premium plan expired. ${paymentService.graceDaysRemaining} days grace period left to renew!',
+                          ),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFE65100)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (paymentService.isOverCapacityFrozen) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFEBEE),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.shade700),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.lock_clock_rounded, size: 16, color: Colors.red),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          AppLanguage.text(
+                            'Gia đình có $currentMemberCount thành viên (vượt mức 4 người của gói Free). Tính năng tạo mới bị tạm khóa. Vui lòng gia hạn hoặc chuyển bớt thành viên sang Tạm ngưng.',
+                            'Family has $currentMemberCount members (exceeds 4-member Free limit). New task creation is frozen. Please renew or set members to inactive.',
+                          ),
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.red.shade900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
 
               // Thanh tiến trình hạn mức thành viên (VD: 2/4 hoặc 3/10)
@@ -211,7 +263,7 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
 
               const SizedBox(height: 14),
 
-              // Banner Hũ Niềm Vui Gia Đình (Shopee Shake)
+              // Banner Heo Đất Gia Đình (Piggy Bank)
               InkWell(
                 borderRadius: BorderRadius.circular(14),
                 onTap: () {
@@ -252,7 +304,7 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                               children: [
                                 Flexible(
                                   child: Text(
-                                    AppLanguage.text('Hũ Niềm Vui Gia Đình', 'Family Jackpot'),
+                                    AppLanguage.text('Heo Đất Gia Đình', 'Family Piggy Bank'),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -280,8 +332,8 @@ class FamilyPremiumStatusWidget extends StatelessWidget {
                             Text(
                               isPremium
                                   ? AppLanguage.text(
-                                      'Góp quỹ & Lắc điện thoại 30s nổ hũ',
-                                      'Contribute fund & Shake phone 30s to win',
+                                      'Nuôi heo chăm ngoan & Mở thưởng gia đình',
+                                      'Feed with chores & Open family rewards',
                                     )
                                   : AppLanguage.text(
                                       'Mở khóa khi nâng cấp lên Tổ Ấm Premium',

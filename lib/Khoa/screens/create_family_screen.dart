@@ -27,6 +27,11 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
   static const Color mutedText = Color(0xFF71827D);
 
   @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
   void dispose() {
     _familyNameController.dispose();
     super.dispose();
@@ -198,16 +203,10 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                                 ),
                                 validator: (value) {
                                   if (value == null || value.trim().isEmpty) {
-                                    return AppLanguage.text(
-                                      'Vui lòng nhập tên gia đình',
-                                      'Please enter a family name',
-                                    );
+                                    return AppLanguage.text('Vui lòng nhập tên gia đình', 'Please enter a family name');
                                   }
                                   if (value.trim().length < 3) {
-                                    return AppLanguage.text(
-                                      'Tên gia đình cần ít nhất 3 ký tự',
-                                      'Family name must be at least 3 characters',
-                                    );
+                                    return AppLanguage.text('Tên gia đình cần ít nhất 3 ký tự', 'Family name must be at least 3 characters');
                                   }
                                   return null;
                                 },
@@ -219,19 +218,31 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                               ),
                               const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
-                                initialValue: _selectedRole,
+                                key: ValueKey(_selectedRole),
+                                initialValue: [
+                                  FamilyMember.roleParent,
+                                  FamilyMember.roleGrandparent,
+                                  FamilyMember.roleRelative,
+                                  FamilyMember.roleChild,
+                                ].contains(_selectedRole)
+                                    ? _selectedRole
+                                    : FamilyMember.roleParent,
                                 decoration: _inputDecoration(
                                   hintText: AppLanguage.text('Chọn vai vế', 'Select role'),
                                   prefixIcon: Icons.family_restroom_rounded,
                                 ),
                                 items: [
                                   DropdownMenuItem(
+                                    value: FamilyMember.roleParent,
+                                    child: Text(AppLanguage.text('Bố / Mẹ', 'Parent')),
+                                  ),
+                                  DropdownMenuItem(
                                     value: FamilyMember.roleGrandparent,
                                     child: Text(AppLanguage.text('Ông / Bà', 'Grandparent')),
                                   ),
                                   DropdownMenuItem(
-                                    value: FamilyMember.roleParent,
-                                    child: Text(AppLanguage.text('Bố / Mẹ', 'Parent')),
+                                    value: FamilyMember.roleRelative,
+                                    child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
                                   ),
                                   DropdownMenuItem(
                                     value: FamilyMember.roleChild,

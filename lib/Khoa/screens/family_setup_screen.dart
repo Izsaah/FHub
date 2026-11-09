@@ -92,10 +92,14 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
     final isOwner = member?.isOwner == true ||
         (family.ownerId.isNotEmpty &&
             family.ownerId == _dataService.currentUserId);
+
     final String rolePart;
     switch (member?.role) {
       case FamilyMember.roleGrandparent:
         rolePart = AppLanguage.text('Ông / Bà', 'Grandparent');
+        break;
+      case FamilyMember.roleRelative:
+        rolePart = AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative');
         break;
       case FamilyMember.roleChild:
         rolePart = AppLanguage.text('Con cái', 'Child');
@@ -550,8 +554,8 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
                                   iconColor: primary,
                                   title: AppLanguage.text('Tạo gia đình mới', 'Create new family'),
                                   description: AppLanguage.text(
-                                    'Bạn sẽ là người quản trị và có thể mời các thành viên.',
-                                    'You will be the owner and can invite members.',
+                                    'Không gian gia đình với vai vế Bố Mẹ, Con cái, Ông Bà.',
+                                    'Family space with Parent, Child, and Grandparent roles.',
                                   ),
                                   onTap: _openCreateFamily,
                                 ),
@@ -560,10 +564,10 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
                                   icon: Icons.group_add_rounded,
                                   iconBackground: const Color(0xFFFFF0DF),
                                   iconColor: const Color(0xFFE77D2B),
-                                  title: AppLanguage.text('Tham gia gia đình', 'Join a family'),
+                                  title: AppLanguage.text('Tham gia gia đình', 'Join family'),
                                   description: AppLanguage.text(
-                                    'Nhập mã gia đình được chia sẻ bởi người thân.',
-                                    'Enter the family code shared by your family member.',
+                                    'Nhập mã 6 ký tự được chia sẻ bởi người thân trong gia đình.',
+                                    'Enter the 6-character code shared by your family.',
                                   ),
                                   onTap: _openJoinFamily,
                                 ),

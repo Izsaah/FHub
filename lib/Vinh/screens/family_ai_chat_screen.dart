@@ -14,7 +14,7 @@ import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import '../services/ai_speech_service.dart';
 import '../services/family_ai_assistant_service.dart';
-import '../services/family_memory_service.dart';
+import '../../Ai/services/family_memory_service.dart';
 import '../services/reminder_repository.dart';
 import '../widgets/reminder_detail_bottom_sheet.dart';
 import '../widgets/task_mini_card.dart';

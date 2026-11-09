@@ -162,12 +162,12 @@ void main() {
 
     const roles = ['Grandparent', 'Parent', 'Member', 'Child'];
 
-    // Expected hierarchy levels: Grandparent=3, Parent=2, Member=1, Child=0
+    // Expected hierarchy levels: Grandparent=3, Parent=2, Member=1, Child=1
     final expectedLevels = {
       'Grandparent': 3,
       'Parent': 2,
       'Member': 1,
-      'Child': 0,
+      'Child': 1,
     };
 
     setUp(() {
@@ -186,14 +186,19 @@ void main() {
       expect(getMemberHierarchyLevel('Owner'), 2);
       expect(getMemberHierarchyLevel('Admin'), 2);
 
+      expect(getMemberHierarchyLevel('Relative'), 2);
+      expect(getMemberHierarchyLevel('Cô / Dì / Chú / Bác'), 2);
+      expect(getMemberHierarchyLevel('Chú Ba'), 2);
+      expect(getMemberHierarchyLevel('Dì Út'), 2);
+
       expect(getMemberHierarchyLevel('Member'), 1);
       expect(getMemberHierarchyLevel('Thành viên'), 1);
       expect(getMemberHierarchyLevel('Guest'), 1);
 
-      expect(getMemberHierarchyLevel('Child'), 0);
-      expect(getMemberHierarchyLevel('Con cái'), 0);
-      expect(getMemberHierarchyLevel('Bé Na (Kid)'), 0);
-      expect(getMemberHierarchyLevel('Trẻ nhỏ'), 0);
+      expect(getMemberHierarchyLevel('Child'), 1);
+      expect(getMemberHierarchyLevel('Con cái'), 1);
+      expect(getMemberHierarchyLevel('Bé Na (Kid)'), 1);
+      expect(getMemberHierarchyLevel('Trẻ nhỏ'), 1);
     });
 
     test('Exhaustive 16 Permutations for ASSIGN: Creator Level >= Target Level succeeds, Creator < Target fails', () async {
@@ -256,14 +261,14 @@ void main() {
 
       // In a 4x4 matrix:
       // Creator >= Target:
-      // Grandparent (3): 4 combinations (3>=3, 3>=2, 3>=1, 3>=0)
-      // Parent (2): 3 combinations (2>=2, 2>=1, 2>=0)
-      // Member (1): 2 combinations (1>=1, 1>=0)
-      // Child (0): 1 combination (0>=0)
-      // Total Success = 4 + 3 + 2 + 1 = 10
-      // Total Violations = 16 - 10 = 6
-      expect(successCount, 10, reason: 'Exactly 10 top-down or equal level assignments must succeed');
-      expect(violationCount, 6, reason: 'Exactly 6 upward assignments must fail with CULTURE_HIERARCHY_VIOLATION');
+      // Grandparent (3): 4 combinations (3>=3, 3>=2, 3>=1, 3>=1)
+      // Parent (2): 3 combinations (2>=2, 2>=1, 2>=1)
+      // Member (1): 2 combinations (1>=1, 1>=1)
+      // Child (1): 2 combinations (1>=1, 1>=1)
+      // Total Success = 4 + 3 + 2 + 2 = 11
+      // Total Violations = 16 - 11 = 5
+      expect(successCount, 11, reason: 'Exactly 11 top-down or equal level assignments must succeed');
+      expect(violationCount, 5, reason: 'Exactly 5 upward assignments must fail with CULTURE_HIERARCHY_VIOLATION');
     });
 
     test('Exhaustive 16 Permutations for FAVOR: ALL 16 combinations MUST SUCCEED (Voluntary favor)', () async {
@@ -602,20 +607,20 @@ void main() {
       expect(fromFirestoreObj.proofImageUrl, 'https://img.com/p1.png');
       expect(fromFirestoreObj.isExemptFromQuietHours, isTrue);
 
-      // 2. toSupabaseMap (snake_case) -> fromJson
-      final supabaseMap = original.toSupabaseMap();
-      expect(supabaseMap['task_type'], 'CARE');
-      expect(supabaseMap['task_status'], 'SUBMITTED');
-      expect(supabaseMap['delegation_count'], 1);
-      expect(supabaseMap['delegated_from_user_id'], 'user_parent');
-      expect(supabaseMap['proof_image_url'], 'https://img.com/p1.png');
+      // 2. toJson (snake_case & camelCase) -> fromJson
+      final jsonMap = original.toJson();
+      expect(jsonMap['task_type'], 'CARE');
+      expect(jsonMap['task_status'], 'SUBMITTED');
+      expect(jsonMap['delegation_count'], 1);
+      expect(jsonMap['delegated_from_user_id'], 'user_parent');
+      expect(jsonMap['proof_image_url'], 'https://img.com/p1.png');
 
-      final fromSupabaseObj = ReminderModel.fromJson(supabaseMap);
-      expect(fromSupabaseObj.taskType, TaskType.care);
-      expect(fromSupabaseObj.taskStatus, TaskStatus.submitted);
-      expect(fromSupabaseObj.delegationCount, 1);
-      expect(fromSupabaseObj.delegatedFromUserId, 'user_parent');
-      expect(fromSupabaseObj.proofImageUrl, 'https://img.com/p1.png');
+      final fromJsonObj = ReminderModel.fromJson(jsonMap);
+      expect(fromJsonObj.taskType, TaskType.care);
+      expect(fromJsonObj.taskStatus, TaskStatus.submitted);
+      expect(fromJsonObj.delegationCount, 1);
+      expect(fromJsonObj.delegatedFromUserId, 'user_parent');
+      expect(fromJsonObj.proofImageUrl, 'https://img.com/p1.png');
     });
 
     test('copyWith clearProofImage and clearRejectionReason atomic resets', () {

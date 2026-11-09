@@ -20,6 +20,10 @@ import '../widgets/weekly_calendar_strip.dart';
 import 'calendar_page.dart';
 import 'create_reminder_screen.dart';
 import 'family_ai_chat_screen.dart';
+import 'wishlist_and_ledger_screen.dart';
+import '../../Danh/danh_payment_entry.dart';
+import '../widgets/multi_tier_simulation_dialog.dart';
+import '../widgets/parent_triage_actions_widget.dart';
 import 'views/reminder_calendar_view.dart';
 import 'views/reminder_list_view.dart';
 
@@ -37,6 +41,8 @@ class ReminderListScreen extends StatefulWidget {
   final ReminderRepository? repository;
   final ValueChanged<String>? onUserChanged;
   final VoidCallback? onNavigateToFamily;
+  final bool initialShowAll;
+  final bool isActive;
 
   const ReminderListScreen({
     super.key,
@@ -49,21 +55,24 @@ class ReminderListScreen extends StatefulWidget {
     this.repository,
     this.onUserChanged,
     this.onNavigateToFamily,
+    this.initialShowAll = false,
+    this.isActive = true,
   });
 
   @override
   State<ReminderListScreen> createState() => _ReminderListScreenState();
 }
 
-class _ReminderListScreenState extends State<ReminderListScreen> {
+class _ReminderListScreenState extends State<ReminderListScreen>
+    with WidgetsBindingObserver {
   String _familyId = '';
   List<FamilyOption> _families = [];
   Map<String, String> _familyNamesById = {};
   Map<String, List<FamilyMember>> _membersByFamilyId = {};
-  late String _currentUserId;
-  late String _currentUserName;
-  late List<FamilyMember> _familyMembers;
-  late ReminderRepository _repository;
+  String _currentUserId = '';
+  String _currentUserName = '';
+  List<FamilyMember> _familyMembers = [];
+  ReminderRepository _repository = FirebaseReminderRepository();
   bool _isLoading = true;
   bool _hasFamily = false;
 
@@ -76,12 +85,74 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
   DateTime _currentMonth =
       DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
-  bool _showAll = true;
+  late bool _showAll;
   bool _filterOnlyMine = false;
   bool _isSearchOpen = false;
   String _searchQuery = '';
   final _searchController = TextEditingController();
   Timer? _deleteSnackBarTimer;
+  Timer? _clockTicker;
+  List<ReminderModel> _lastLoadedReminders = [];
+  Stream<List<ReminderModel>>? _remindersStream;
+  String? _cachedStreamFamilyId;
+  bool? _cachedStreamFilterOnlyMine;
+
+  Stream<List<ReminderModel>> _getRemindersStream() {
+    if (_remindersStream == null ||
+        _cachedStreamFamilyId != _familyId ||
+        _cachedStreamFilterOnlyMine != _filterOnlyMine) {
+      _cachedStreamFamilyId = _familyId;
+      _cachedStreamFilterOnlyMine = _filterOnlyMine;
+      _remindersStream = _filterOnlyMine
+          ? _repository.watchRemindersForFamilies(
+              familyIds: _families.isNotEmpty
+                  ? _families.map((f) => f.id).toList()
+                  : [_familyId],
+            )
+          : _repository.watchReminders(familyId: _familyId);
+    }
+    return _remindersStream!;
+  }
+
+  String _normalizeName(String s) {
+    var res = s.trim().toLowerCase();
+    const accents = {
+      'à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ': 'a',
+      'è|é|ề|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ': 'e',
+      'ì|í|ị|ỉ|ĩ': 'i',
+      'ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ': 'o',
+      'ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ': 'u',
+      'ỳ|ý|ỵ|ỷ|ỹ': 'y',
+      'đ': 'd',
+    };
+    for (final entry in accents.entries) {
+      res = res.replaceAll(RegExp(entry.key), entry.value);
+    }
+    return res.replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  void _checkDueReminders() {
+    if (_lastLoadedReminders.isEmpty || !mounted) return;
+    String memberId = '';
+    String memberName = '';
+    for (final m in _familyMembers) {
+      if (m.id == _currentUserId ||
+          _normalizeName(m.name) == _normalizeName(_currentUserName)) {
+        memberId = m.id;
+        memberName = m.name;
+        break;
+      }
+    }
+    MultiTierEscalationService.instance.syncReminders(
+      _lastLoadedReminders,
+      currentUserId: _currentUserId,
+      currentUserName: _currentUserName,
+      currentUserMemberId: memberId,
+      currentUserFamilyName: memberName,
+      context: context,
+      onOpenDetail: _showDetailBottomSheet,
+    );
+  }
 
   // Realtime listeners
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _familyMembersSub;
@@ -93,9 +164,14 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
     return '$d/$m/${dt.year}';
   }
 
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
   @override
   void initState() {
     super.initState();
+    _showAll = widget.initialShowAll;
     // 1. Lắng nghe thay đổi gia đình toàn cục từ FamilyDataService
     FamilyDataService().selectedFamilyIdNotifier.addListener(_onGlobalFamilyNotifierChanged);
 
@@ -151,12 +227,60 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
     // 3. Đăng ký lắng nghe sự kiện thay đổi family_members từ Firestore theo thời gian thực (Realtime)
     _listenToFirestoreFamilyMembers();
+
+    // 4. Lắng nghe Lifecycle và sự kiện Ticker toàn cục
+    WidgetsBinding.instance.addObserver(this);
+    MultiTierEscalationService.instance.clockTick.addListener(_onClockTick);
+
+    // 5. Ticker đồng hồ thời gian thực mỗi 1 giây: Tự động đổi trạng thái Quá hạn và Bật chuông/thông báo khi tới giờ
+    _startClockTicker();
+  }
+
+  void _startClockTicker() {
+    _clockTicker?.cancel();
+    MultiTierEscalationService.instance.ensureClockRunning();
+    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      try {
+        _checkDueReminders();
+      } catch (e) {
+        debugPrint('ReminderListScreen clock ticker error: $e');
+      }
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      MultiTierEscalationService.instance.ensureClockRunning(forceRestart: true);
+      _checkDueReminders();
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _onClockTick() {
+    if (!mounted) return;
+    try {
+      _checkDueReminders();
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    _startClockTicker();
   }
 
   @override
   void didUpdateWidget(covariant ReminderListScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.familyId != widget.familyId ||
+    final becameActive = widget.isActive && !oldWidget.isActive;
+    if (becameActive ||
+        oldWidget.familyId != widget.familyId ||
         oldWidget.currentUserId != widget.currentUserId ||
         oldWidget.families != widget.families) {
       _resolveContext();
@@ -165,7 +289,13 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    MultiTierEscalationService.instance.clockTick.removeListener(_onClockTick);
+    MultiTierEscalationService.instance.stopClock();
+    MultiTierEscalationService.instance.cancelAll();
     FamilyDataService().selectedFamilyIdNotifier.removeListener(_onGlobalFamilyNotifierChanged);
+    _clockTicker?.cancel();
+    _clockTicker = null;
     _familyMembersSub?.cancel();
     _deleteSnackBarTimer?.cancel();
     _searchController.dispose();
@@ -573,6 +703,10 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
 
   Future<void> _openCreateReminder() async {
     if (!_hasFamily || _familyId.trim().isEmpty) return;
+    if (DanhPaymentEntry.isOverCapacityFrozen) {
+      await DanhPaymentEntry.showOverCapacityFrozenDialog(context);
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => CreateReminderScreen(
@@ -588,6 +722,26 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       ),
     );
     setState(() {});
+  }
+
+  Future<void> _openWishlistShop() async {
+    final currentRole = _familyMembers
+            .where((m) => m.id == _currentUserId)
+            .map((m) => m.role)
+            .firstOrNull ??
+        'PARENT';
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => WishlistAndLedgerScreen(
+          familyId: _familyId.isNotEmpty ? _familyId : 'f1',
+          currentUserId: _currentUserId,
+          currentUserName: _currentUserName,
+          currentUserRole: currentRole,
+          familyMembers: _familyMembers,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   List<FamilyMember> _getMembersForReminder(ReminderModel reminder) {
@@ -728,6 +882,28 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       }
 
       HapticFeedback.mediumImpact();
+      if (reminder.requiresProofImage && proofUrl != null) {
+        await _repository.submitTaskWithProof(
+          taskId: reminder.id,
+          proofImageUrl: proofUrl,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLanguage.text(
+                  '📸 Đã nộp ảnh nghiệm thu! Đang chờ Bố Mẹ/Ông Bà duyệt sao.',
+                  '📸 Proof submitted! Waiting for Guardian approval and stars.',
+                ),
+              ),
+              backgroundColor: const Color(0xFF0D7A68),
+            ),
+          );
+          setState(() {});
+        }
+        return;
+      }
+
       await _repository.completeReminder(
         reminderId: reminder.id,
         currentUserId: _currentUserId,
@@ -805,6 +981,33 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       }
 
       HapticFeedback.mediumImpact();
+      if (reminder.requiresProofImage && proofUrl != null) {
+        await _repository.claimOpenTask(
+          reminderId: reminder.id,
+          currentUserId: _currentUserId,
+          currentUserName: _currentUserName,
+        );
+        await _repository.submitTaskWithProof(
+          taskId: reminder.id,
+          proofImageUrl: proofUrl,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                AppLanguage.text(
+                  '📸 Đã nhận việc và nộp ảnh nghiệm thu! Đang chờ Bố Mẹ/Ông Bà duyệt sao.',
+                  '📸 Claimed and proof submitted! Waiting for Guardian approval and stars.',
+                ),
+              ),
+              backgroundColor: const Color(0xFF0D7A68),
+            ),
+          );
+          setState(() {});
+        }
+        return;
+      }
+
       await _repository.claimAndCompleteOpenTask(
         reminderId: reminder.id,
         currentUserId: _currentUserId,
@@ -1436,14 +1639,31 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                       });
                     },
                   )
-                : Text(
-                    AppLanguage.text('Tổ Ấm Yêu Thương', 'Family Hub'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20,
-                      color: primaryColor,
-                      letterSpacing: -0.5,
-                    ),
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        AppLanguage.text('Tổ Ấm Yêu Thương', 'Family Hub'),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: primaryColor,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      if (_currentFamilyName.isNotEmpty)
+                        Text(
+                          _currentFamilyName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: primaryColor.withValues(alpha: 0.8),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
             backgroundColor: const Color(0xFFEDF5F2),
             elevation: 1,
@@ -1480,6 +1700,21 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 onPressed: _manualRefresh,
               ),
               // Chuyển đổi qua lại giữa List View và Calendar View
+              IconButton(
+                key: const Key('btn_open_wishlist_shop'),
+                icon: const Icon(
+                  Icons.stars_rounded,
+                  color: Color(0xFFE65100),
+                  size: 22,
+                ),
+                tooltip: AppLanguage.text(
+                  'Cửa hàng Đổi Sao & Sổ cái ⭐',
+                  'Star Shop & Ledger ⭐',
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                onPressed: _openWishlistShop,
+              ),
               IconButton(
                 icon: Icon(
                   _isCalendarView
@@ -1519,6 +1754,31 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                     );
                   } else if (val == 'ai_assistant') {
                     _openAiAssistant();
+                  } else if (val == 'demo_simulation') {
+                    final targetTask = _lastLoadedReminders.firstWhere(
+                      (task) => !task.isCompleted && !task.isDeleted,
+                      orElse: () => _lastLoadedReminders.isNotEmpty
+                          ? _lastLoadedReminders.first
+                          : ReminderModel(
+                              id: 'demo_simulation_task',
+                              familyId: _familyId,
+                              creatorId: _currentUserId,
+                              assignedTo: _currentUserId,
+                              assignedToName: _currentUserName,
+                              title: AppLanguage.text('Rửa bát (Demo 10s)', 'Wash dishes (Demo 10s)'),
+                              date: '01/01/2026',
+                              time: '08:00',
+                            ),
+                    );
+                    MultiTierSimulationDialog.show(
+                      context,
+                      reminder: targetTask,
+                      repository: _repository,
+                      currentUserId: _currentUserId,
+                      onReminderCompleted: _manualRefresh,
+                    );
+                  } else if (val == 'wishlist_shop') {
+                    _openWishlistShop();
                   } else if (val == 'create_reminder') {
                     _openCreateReminder();
                   } else if (val == 'refresh') {
@@ -1526,6 +1786,39 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                   }
                 },
                 itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'demo_simulation',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.speed_rounded, size: 18, color: Color(0xFF005F50)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text('Mô phỏng leo thang 10s (Demo)', 'Simulate 10s Escalation (Demo)'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'wishlist_shop',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.stars_rounded,
+                            size: 18, color: Color(0xFFE65100)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text('Cửa hàng Đổi Sao & Sổ cái ⭐', 'Star Shop & Ledger ⭐'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'ai_assistant',
                     child: Row(
@@ -1607,16 +1900,33 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
             color: primaryColor,
             onRefresh: _manualRefresh,
             child: StreamBuilder<List<ReminderModel>>(
-              stream: _filterOnlyMine
-                  ? _repository.watchRemindersForFamilies(
-                      familyIds: _families.isNotEmpty
-                          ? _families.map((f) => f.id).toList()
-                          : [_familyId],
-                    )
-                  : _repository.watchReminders(familyId: _familyId),
+              stream: _getRemindersStream(),
               builder: (context, snapshot) {
                 final allReminders = snapshot.data ?? [];
+                _lastLoadedReminders = allReminders;
+                String memberId = '';
+                String memberName = '';
+                for (final m in _familyMembers) {
+                  if (m.id == _currentUserId ||
+                      _normalizeName(m.name) == _normalizeName(_currentUserName)) {
+                    memberId = m.id;
+                    memberName = m.name;
+                    break;
+                  }
+                }
+                MultiTierEscalationService.instance.syncReminders(
+                  allReminders,
+                  currentUserId: _currentUserId,
+                  currentUserName: _currentUserName,
+                  currentUserMemberId: memberId,
+                  currentUserFamilyName: memberName,
+                  context: context,
+                  onOpenDetail: _showDetailBottomSheet,
+                );
 
+                return ValueListenableBuilder<DateTime>(
+                  valueListenable: MultiTierEscalationService.instance.clockTick,
+                  builder: (context, nowTick, _) {
                 // 1. Lọc theo Scope:
                 // - Cả nhà (!_filterOnlyMine): Chỉ hiện lời nhắc thuộc family đang được chọn (_familyId)
                 // - Việc của tôi (_filterOnlyMine): Hiện việc cá nhân của tôi trên các family kèm nhãn family
@@ -1665,8 +1975,80 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                 final displayedReminders = _showAll
                     ? searchedReminders
                     : searchedReminders
-                        .where((r) => r.date == selectedDateStr)
+                        .where((r) =>
+                            r.date == selectedDateStr ||
+                            (r.dueDateTime != null &&
+                                _isSameDay(r.dueDateTime!, _selectedDate)))
                         .toList();
+
+                if (_isCalendarView) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.only(bottom: 120),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 680),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ReminderScopeFilterChips(
+                              filterOnlyMine: _filterOnlyMine,
+                              onScopeChanged: (val) =>
+                                  setState(() => _filterOnlyMine = val),
+                            ),
+                            _buildFamilyContextBar(),
+                            ReminderCalendarView(
+                              currentMonth: _currentMonth,
+                              selectedDate: _selectedDate,
+                              showAll: _showAll,
+                              reminders: scopedReminders,
+                              selectedDateFormatted: selectedDateStr,
+                              onDateSelected: (date) {
+                                setState(() {
+                                  _selectedDate = date;
+                                  _showAll = false;
+                                });
+                              },
+                              onMonthChanged: (newMonth) {
+                                setState(() {
+                                  _currentMonth = newMonth;
+                                });
+                              },
+                              onShowAllPressed: () => setState(() => _showAll = true),
+                            ),
+                            FamilyProgressCard(
+                              reminders: _showAll ? searchedReminders : displayedReminders,
+                              dateTitle: _showAll ? AppLanguage.text('Tất cả', 'All') : selectedDateStr,
+                            ),
+                            ReminderListView(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              allReminders: scopedReminders,
+                              displayedReminders: displayedReminders,
+                              currentUserId: _currentUserId,
+                              selectedDateStr: selectedDateStr,
+                              isShowingAll: _showAll,
+                              isParentOrOwner: _familyMembers.any(
+                                (m) =>
+                                    m.id == _currentUserId &&
+                                    (m.isParent || m.isGrandparent),
+                              ),
+                              familyNamesById: _familyNamesById,
+                              showFamilyBadge: _filterOnlyMine,
+                              canDeletePredicate: _canDeleteReminder,
+                              onCreatePressed: _openCreateReminder,
+                              onShowAllPressed: () => setState(() => _showAll = true),
+                              onTapReminder: _showDetailBottomSheet,
+                              onCompleteReminder: _completeReminder,
+                              onDeleteReminder: _confirmAndDelete,
+                              onClaimReminder: _claimReminder,
+                              onClaimAndCompleteReminder: _claimAndCompleteReminder,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
 
                 return Center(
                   child: ConstrainedBox(
@@ -1683,44 +2065,23 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                         // Thanh chọn Family (ở chế độ Cả nhà) hoặc hiển thị ngữ cảnh đa gia đình (ở chế độ Việc của tôi)
                         _buildFamilyContextBar(),
 
-                        // Calendar View hoặc Weekly Strip
-                        if (_isCalendarView) ...[
-                          ReminderCalendarView(
-                            currentMonth: _currentMonth,
-                            selectedDate: _selectedDate,
-                            showAll: _showAll,
-                            reminders: scopedReminders,
-                            selectedDateFormatted: selectedDateStr,
-                            onDateSelected: (date) {
-                              setState(() {
-                                _selectedDate = date;
-                                _showAll = false;
-                              });
-                            },
-                            onMonthChanged: (newMonth) {
-                              setState(() {
-                                _currentMonth = newMonth;
-                              });
-                            },
-                            onShowAllPressed: () => setState(() => _showAll = true),
-                          ),
-                        ] else
-                          WeeklyCalendarStrip(
-                            selectedDate: _selectedDate,
-                            showAll: _showAll,
-                            reminders: scopedReminders,
-                            onDateSelected: (date) {
-                              setState(() {
-                                _selectedDate = date;
-                                _showAll = false;
-                              });
-                            },
-                            onSelectAll: () {
-                              setState(() {
-                                _showAll = true;
-                              });
-                            },
-                          ),
+                        // Weekly Strip
+                        WeeklyCalendarStrip(
+                          selectedDate: _selectedDate,
+                          showAll: _showAll,
+                          reminders: scopedReminders,
+                          onDateSelected: (date) {
+                            setState(() {
+                              _selectedDate = date;
+                              _showAll = false;
+                            });
+                          },
+                          onSelectAll: () {
+                            setState(() {
+                              _showAll = true;
+                            });
+                          },
+                        ),
 
                         // Family Daily Progress Card
                         FamilyProgressCard(
@@ -1728,9 +2089,22 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                           dateTitle: _showAll ? AppLanguage.text('Tất cả', 'All') : selectedDateStr,
                         ),
 
-                        // List View phân nhóm theo 4 mức ưu tiên
+                        // List View phân nhóm theo các mức ưu tiên
                         Expanded(
-                          child: ReminderListView(
+                          child: Builder(
+                            builder: (context) {
+                              final overdueNeedingTriage = scopedReminders.where((r) {
+                                if (!r.isOverdue || r.isCompleted || r.isDeleted || r.isSubmitted || r.isOpenTask || r.isOpen || r.isClosedMissed) return false;
+                                final isGuardian = _familyMembers.any(
+                                  (m) => m.id == _currentUserId && (m.isParent || m.isGrandparent || m.isOwner),
+                                );
+                                return isGuardian || r.creatorId == _currentUserId;
+                              }).toList();
+
+                              return ReminderListView(
+                                triageBanner: overdueNeedingTriage.isNotEmpty
+                                    ? _buildParentTriageUrgentBanner(overdueNeedingTriage)
+                                    : null,
                             allReminders: scopedReminders,
                             displayedReminders: displayedReminders,
                             currentUserId: _currentUserId,
@@ -1751,11 +2125,15 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
                             onDeleteReminder: _confirmAndDelete,
                             onClaimReminder: _claimReminder,
                             onClaimAndCompleteReminder: _claimAndCompleteReminder,
+                              );
+                            },
                           ),
                         ),
                       ],
                     ),
                   ),
+                );
+                  },
                 );
               },
             ),
@@ -1830,4 +2208,92 @@ class _ReminderListScreenState extends State<ReminderListScreen> {
       },
     );
   }
+  Widget _buildParentTriageUrgentBanner(List<ReminderModel> overdueTasks) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0F0),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE57373), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Color(0xFFD32F2F), size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppLanguage.text(
+                    '🚨 Cần Phụ Huynh Can Thiệp (${overdueTasks.length} việc quá hạn)',
+                    '🚨 Needs Parent Intervention (${overdueTasks.length} overdue)',
+                  ),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13.5,
+                    color: Color(0xFFC62828),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            AppLanguage.text(
+              'Thành viên chưa hoàn thành việc nhà đúng hẹn. Hãy chọn giải pháp xử lý ngay:',
+              'Members have not completed chores on time. Please choose an action below:',
+            ),
+            style: const TextStyle(fontSize: 12, color: Color(0xFF5D4037)),
+          ),
+          const SizedBox(height: 6),
+          ...overdueTasks.take(1).map((task) => Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade100),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            task.title,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                        Text(
+                          task.assignedToName,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ParentTriageActionsWidget(
+                      reminder: task,
+                      onActionCompleted: () {
+                        _manualRefresh();
+                      },
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
 }

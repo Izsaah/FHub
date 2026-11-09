@@ -6,6 +6,7 @@ class Family {
   final String joinCode;
   final String ownerId;
   final DateTime? createdAt;
+  final bool isPeerGroup;
 
   const Family({
     required this.id,
@@ -13,6 +14,7 @@ class Family {
     required this.joinCode,
     required this.ownerId,
     this.createdAt,
+    this.isPeerGroup = false,
   });
 
   factory Family.fromMap(Map<String, dynamic> map, {String? documentId}) {
@@ -22,6 +24,7 @@ class Family {
       joinCode: (map['joinCode'] ?? map['join_code'] ?? '') as String,
       ownerId: (map['ownerId'] ?? map['owner_id'] ?? '') as String,
       createdAt: _dateTimeFrom(map['createdAt'] ?? map['created_at']),
+      isPeerGroup: map['isPeerGroup'] == true || map['familyType'] == 'PEER_GROUP',
     );
   }
 
@@ -29,6 +32,8 @@ class Family {
         'name': name,
         'joinCode': joinCode,
         'ownerId': ownerId,
+        'isPeerGroup': isPeerGroup,
+        'familyType': isPeerGroup ? 'PEER_GROUP' : 'FAMILY',
         'createdAt': createdAt == null
             ? FieldValue.serverTimestamp()
             : Timestamp.fromDate(createdAt!),

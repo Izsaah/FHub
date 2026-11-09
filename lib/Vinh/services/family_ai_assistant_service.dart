@@ -7,7 +7,7 @@ import '../../Long/services/family_state_manager.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../models/reminder_model.dart';
-import 'family_memory_service.dart';
+import '../../Ai/services/family_memory_service.dart';
 import 'reminder_repository.dart';
 
 /// Tin nhắn trong đoạn hội thoại với Trợ lý AI Gia đình
@@ -398,10 +398,10 @@ class FamilyAiAssistantService {
         roleDisplay = 'Thành viên gia đình';
       }
       final desc = myMember?.isParent == true
-          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, nạp quỹ hũ và phát lệnh Nổ Hũ 30 giây cho cả nhà nhé! 👑'
+          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, duyệt quà đổi sao và mở Heo Đất khen thưởng cho cả nhà nhé! 👑'
           : (myMember?.isGrandparent == true
               ? 'Bạn là **Ông Bà (Trưởng bối)**: Có quyền giao việc, gắn kết các thế hệ và cùng theo dõi tiến độ gia đình ấm cúng! 🏡'
-              : 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận các công việc chung trên bảng việc, hoàn thành nhiệm vụ để tích lũy sao thưởng và tham gia nổ hũ nhận thưởng về ví cá nhân nhé! 🌟');
+              : 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận các công việc chung trên bảng việc, hoàn thành nhiệm vụ để tích lũy sao thưởng nuôi Heo Đất và đổi những món quà mơ ước trong Cửa hàng phúc lợi nhé! 🌟');
 
       return AiChatMessage(
         id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
@@ -949,20 +949,20 @@ class FamilyAiAssistantService {
       );
     }
 
-    // 10. CASE 9: HỎI VỀ HŨ NIỀM VUI & TÀI CHÍNH GIA ĐÌNH
+    // 10. CASE 9: HỎI VỀ HEO ĐẤT & PHÚC LỢI GIA ĐÌNH
     if (_isJackpotInfoIntent(lower)) {
       return AiChatMessage(
         id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
         isUser: false,
         text: AppLanguage.text(
-          '🎁 HŨ NIỀM VUI GIA ĐÌNH:\n'
-          '• Mọi người trong nhà đều có thể nạp tiền vào quỹ chung qua VietQR SePay.\n'
-          '• **Người đóng góp nhiều nhất** giữ quyền phát lệnh bắt đầu trận chiến Nổ Hũ 30 giây.\n'
-          '• Trong 30s, cả nhà cùng cầm máy lắc thật nhanh! Ai lắc nhiều nhất nhận giải Nhất xứng đáng, tiền thưởng vào thẳng Ví cá nhân và rút về ngân hàng bất cứ lúc nào! 💰',
-          '🎁 FAMILY JACKPOT:\n'
-          '• Everyone can deposit via VietQR.\n'
-          '• The top contributor starts the 30s shake battle.\n'
-          '• Shake vigorously to win prizes directly to your wallet! 💰',
+          '🐷 HEO ĐẤT GIA ĐÌNH:\n'
+          '• Tích lũy sao từ nhiệm vụ Điểm danh mỗi ngày (+10 ⭐) và hoàn sao 10% khi duyệt quà Wishlist.\n'
+          '• Bố Mẹ phát động mở Heo Đất để chia sao khen thưởng các con theo nỗ lực (60% nỗ lực + 40% may mắn).\n'
+          '• Các bé nhận sao trực tiếp vào Ví Sao để đổi quà thực tế trong Cửa Hàng Phúc Lợi! ✨',
+          '🐷 FAMILY PIGGY BANK:\n'
+          '• Accumulates stars from daily check-ins (+10 ⭐) and 10% cashback from wishlist approvals.\n'
+          '• Parents open the piggy bank to reward children (60% effort + 40% lucky).\n'
+          '• Children receive stars directly into Star Wallet to redeem real rewards! ✨',
         ),
         timestamp: DateTime.now(),
       );
@@ -1135,14 +1135,15 @@ class FamilyAiAssistantService {
         id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
         isUser: false,
         text: AppLanguage.text(
-          'Dạ em là Trợ lý AI Gia đình của Family Hub (FHub)! 🏡 Em nắm rõ lịch điểm danh, tiến độ việc nhà, quỹ Hũ Niềm Vui và thói quen sinh hoạt để phục vụ gia đình mình một cách chu đáo nhất ạ!',
-          'I am your Family Hub AI Assistant! 🏡 I know your family check-ins, tasks, happiness jackpot, and habits to support your home seamlessly!',
+          'Dạ em là Trợ lý AI Gia đình của Family Hub (FHub)! 🏡 Em nắm rõ lịch điểm danh, tiến độ việc nhà, Heo Đất Gia Đình và thói quen sinh hoạt để phục vụ gia đình mình một cách chu đáo nhất ạ!',
+          'I am your Family Hub AI Assistant! 🏡 I know your family check-ins, tasks, family piggy bank, and habits to support your home seamlessly!',
         ),
         timestamp: DateTime.now(),
       );
     }
 
     if (lower.contains('lắc hộ') ||
+        lower.contains('mở heo hộ') ||
         lower.contains('lắc hũ hộ') ||
         lower.contains('nổ hũ hộ') ||
         lower.contains('lắc giùm')) {
@@ -1150,8 +1151,8 @@ class FamilyAiAssistantService {
         id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
         isUser: false,
         text: AppLanguage.text(
-          'Dạ em là AI nên không có tay để cầm điện thoại lắc hộ $salutation được đâu ạ! 😂 $salutation hãy mở ngay tab "Hũ Niềm Vui" và tự tay lắc điện thoại thật sung trong 30 giây để cùng cả nhà tranh giải Quán Quân Lắc Tay nhé!',
-          'I am an AI, so I don\'t have hands to shake your phone for you! 😂 Open the "Family Pot" tab and shake your phone for 30 seconds to compete for the jackpot!',
+          'Dạ em là AI nên không có tay để mở heo hộ $salutation được đâu ạ! 😂 $salutation hãy mở ngay tab "Heo Đất Gia Đình" và cùng cả nhà mở heo nhận thưởng nhé!',
+          'I am an AI, so I don\'t have hands to open the piggy bank for you! 😂 Open the "Family Piggy Bank" tab and join your family to open it!',
         ),
         timestamp: DateTime.now(),
       );
@@ -1569,7 +1570,10 @@ class FamilyAiAssistantService {
   }
 
   bool _isJackpotInfoIntent(String lower) {
-    return lower.contains('hũ niềm vui') ||
+    return lower.contains('heo đất') ||
+        lower.contains('mở heo') ||
+        lower.contains('nuôi heo') ||
+        lower.contains('hũ niềm vui') ||
         lower.contains('hũ có bao nhiêu') ||
         lower.contains('quỹ hũ') ||
         lower.contains('quỹ gia đình') ||

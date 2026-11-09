@@ -48,16 +48,34 @@ service cloud.firestore {
     match /families/{familyId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isGuardian(familyId);
+      allow update: if isGuardian(familyId) || (
+        isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount'])
+      );
       allow delete: if isMember(familyId) && (
         get(/databases/$(database)/documents/family_members/$(familyId + '_' + request.auth.uid)).data.role in ['owner', 'OWNER'] ||
         ('isOwner' in get(/databases/$(database)/documents/family_members/$(familyId + '_' + request.auth.uid)).data &&
          get(/databases/$(database)/documents/family_members/$(familyId + '_' + request.auth.uid)).data.isOwner == true)
       );
 
-      // Cho phép truy cập các subcollection nội bộ gia đình (ai_chats, jackpot, notifications,...)
+      // Quà ước nguyện (wishlist_rewards): Trưởng bối (Guardian) tạo/sửa/xóa, thành viên chỉ đọc
+      match /wishlist_rewards/{rewardId} {
+        allow read: if isMember(familyId);
+        allow write: if isGuardian(familyId);
+      }
+
+      // Quản lý yêu cầu đổi quà (wishlist_claims): Thành viên tạo, Guardian cập nhật duyệt/từ chối
+      match /wishlist_claims/{claimId} {
+        allow read: if isMember(familyId);
+        allow create: if isMember(familyId) && request.resource.data.childId == request.auth.uid;
+        allow update, delete: if isGuardian(familyId);
+      }
+
+      // Cho phép truy cập các subcollection nội bộ gia đình khác (ai_chats, jackpot, notifications,...)
       match /{subcollection}/{docId=**} {
-        allow read, write: if isMember(familyId);
+        allow read, write: if isMember(familyId) &&
+          subcollection != 'wishlist_rewards' &&
+          subcollection != 'wishlist_claims';
       }
     }
 
@@ -79,6 +97,7 @@ service cloud.firestore {
       // - Thành viên chỉ được tự cập nhật check-in / lastActiveAt và đổi quà (giảm sao):
       //   + KHÓA CỨNG: Tuyệt đối không cho tự nâng vai trò lên Bố Mẹ/Ông Bà/Owner
       //   + KHÓA CỨNG: Tuyệt đối không cho tự tăng số dư sao (chỉ được giảm hoặc giữ nguyên)
+      // - Người thân / Thành viên trong gia đình (Relative Sponsoring): được phép tặng sao cho thành viên khác, không được sửa role/quyền
       allow update: if isGuardian(resource.data.familyId) || (
         request.auth.uid == resource.data.userId &&
         request.resource.data.userId == resource.data.userId &&
@@ -88,6 +107,15 @@ service cloud.firestore {
         (!('isOwner' in request.resource.data) || request.resource.data.isOwner == resource.data.isOwner) &&
         (!('isGuardian' in request.resource.data) || request.resource.data.isGuardian == resource.data.isGuardian) &&
         (!('rewardStarsTotal' in request.resource.data) || !('rewardStarsTotal' in resource.data) || request.resource.data.rewardStarsTotal <= resource.data.rewardStarsTotal)
+      ) || (
+        isMember(resource.data.familyId) &&
+        request.auth.uid != resource.data.userId &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.familyId == resource.data.familyId &&
+        (!('hierarchyRole' in request.resource.data) || request.resource.data.hierarchyRole == resource.data.hierarchyRole) &&
+        (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
+        (!('isOwner' in request.resource.data) || request.resource.data.isOwner == resource.data.isOwner) &&
+        (!('isGuardian' in request.resource.data) || request.resource.data.isGuardian == resource.data.isGuardian)
       );
 
       // Chỉ Trưởng bối mới có quyền xóa hoặc loại thành viên
@@ -178,12 +206,17 @@ service cloud.firestore {
       // Ghi chép sổ cái mới (Tạo giao dịch sao - Milestone 3):
       // - Thưởng sao hoàn thành việc (amount > 0) hoặc Hoàn sao từ chối quà (REFUND):
       //   Bắt buộc do Trưởng bối (Guardian) phê duyệt và ghi nhận approvedBy là chính mình.
+      // - Tặng sao khích lệ / Lì xì từ Cô/Dì/Chú/Bác (RELATIVE_SPONSOR, amount > 0):
+      //   Bắt buộc người tặng senderId là chính request.auth.uid.
       // - Trừ sao đổi quà / Lắc hũ (amount < 0):
       //   Do chính chủ thành viên (userId) tự thực hiện khi đổi quà hoặc Trưởng bối trừ khi trao quà ngoài đời.
       allow create: if isMember(request.resource.data.familyId) && (
         (request.resource.data.amount > 0 &&
          isGuardian(request.resource.data.familyId) &&
          request.resource.data.approvedBy == request.auth.uid) ||
+        (request.resource.data.amount > 0 &&
+         request.resource.data.type == 'RELATIVE_SPONSOR' &&
+         request.resource.data.senderId == request.auth.uid) ||
         (request.resource.data.amount < 0 && (
           request.resource.data.userId == request.auth.uid ||
           isGuardian(request.resource.data.familyId)

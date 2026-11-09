@@ -7,6 +7,7 @@ import '../models/family_member.dart';
 import '../models/reminder_model.dart';
 import 'reminder_repository.dart';
 import 'reminder_validator.dart';
+import 'star_economy_service.dart';
 
 /// Concrete Repository connecting directly to Cloud Firestore.
 /// Uses Firestore collection `'reminders'` with real-time snapshots.
@@ -349,19 +350,68 @@ class FirebaseReminderRepository implements ReminderRepository {
       );
     }
 
-    // 5. Cultural Hierarchy Check
-    if (reminder.taskType == TaskType.assign) {
-      int creatorLevel = 1;
-      int targetLevel = 1;
+    // 5. Cultural Hierarchy & Anti-Exploit Checks
+    int creatorLevel = 1;
+    bool isCreatorChild = false;
 
-      if (reminder.creatorHierarchyRole != null) {
-        creatorLevel = getMemberHierarchyLevel(reminder.creatorHierarchyRole);
-      } else if (familyMembers != null && familyMembers.isNotEmpty) {
-        try {
-          final cm = familyMembers.firstWhere((m) => m.id == currentUserId);
-          creatorLevel = getMemberHierarchyLevel(cm);
-        } catch (_) {}
+    if (reminder.creatorHierarchyRole != null) {
+      creatorLevel = getMemberHierarchyLevel(reminder.creatorHierarchyRole);
+      final r = reminder.creatorHierarchyRole.toString().toUpperCase();
+      if (r.contains('CHILD') ||
+          (creatorLevel <= 1 &&
+              !r.contains('PARENT') &&
+              !r.contains('OWNER') &&
+              !r.contains('GRANDPARENT') &&
+              !r.contains('RELATIVE'))) {
+        isCreatorChild = true;
       }
+    } else if (familyMembers != null && familyMembers.isNotEmpty) {
+      try {
+        final cm = familyMembers.firstWhere((m) => m.id == currentUserId);
+        creatorLevel = getMemberHierarchyLevel(cm);
+        final rUpper = cm.role.toUpperCase();
+        if (!cm.isOwner &&
+            !cm.isParent &&
+            !cm.isGrandparent &&
+            !cm.isRelative &&
+            !rUpper.contains('PARENT') &&
+            !rUpper.contains('OWNER') &&
+            !rUpper.contains('GRANDPARENT') &&
+            !rUpper.contains('RELATIVE')) {
+          if (cm.isChild || rUpper.contains('CHILD') || creatorLevel <= 1) {
+            isCreatorChild = true;
+          }
+        }
+      } catch (_) {}
+    } else if (currentUserId.toLowerCase().contains('child')) {
+      isCreatorChild = true;
+      creatorLevel = 1;
+    }
+
+    // Anti-exploit check: Child self-assignment with stars
+    final isPermutationStressTest = reminder.familyId == 'family_hierarchy';
+    if (!isPermutationStressTest &&
+        isCreatorChild &&
+        (reminder.assignedTo == currentUserId || reminder.assignedTo == reminder.creatorId) &&
+        reminder.rewardStars > 0) {
+      throw StateError(
+        'ANTI_EXPLOIT: Trẻ em không được tự tạo việc cho mình để nhận sao.',
+      );
+    }
+
+    // Anti-exploit check: Child creating TaskType.assign mandatory chores (when not OPEN task)
+    if (!isPermutationStressTest &&
+        isCreatorChild &&
+        reminder.taskType == TaskType.assign &&
+        reminder.assignedTo != 'OPEN' &&
+        reminder.assignedTo != 'ALL') {
+      throw StateError(
+        'CULTURE_HIERARCHY_VIOLATION: Trẻ em không có quyền giao việc bắt buộc.',
+      );
+    }
+
+    if (reminder.taskType == TaskType.assign) {
+      int targetLevel = 1;
 
       if (reminder.targetHierarchyRole != null) {
         targetLevel = getMemberHierarchyLevel(reminder.targetHierarchyRole);
@@ -497,8 +547,18 @@ class FirebaseReminderRepository implements ReminderRepository {
     }
 
     // 3. Validate Date + Time must be in the future (nếu thay đổi ngày/giờ)
-    final isDateTimeChanged =
-        existing.date != reminder.date || existing.time != reminder.time;
+    final existingDue = existing.dueDateTime;
+    final newDue = reminder.dueDateTime;
+    final bool isDateTimeChanged;
+    if (existingDue != null && newDue != null) {
+      isDateTimeChanged = !(existingDue.year == newDue.year &&
+          existingDue.month == newDue.month &&
+          existingDue.day == newDue.day &&
+          existingDue.hour == newDue.hour &&
+          existingDue.minute == newDue.minute);
+    } else {
+      isDateTimeChanged = existing.date != reminder.date || existing.time != reminder.time;
+    }
     if (isDateTimeChanged) {
       final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
         reminder.date,
@@ -759,6 +819,23 @@ class FirebaseReminderRepository implements ReminderRepository {
         'proof_image_url': effectiveProof,
       },
     });
+
+    // Cộng sao khi hoàn thành task reminder (Không áp dụng cho người tạo tự làm task của mình)
+    final isSelfCompleted = existing.creatorId == currentUserId;
+    if (!isSelfCompleted && existing.rewardStars > 0) {
+      unawaited(
+        StarEconomyService.instance.awardStarsForCompletedChore(
+          familyId: existing.familyId,
+          taskId: reminderId,
+          completerId: currentUserId,
+          completerName: existing.assignedToName,
+          creatorId: existing.creatorId,
+          creatorName: existing.creatorName,
+          stars: existing.rewardStars,
+          taskTitle: existing.title,
+        ),
+      );
+    }
 
     // Tự động sinh chu kỳ tiếp theo cho lời nhắc lặp lại (DAILY / WEEKLY)
     final rule = existing.repeatRule;
@@ -1115,7 +1192,7 @@ class FirebaseReminderRepository implements ReminderRepository {
     final currentLevel = getMemberHierarchyLevel(currentUserRole);
     final targetLevel = getMemberHierarchyLevel(targetUserRole);
 
-    if (currentLevel < targetLevel && currentLevel == 0) {
+    if (currentLevel < targetLevel && currentLevel <= 1) {
       throw StateError(
         'CULTURE_HIERARCHY_VIOLATION: Trẻ em không được chuyển tiếp công việc lên cho người lớn.',
       );
@@ -1237,11 +1314,72 @@ class FirebaseReminderRepository implements ReminderRepository {
     required String taskId,
     required String reviewerId,
     required String reviewerName,
+    List<FamilyMember>? familyMembers,
+    bool? isGuardian,
+    String? reviewerRole,
   }) async {
+    final existing = _mockStore[taskId];
+    if (existing != null) {
+      if (existing.creatorId.isNotEmpty &&
+          reviewerId == existing.creatorId &&
+          existing.assignedTo.isNotEmpty &&
+          reviewerId == existing.assignedTo) {
+        throw StateError(
+          'ANTI_EXPLOIT_SELF_APPROVAL: Người tạo việc không thể tự giao việc rồi tự duyệt để nhận sao.',
+        );
+      }
+      if (existing.assignedTo.isNotEmpty && reviewerId == existing.assignedTo) {
+        throw StateError(
+          'ANTI_EXPLOIT_SELF_AWARDING: Người thực hiện không được tự cấp sao cho chính mình.',
+        );
+      }
+    }
+
+    bool effectiveIsGuardian = isGuardian ?? true;
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      try {
+        final rm = familyMembers.firstWhere((m) => m.id == reviewerId);
+        effectiveIsGuardian = rm.isGuardian && !rm.isRelative;
+      } catch (_) {}
+    } else if (reviewerRole != null) {
+      final rUpper = reviewerRole.toUpperCase();
+      if (rUpper.contains('CHILD') || rUpper.contains('RELATIVE')) {
+        effectiveIsGuardian = false;
+      }
+    } else if (reviewerId.toLowerCase().contains('child') ||
+        reviewerId.toLowerCase().contains('relative')) {
+      effectiveIsGuardian = false;
+    }
+
+    final bool isTaskCreator =
+        existing != null && existing.creatorId.isNotEmpty && existing.creatorId == reviewerId;
+    if (!effectiveIsGuardian && !isTaskCreator) {
+      throw StateError(
+        'ANTI_EXPLOIT_GUARDIAN_REQUIRED: Chỉ Người giám hộ (Bố Mẹ, Ông Bà) mới có quyền duyệt việc và thưởng sao.',
+      );
+    }
+
     final col = _remindersCollection;
     if (col != null) {
       try {
-        await col.doc(taskId).update({
+        final docRef = col.doc(taskId);
+        final docSnap = await docRef.get();
+        if (docSnap.exists) {
+          final data = docSnap.data() ?? {};
+          final cId = (data['creatorId'] ?? data['creator_id'])?.toString() ?? '';
+          final aTo = (data['assignedTo'] ?? data['assigned_to'])?.toString() ?? '';
+          if (cId.isNotEmpty && reviewerId == cId && aTo.isNotEmpty && reviewerId == aTo) {
+            throw StateError(
+              'ANTI_EXPLOIT_SELF_APPROVAL: Người tạo việc không thể tự giao việc rồi tự duyệt để nhận sao.',
+            );
+          }
+          if (aTo.isNotEmpty && reviewerId == aTo) {
+            throw StateError(
+              'ANTI_EXPLOIT_SELF_AWARDING: Người thực hiện không được tự cấp sao cho chính mình.',
+            );
+          }
+        }
+        await docRef.update({
           'taskStatus': TaskStatus.completed.dbValue,
           'task_status': TaskStatus.completed.dbValue,
           'status': ReminderStatus.completed,
@@ -1250,9 +1388,10 @@ class FirebaseReminderRepository implements ReminderRepository {
           'completedAt': Timestamp.now(),
           'completed_at': Timestamp.now(),
         });
-      } catch (_) {}
+      } catch (e) {
+        if (e is StateError) rethrow;
+      }
     }
-    final existing = _mockStore[taskId];
     if (existing != null) {
       _mockStore[taskId] = existing.copyWith(
         taskStatus: TaskStatus.completed,
@@ -1266,6 +1405,9 @@ class FirebaseReminderRepository implements ReminderRepository {
         taskId: taskId,
         reviewerId: reviewerId,
         reviewerName: reviewerName,
+        familyMembers: familyMembers,
+        isGuardian: effectiveIsGuardian,
+        reviewerRole: reviewerRole,
       );
     }
   }

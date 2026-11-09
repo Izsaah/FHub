@@ -6,6 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import '../../Long/services/family_data_service.dart';
+import '../../Long/models/family_member_model.dart';
+import '../../Vinh/services/star_economy_service.dart';
 import '../models/family_jackpot_model.dart';
 import '../models/user_bank_info.dart';
 import '../models/wallet_transaction_model.dart';
@@ -356,6 +358,8 @@ class FamilyJackpotService extends ChangeNotifier {
   bool _isTransitioningPhase = false;
   String? _resolvedUserName;
   final Map<String, String> _cachedFamilyMembers = {};
+  final Map<String, String> _cachedMemberRoles = {};
+  Map<String, String> get cachedFamilyMembers => Map.unmodifiable(_cachedFamilyMembers);
 
   FamilyJackpotModel _jackpot = const FamilyJackpotModel(
     familyId: '',
@@ -372,6 +376,299 @@ class FamilyJackpotService extends ChangeNotifier {
 
   final AccelerometerShakeEngine shakeEngine = AccelerometerShakeEngine();
   final CashGiftHandshakeEngine handshakeEngine = CashGiftHandshakeEngine();
+
+  final Set<String> _shakeVotes = {};
+  DateTime? _scheduledShakeTime;
+
+  Set<String> get shakeVotes => Set.unmodifiable(_shakeVotes);
+  DateTime? get scheduledShakeTime => _scheduledShakeTime;
+
+  int get totalFamilyMembersCount {
+    if (_cachedFamilyMembers.isNotEmpty) return _cachedFamilyMembers.length;
+    final keys = _jackpot.memberNames.keys.where((k) => k != 'system_daily_mission').toSet();
+    return keys.isNotEmpty ? keys.length : 1;
+  }
+
+  int get requiredShakeVotes {
+    final count = totalFamilyMembersCount;
+    return (count * 0.7).ceil().clamp(1, count);
+  }
+
+  bool get hasReachedShakeConsensus {
+    if (totalFamilyMembersCount <= 1) return true;
+    return _shakeVotes.length >= requiredShakeVotes;
+  }
+
+  void resetShakeVotes() {
+    _shakeVotes.clear();
+    _scheduledShakeTime = null;
+    notifyListeners();
+  }
+
+  Future<bool> voteToShakeNow({
+    required String userId,
+    required String userName,
+  }) async {
+    if (!canUseJackpot) {
+      throw Exception('Gia đình cần có gói Premium để bắt đầu Nổ Hũ!');
+    }
+    if (_jackpot.totalPoolAmount <= 0) {
+      throw Exception('Hũ hiện đang trống (0 ⭐). Hãy tích sao trước khi Nổ Hũ!');
+    }
+    _shakeVotes.add(userId);
+    notifyListeners();
+
+    if (!_jackpot.isLobbyActive) {
+      final targets = _cachedFamilyMembers.isNotEmpty
+          ? _cachedFamilyMembers.keys.toList()
+          : [userId];
+      await initiateJackpotLobby(
+        initiatorId: userId,
+        initiatorName: userName,
+        targetMemberIds: targets,
+      );
+    } else {
+      await acceptJackpotLobby(
+        userId: userId,
+        userName: userName,
+      );
+    }
+
+    if (totalFamilyMembersCount <= 1 ||
+        _jackpot.hasAllTargetMembersAccepted ||
+        _shakeVotes.length >= requiredShakeVotes) {
+      _shakeVotes.clear();
+      if (!_jackpot.isShaking) {
+        await startShakeBattle();
+      }
+      return true;
+    } else {
+      final missing = requiredShakeVotes - _shakeVotes.length;
+      unawaited(NotificationService.instance.addNotification(
+        familyId: _currentFamilyId ?? 'f1',
+        title: '🎲 $userName muốn phát động Nổ Hũ!',
+        titleEn: '🎲 $userName initiated Star Jackpot!',
+        body: 'Đã có ${_shakeVotes.length}/$totalFamilyMembersCount thành viên đồng thuận. Cần thêm $missing người đồng ý để bắt đầu phiên lắc 30s!',
+        bodyEn: '${_shakeVotes.length}/$totalFamilyMembersCount agreed. Needs $missing more members to start!',
+        type: 'jackpot_vote_request',
+      ));
+      return false;
+    }
+  }
+
+  /// Phát động phòng chờ nổ hũ có hiệu lực 5 phút (Chỉ dành cho Phụ huynh - Bố / Mẹ)
+  Future<void> initiateJackpotLobby({
+    required String initiatorId,
+    required String initiatorName,
+    required List<String> targetMemberIds,
+  }) async {
+    if (!canUseJackpot) {
+      throw Exception('Gia đình cần có gói Premium để bắt đầu Nổ Hũ!');
+    }
+    if (_jackpot.totalPoolAmount <= 0) {
+      throw Exception('Hũ hiện đang trống (0 ⭐). Hãy tích sao trước khi Nổ Hũ!');
+    }
+
+    final effectiveTargets = targetMemberIds.isNotEmpty
+        ? targetMemberIds
+        : [initiatorId];
+    final now = DateTime.now();
+    final expiresAt = now.add(const Duration(minutes: 5));
+    final updatedAccepted = [initiatorId];
+
+    _jackpot = _jackpot.copyWith(
+      lobbyStatus: 'waiting',
+      lobbyInitiatorId: initiatorId,
+      lobbyInitiatorName: initiatorName,
+      lobbyCreatedAt: now,
+      lobbyExpiresAt: expiresAt,
+      lobbyTargetMemberIds: effectiveTargets,
+      lobbyAcceptedMemberIds: updatedAccepted,
+    );
+
+    _ensureCountdownTimerRunning();
+    notifyListeners();
+
+    if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+      try {
+        final docRef = _firestore!
+            .collection('families')
+            .doc(_currentFamilyId)
+            .collection('jackpot')
+            .doc('current');
+        await docRef.set({
+          'lobbyStatus': 'waiting',
+          'lobbyInitiatorId': initiatorId,
+          'lobbyInitiatorName': initiatorName,
+          'lobbyCreatedAt': Timestamp.fromDate(now),
+          'lobbyExpiresAt': Timestamp.fromDate(expiresAt),
+          'lobbyTargetMemberIds': effectiveTargets,
+          'lobbyAcceptedMemberIds': updatedAccepted,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('initiateJackpotLobby firestore error: $e');
+      }
+    }
+
+    unawaited(NotificationService.instance.addNotification(
+      familyId: _currentFamilyId ?? 'f1',
+      title: '🎲 $initiatorName vừa phát động Nổ Hũ!',
+      titleEn: '🎲 $initiatorName initiated Star Jackpot!',
+      body: 'Phiếu chờ có hiệu lực 5 phút. Hãy vào xác nhận tham gia ngay để cùng lắc hũ nhận thưởng!',
+      bodyEn: 'Pot Shake lobby is open for 5 minutes. Tap to join now and shake together!',
+      type: 'jackpot_lobby_invite',
+    ));
+
+    // Nếu chỉ có đúng 1 thành viên được chọn và đó chính là người phát động -> Lập tức vào hiệp lắc
+    if (effectiveTargets.length == 1 && effectiveTargets.contains(initiatorId)) {
+      await startShakeBattle(participantIds: effectiveTargets);
+    }
+  }
+
+  /// Thành viên bấm xác nhận tham gia phòng chờ Nổ Hũ
+  Future<void> acceptJackpotLobby({
+    required String userId,
+    required String userName,
+  }) async {
+    if (!_jackpot.isLobbyActive) {
+      throw Exception('Phiếu chờ nổ hũ đã hết hiệu lực hoặc chưa được phát động!');
+    }
+    if (_jackpot.lobbyAcceptedMemberIds.contains(userId)) {
+      return;
+    }
+
+    final updatedAccepted = [..._jackpot.lobbyAcceptedMemberIds, userId];
+    final updatedTargets = _jackpot.lobbyTargetMemberIds.contains(userId)
+        ? _jackpot.lobbyTargetMemberIds
+        : [..._jackpot.lobbyTargetMemberIds, userId];
+    final updatedNames = Map<String, String>.from(_jackpot.memberNames);
+    updatedNames[userId] = userName;
+
+    _jackpot = _jackpot.copyWith(
+      lobbyAcceptedMemberIds: updatedAccepted,
+      lobbyTargetMemberIds: updatedTargets,
+      memberNames: updatedNames,
+    );
+    notifyListeners();
+
+    if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+      try {
+        final docRef = _firestore!
+            .collection('families')
+            .doc(_currentFamilyId)
+            .collection('jackpot')
+            .doc('current');
+        await docRef.update({
+          'lobbyAcceptedMemberIds': FieldValue.arrayUnion([userId]),
+          'lobbyTargetMemberIds': FieldValue.arrayUnion([userId]),
+          'memberNames.$userId': userName,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('acceptJackpotLobby firestore error: $e');
+      }
+    }
+
+    // Nếu tất cả thành viên trong danh sách chỉ định đã chấp nhận đầy đủ -> Tự động bắt đầu 30s lắc!
+    if (_jackpot.hasAllTargetMembersAccepted ||
+        updatedAccepted.length >= updatedTargets.length) {
+      await startShakeBattle(participantIds: updatedAccepted);
+    }
+  }
+
+  /// Phụ huynh bấm "Bắt đầu ngay" sớm khi đã có thành viên sẵn sàng (không cần chờ đủ 100% hoặc hết 5 phút)
+  Future<void> startShakeBattleEarly({required String initiatorId}) async {
+    if (!_jackpot.isLobbyActive) {
+      throw Exception('Phiếu chờ nổ hũ không trong trạng thái hoạt động!');
+    }
+    final participants = _jackpot.lobbyAcceptedMemberIds.isNotEmpty
+        ? _jackpot.lobbyAcceptedMemberIds
+        : [initiatorId];
+    await startShakeBattle(participantIds: participants);
+  }
+
+  /// Hủy phòng chờ nổ hũ
+  Future<void> cancelJackpotLobby() async {
+    _jackpot = _jackpot.copyWith(
+      lobbyStatus: 'idle',
+      clearLobbyInitiatorId: true,
+      lobbyInitiatorName: null,
+      clearLobbyCreatedAt: true,
+      clearLobbyExpiresAt: true,
+      lobbyTargetMemberIds: const [],
+      lobbyAcceptedMemberIds: const [],
+    );
+    _stopCountdownTimer();
+    notifyListeners();
+
+    if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+      try {
+        final docRef = _firestore!
+            .collection('families')
+            .doc(_currentFamilyId)
+            .collection('jackpot')
+            .doc('current');
+        await docRef.update({
+          'lobbyStatus': 'idle',
+          'lobbyInitiatorId': null,
+          'lobbyInitiatorName': null,
+          'lobbyCreatedAt': null,
+          'lobbyExpiresAt': null,
+          'lobbyTargetMemberIds': <String>[],
+          'lobbyAcceptedMemberIds': <String>[],
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('cancelJackpotLobby error: $e');
+      }
+    }
+  }
+
+  /// Xử lý khi phiếu chờ 5 phút bị quá hạn mà chưa bắt đầu
+  Future<void> _handleLobbyExpired() async {
+    if (_jackpot.lobbyStatus != 'waiting') return;
+    _jackpot = _jackpot.copyWith(
+      lobbyStatus: 'expired',
+    );
+    notifyListeners();
+
+    if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+      try {
+        final docRef = _firestore!
+            .collection('families')
+            .doc(_currentFamilyId)
+            .collection('jackpot')
+            .doc('current');
+        await docRef.update({
+          'lobbyStatus': 'expired',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('handleLobbyExpired error: $e');
+      }
+    }
+  }
+
+  Future<void> scheduleShakeEvent({
+    required String userId,
+    required String userName,
+    required DateTime scheduledTime,
+  }) async {
+    _scheduledShakeTime = scheduledTime;
+    _shakeVotes.add(userId);
+    notifyListeners();
+
+    final timeStr = '${scheduledTime.hour.toString().padLeft(2, "0")}:${scheduledTime.minute.toString().padLeft(2, "0")} ngày ${scheduledTime.day}/${scheduledTime.month}';
+    unawaited(NotificationService.instance.addNotification(
+      familyId: _currentFamilyId ?? 'f1',
+      title: '📅 Lên lịch Nổ Hũ Gia Đình!',
+      titleEn: '📅 Family Jackpot Event Scheduled!',
+      body: '$userName vừa đặt lịch Nổ Hũ cả nhà vào lúc $timeStr. Mọi người nhớ tham gia nhé!',
+      bodyEn: '$userName scheduled jackpot at $timeStr. Don\'t miss out!',
+      type: 'jackpot_scheduled',
+    ));
+  }
 
   bool get isProcessingShake => shakeEngine.isProcessingShake;
   int get shakeCount => shakeEngine.shakeCount;
@@ -424,7 +721,28 @@ class FamilyJackpotService extends ChangeNotifier {
   }
 
   /// Điều kiện tiên quyết: Gia đình phải đang kích hoạt Gói Premium
-  bool get canUseJackpot => PaymentService().isPremium;
+  bool? overrideCanUseJackpotForTest;
+
+  /// Điều kiện tiên quyết: Gia đình phải đang kích hoạt Gói Premium
+  bool get canUseJackpot => overrideCanUseJackpotForTest ?? PaymentService().isPremium;
+
+  /// Kiểm tra xem một thành viên có phải là Phụ huynh (Bố / Mẹ / Chủ hộ) hay không
+  Future<bool> isUserParent({String? userId, String? familyId}) async {
+    final targetUid = userId ?? currentUserId;
+    final fId = familyId ?? _currentFamilyId ?? 'f1';
+    try {
+      final members = await FamilyDataService().getFamilyMembers(familyId: fId);
+      for (final m in members) {
+        if (m.user.id == targetUid ||
+            (m.user.email.isNotEmpty && m.user.email == _auth?.currentUser?.email)) {
+          return m.isParent || m.isOwner || m.isGuardian;
+        }
+      }
+      return members.isEmpty; // Nếu chưa có dữ liệu thành viên, mặc định cho phép
+    } catch (_) {
+      return true; // Fallback cho môi trường test/offline
+    }
+  }
 
   bool _isPaymentListenerBound = false;
 
@@ -440,11 +758,27 @@ class FamilyJackpotService extends ChangeNotifier {
         : PaymentService().currentFamilyId;
     final effectiveFamilyId = rawFamilyId.isNotEmpty ? rawFamilyId : 'f1';
 
-    if (_currentFamilyId == effectiveFamilyId && _jackpotSub != null) {
+    if (_currentFamilyId == effectiveFamilyId && (_jackpotSub != null || _firestore == null)) {
       _loadFamilyMembers(effectiveFamilyId);
       return;
     }
     _currentFamilyId = effectiveFamilyId;
+    _cachedFamilyMembers.clear();
+    _shakeVotes.clear();
+    _dailyCheckIns.clear();
+    _awardedCheckInDates.clear();
+    _jackpot = FamilyJackpotModel(
+      familyId: effectiveFamilyId,
+      totalPoolAmount: 0,
+      topContributorName: 'Chưa có',
+      topContributorId: null,
+      contributions: const {},
+      memberNames: const {},
+      shakeCounts: const {},
+      prizeResults: const {},
+      memberWallets: const {},
+      memberBanks: const {},
+    );
 
     _jackpotSub?.cancel();
 
@@ -501,8 +835,18 @@ class FamilyJackpotService extends ChangeNotifier {
 
         _jackpot = incoming;
 
-        // Nếu nhận dữ liệu mà gia đình không còn Premium nhưng hũ có tiền -> lập tức tiêu hủy hũ
-        if (!canUseJackpot && _jackpot.totalPoolAmount > 0 && !_jackpot.isFinished) {
+        // Đồng bộ dữ liệu nhiệm vụ điểm danh hằng ngày từ Firebase
+        if (incoming.lastDailyCheckInAwardedDate != null && incoming.lastDailyCheckInAwardedDate!.isNotEmpty) {
+          _awardedCheckInDates.add(incoming.lastDailyCheckInAwardedDate!);
+        }
+        _awardedCheckInDates.addAll(incoming.dailyCheckInAwardedDates);
+        final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+        if (incoming.dailyCheckedInMemberIds.isNotEmpty) {
+          _dailyCheckIns.putIfAbsent(todayStr, () => <String>{}).addAll(incoming.dailyCheckedInMemberIds);
+        }
+
+        // Nếu nhận dữ liệu mà gia đình không còn Premium nhưng đang trong phiên lắc -> hủy phiên lắc
+        if (!canUseJackpot && (_jackpot.isShaking || _jackpot.isSuspense)) {
           onPremiumLost();
         } else {
           _ensureCountdownTimerRunning();
@@ -540,6 +884,7 @@ class FamilyJackpotService extends ChangeNotifier {
               continue;
             }
             loaded[uid] = name;
+            _cachedMemberRoles[uid] = m.hierarchyRole.code;
           }
         }
       } catch (_) {}
@@ -562,6 +907,9 @@ class FamilyJackpotService extends ChangeNotifier {
           // Nếu đã có tên thật từ FamilyDataService -> giữ nguyên
           if (loaded.containsKey(uid) && loaded[uid]!.isNotEmpty) continue;
 
+          final rawRole = (d['role'] as String? ?? 'PARENT').toUpperCase();
+          _cachedMemberRoles[uid] = rawRole;
+
           // Thử đọc tên từ users collection
           try {
             final userDoc = await _firestore!.collection('users').doc(uid).get();
@@ -574,7 +922,6 @@ class FamilyJackpotService extends ChangeNotifier {
           } catch (_) {}
 
           // Fallback tên vai trò tiếng Việt rõ ràng, tránh hiển thị thô "PARENT"
-          final rawRole = (d['role'] as String? ?? 'PARENT').toUpperCase();
           final isOwner = d['isOwner'] as bool? ?? false;
           String fallbackRole;
           if (isOwner) {
@@ -634,40 +981,37 @@ class FamilyJackpotService extends ChangeNotifier {
   }
 
   void _onPaymentStateChanged() {
-    if (!canUseJackpot && _jackpot.totalPoolAmount > 0 && !_jackpot.isFinished) {
+    if (!canUseJackpot && (_jackpot.isShaking || _jackpot.isSuspense)) {
       onPremiumLost();
     } else {
       notifyListeners();
     }
   }
 
-  /// QUY TẮC BẮT BUỘC: Nếu đang có hũ chưa lắc xong mà gia đình MẤT GÓI PREMIUM
-  /// thì TOÀN BỘ TIỀN TRONG HŨ SẼ BỊ MẤT (HŨ BỊ TIÊU HỦY / RESET VỀ 0), nhưng giữ nguyên ví cá nhân đã trúng trước đó
+  /// QUY TẮC CỐT LÕI: Khi gia đình MẤT GÓI PREMIUM:
+  /// - Hũ VẪN GIỮ NGUYÊN SỐ SAO ĐÃ TÍCH TRỮ (Sao trong hũ không tự mất đi, chỉ tiêu khi lắc hũ)
+  /// - Nếu đang trong phiên lắc hoặc hồi hộp, hủy phiên lắc đó (trở về idle)
+  /// - Không thể bắt đầu Nổ Hũ mới cho đến khi gia hạn Premium.
   Future<void> onPremiumLost() async {
-    final hadMoney = _jackpot.totalPoolAmount > 0;
     _localMyShakeCount = 0;
     _stopCountdownTimer();
 
-    _jackpot = _jackpot.copyWith(
-      totalPoolAmount: 0,
-      status: JackpotStatus.idle,
-      clearTopContributorId: true,
-      topContributorName: 'Chưa có',
-      contributions: const {},
-      shakeCounts: const {},
-      prizeResults: const {},
-      clearTopShakerId: true,
-      clearFirstPrizeWinnerId: true,
-      clearShakeStartTime: true,
-      clearSuspenseStartTime: true,
-      lostDueToPremiumExpired: hadMoney,
-    );
-
-    notifyListeners();
-    if (hadMoney) {
-      debugPrint('FamilyJackpotService: MẤT GÓI PREMIUM -> HŨ VÀNG ĐÃ BỊ TIÊU HỦY, TOÀN BỘ TIỀN QUỸ BỊ MẤT!');
+    if (_jackpot.isShaking || _jackpot.isSuspense) {
+      _jackpot = _jackpot.copyWith(
+        status: JackpotStatus.idle,
+        shakeCounts: const {},
+        prizeResults: const {},
+        clearTopShakerId: true,
+        clearFirstPrizeWinnerId: true,
+        clearShakeStartTime: true,
+        clearSuspenseStartTime: true,
+        lostDueToPremiumExpired: false,
+      );
+      notifyListeners();
+      await _saveToFirestore();
+    } else {
+      notifyListeners();
     }
-    await _saveToFirestore();
   }
 
   /// Lắng nghe cảm biến chuyển động lắc của điện thoại (Accelerometer)
@@ -754,6 +1098,9 @@ class FamilyJackpotService extends ChangeNotifier {
     }
   }
 
+  final List<WalletTransactionModel> _localWalletTransactions = [];
+  List<WalletTransactionModel> get localWalletTransactions => List.unmodifiable(_localWalletTransactions);
+
   /// Ghi lại giao dịch vào Sổ cái Biến động Ví của Gia đình (Family-scoped Ledger)
   Future<void> _recordTransaction({
     required WalletTransactionType type,
@@ -765,28 +1112,31 @@ class FamilyJackpotService extends ChangeNotifier {
     String? targetUserId,
     String? targetUserName,
   }) async {
-    final fId = _currentFamilyId;
-    if (fId == null || fId.isEmpty || amount <= 0 || _firestore == null) return;
+    final fId = _currentFamilyId ?? 'f1';
+    if (amount <= 0) return;
+
+    final tx = WalletTransactionModel(
+      id: 'tx_${DateTime.now().microsecondsSinceEpoch}',
+      familyId: fId,
+      userId: targetUserId ?? currentUserId,
+      userName: targetUserName ?? currentUserName,
+      type: type,
+      amount: amount,
+      title: title,
+      description: description,
+      bankShortName: bankShortName,
+      accountNumber: accountNumber,
+      createdAt: DateTime.now(),
+    );
+    _localWalletTransactions.insert(0, tx);
+
+    if (_firestore == null) return;
     try {
       final txDoc = _firestore!
           .collection('families')
           .doc(fId)
           .collection('wallet_transactions')
-          .doc();
-
-      final tx = WalletTransactionModel(
-        id: txDoc.id,
-        familyId: fId,
-        userId: targetUserId ?? currentUserId,
-        userName: targetUserName ?? currentUserName,
-        type: type,
-        amount: amount,
-        title: title,
-        description: description,
-        bankShortName: bankShortName,
-        accountNumber: accountNumber,
-        createdAt: DateTime.now(),
-      );
+          .doc(tx.id);
 
       await txDoc.set(tx.toMap());
     } catch (e) {
@@ -800,7 +1150,7 @@ class FamilyJackpotService extends ChangeNotifier {
         ? familyId
         : (_currentFamilyId ?? 'f1');
     final cutoffDate = DateTime.now().subtract(const Duration(days: 15));
-    if (_firestore == null) return Stream.value(const []);
+    if (_firestore == null) return Stream.value(_localWalletTransactions);
     return _firestore!
         .collection('families')
         .doc(targetFamilyId)
@@ -875,9 +1225,11 @@ class FamilyJackpotService extends ChangeNotifier {
         String? topUid;
         int maxAmount = 0;
         contribs.forEach((k, v) {
-          if (v > maxAmount) {
-            maxAmount = v;
-            topUid = k;
+          if (k != 'system_daily_mission' && !k.startsWith('system_')) {
+            if (v > maxAmount) {
+              maxAmount = v;
+              topUid = k;
+            }
           }
         });
 
@@ -907,9 +1259,11 @@ class FamilyJackpotService extends ChangeNotifier {
       String? topUid;
       int maxAmount = 0;
       updatedContribs.forEach((k, v) {
-        if (v > maxAmount) {
-          maxAmount = v;
-          topUid = k;
+        if (k != 'system_daily_mission' && !k.startsWith('system_')) {
+          if (v > maxAmount) {
+            maxAmount = v;
+            topUid = k;
+          }
         }
       });
 
@@ -945,16 +1299,555 @@ class FamilyJackpotService extends ChangeNotifier {
       familyId: _currentFamilyId ?? 'f1',
       title: 'Quỹ Hũ Niềm Vui được nạp thêm',
       titleEn: 'Family Pot Received a Deposit',
-      body: '$name vừa đóng góp $formattedDeposit đ vào Hũ Niềm Vui!',
-      bodyEn: '$name just deposited $formattedDeposit đ into the Family Pot!',
+      body: '$name vừa đóng góp $formattedDeposit ⭐ vào Hũ Niềm Vui!',
+      bodyEn: '$name just deposited $formattedDeposit ⭐ into the Family Pot!',
       type: 'jackpot_deposit',
     ));
   }
 
-  /// Bắt đầu 30s Nổ Hũ (Chỉ người nạp nhiều nhất mới được gọi)
-  Future<void> startShakeBattle() async {
+  // Theo dõi nhiệm vụ hằng ngày của Hũ: Cả nhà điểm danh (+10 ⭐ vào Hũ)
+  final Map<String, Set<String>> _dailyCheckIns = {}; // dateKey (YYYY-MM-DD) -> Set<userId>
+  final Set<String> _awardedCheckInDates = {}; // dateKey đã được cộng 10 sao
+
+  @visibleForTesting
+  void resetDailyMissionStateForTesting() {
+    _dailyCheckIns.clear();
+    _awardedCheckInDates.clear();
+    _localWalletTransactions.clear();
+    _jackpot = _jackpot.copyWith(
+      clearLastDailyCheckInAwardedDate: true,
+      dailyCheckInAwardedDates: const [],
+      dailyCheckedInMemberIds: const [],
+    );
+  }
+
+  bool hasUserCheckedInToday(String userId) {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return _dailyCheckIns[todayKey]?.contains(userId) ?? false;
+  }
+
+  int getTodayCheckInCount() {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return _dailyCheckIns[todayKey]?.length ?? 0;
+  }
+
+  /// Đồng bộ trạng thái điểm danh từ trang Home (FamilyDataService)
+  Future<void> syncCheckInsFromMembers(List<FamilyMemberModel> members) async {
+    if (members.isEmpty) return;
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    final userSet = _dailyCheckIns.putIfAbsent(todayKey, () => <String>{});
+
+    for (final m in members) {
+      if (m.isCheckedInToday) {
+        userSet.add(m.user.id);
+      }
+    }
+
+    // Nếu hôm nay đã nhận thưởng +10 ⭐ rồi thì không bao giờ cộng lại!
+    if (isDailyCheckInCompletedToday()) {
+      notifyListeners();
+      return;
+    }
+
+    final threshold = members.length;
+    if (userSet.length >= threshold) {
+      _awardedCheckInDates.add(todayKey);
+      final updatedList = List<String>.from(_jackpot.dailyCheckInAwardedDates);
+      if (!updatedList.contains(todayKey)) {
+        updatedList.add(todayKey);
+      }
+      _jackpot = _jackpot.copyWith(
+        lastDailyCheckInAwardedDate: todayKey,
+        dailyCheckInAwardedDates: updatedList,
+        dailyCheckedInMemberIds: userSet.toList(),
+      );
+
+      // Ghi nhận trực tiếp lên Firestore để bảo toàn vĩnh viễn (dù reset hũ sau nổ hũ vẫn lưu)
+      if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+        try {
+          final docRef = _firestore!
+              .collection('families')
+              .doc(_currentFamilyId)
+              .collection('jackpot')
+              .doc('current');
+          await docRef.set({
+            'lastDailyCheckInAwardedDate': todayKey,
+            'dailyCheckInAwardedDates': FieldValue.arrayUnion([todayKey]),
+            'dailyCheckedInMemberIds': userSet.toList(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('FamilyJackpotService syncCheckIn Firestore error: $e');
+        }
+      }
+
+      if (canUseJackpot) {
+        await contributeStars(
+          stars: 10,
+          memberId: 'system_daily_mission',
+          memberName: 'Cả nhà điểm danh',
+          sourceTaskId: 'daily_checkin_$todayKey',
+        );
+      } else {
+        debugPrint('FamilyJackpotService: Cả nhà đã điểm danh nhưng chưa có Premium -> Không tăng sao vào hũ.');
+      }
+    }
+    notifyListeners();
+  }
+
+  bool isDailyCheckInCompletedToday() {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    return _awardedCheckInDates.contains(todayKey) ||
+        _jackpot.isDailyCheckInAwardedForDate(todayKey);
+  }
+
+  /// Thành viên điểm danh hôm nay. Nếu toàn bộ thành viên gia đình đã điểm danh đủ,
+  /// tự động thưởng +10 ⭐ vào Hũ Niềm Vui Gia Đình!
+  Future<bool> checkInDaily({
+    required String userId,
+    required String userName,
+    required int totalFamilyMembers,
+  }) async {
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    final userSet = _dailyCheckIns.putIfAbsent(todayKey, () => <String>{});
+    userSet.add(userId);
+
+    // Cập nhật member đã điểm danh lên Firestore
+    if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+      try {
+        final docRef = _firestore!
+            .collection('families')
+            .doc(_currentFamilyId)
+            .collection('jackpot')
+            .doc('current');
+        docRef.set({
+          'dailyCheckedInMemberIds': FieldValue.arrayUnion([userId]),
+        }, SetOptions(merge: true)).catchError((_) {});
+      } catch (_) {}
+    }
+
+    if (isDailyCheckInCompletedToday()) {
+      notifyListeners();
+      return false;
+    }
+
+    final threshold = totalFamilyMembers > 0 ? totalFamilyMembers : 1;
+    if (userSet.length >= threshold) {
+      _awardedCheckInDates.add(todayKey);
+      final updatedList = List<String>.from(_jackpot.dailyCheckInAwardedDates);
+      if (!updatedList.contains(todayKey)) {
+        updatedList.add(todayKey);
+      }
+      _jackpot = _jackpot.copyWith(
+        lastDailyCheckInAwardedDate: todayKey,
+        dailyCheckInAwardedDates: updatedList,
+        dailyCheckedInMemberIds: userSet.toList(),
+      );
+
+      // Lưu ngay vào Firestore
+      if (_firestore != null && _currentFamilyId != null && _currentFamilyId!.isNotEmpty) {
+        try {
+          final docRef = _firestore!
+              .collection('families')
+              .doc(_currentFamilyId)
+              .collection('jackpot')
+              .doc('current');
+          await docRef.set({
+            'lastDailyCheckInAwardedDate': todayKey,
+            'dailyCheckInAwardedDates': FieldValue.arrayUnion([todayKey]),
+            'dailyCheckedInMemberIds': userSet.toList(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (e) {
+          debugPrint('FamilyJackpotService checkInDaily Firestore error: $e');
+        }
+      }
+
+      // Chỉ tăng sao vào hũ nếu gia đình đang có Premium
+      if (canUseJackpot) {
+        await contributeStars(
+          stars: 10,
+          memberId: 'system_daily_mission',
+          memberName: 'Cả nhà điểm danh',
+          sourceTaskId: 'daily_checkin_$todayKey',
+        );
+      } else {
+        debugPrint('FamilyJackpotService: Cả nhà đã điểm danh nhưng gia đình chưa có Premium -> Đồng bộ thành công nhưng chưa tăng sao vào hũ cho đến khi mở Premium.');
+      }
+      notifyListeners();
+      return true;
+    }
+
+    notifyListeners();
+    return false;
+  }
+
+  /// Tích lũy Sao vào Hũ Sao Gia Đình (từ nhiệm vụ hoàn thành hoặc thành viên đóng góp sao)
+  /// Đồng bộ trực tiếp lên Cloud Firestore để toàn bộ thành viên trong gia đình đều nhận được snapshot tức thời
+  Future<void> contributeStars({
+    required int stars,
+    String? familyId,
+    String? memberId,
+    String? memberName,
+    String? sourceTaskId,
+    double? rawStars,
+    String? note,
+  }) async {
+    if (stars <= 0) return;
+    final uid = memberId ?? currentUserId;
+    final name = memberName ?? currentUserName;
+    final effectiveFamId = (familyId != null && familyId.isNotEmpty)
+        ? familyId
+        : (_currentFamilyId ?? 'f1');
+
+    // 1. Cập nhật giao dịch nguyên tử lên Cloud Firestore (Real-time Sync qua Firestore Stream)
+    // Tương tự cơ chế của folder Vinh tạo remind lưu vào collection và broadcast snapshot
+    if (_firestore != null && effectiveFamId.isNotEmpty) {
+      final docRef = _firestore!
+          .collection('families')
+          .doc(effectiveFamId)
+          .collection('jackpot')
+          .doc('current');
+
+      try {
+        await _firestore!.runTransaction((transaction) async {
+          final snap = await transaction.get(docRef);
+          int currentPool = 0;
+          Map<String, int> contribs = {};
+          Map<String, String> names = {};
+
+          if (snap.exists && snap.data() != null) {
+            final data = snap.data()!;
+            currentPool = (data['totalPoolAmount'] as num?)?.toInt() ?? 0;
+            final rawContribs = (data['contributions'] as Map<String, dynamic>?) ?? {};
+            contribs = rawContribs.map((k, v) => MapEntry(k, (v as num).toInt()));
+            final rawNames = (data['memberNames'] as Map<String, dynamic>?) ?? {};
+            names = rawNames.map((k, v) => MapEntry(k, v.toString()));
+          }
+
+          contribs[uid] = (contribs[uid] ?? 0) + stars;
+          names[uid] = name;
+
+          String? topUid;
+          int maxStars = 0;
+          contribs.forEach((k, v) {
+            if (k != 'system_daily_mission' && !k.startsWith('system_')) {
+              if (v > maxStars) {
+                maxStars = v;
+                topUid = k;
+              }
+            }
+          });
+
+          final newTotal = currentPool + stars;
+
+          transaction.set(docRef, {
+            'totalPoolAmount': newTotal,
+            'status': JackpotStatus.idle.name,
+            'topContributorId': topUid,
+            'topContributorName': names[topUid] ?? name,
+            'contributions': contribs,
+            'memberNames': names,
+            'shakeStartTime': null,
+            'suspenseStartTime': null,
+            'lostDueToPremiumExpired': false,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        });
+      } catch (e) {
+        debugPrint('FamilyJackpotService.contributeStars Firestore error: $e');
+      }
+    }
+
+    // 2. Cập nhật local memory state
+    final updatedContribs = Map<String, int>.from(_jackpot.contributions);
+    updatedContribs[uid] = (updatedContribs[uid] ?? 0) + stars;
+
+    final updatedNames = Map<String, String>.from(_jackpot.memberNames);
+    updatedNames[uid] = name;
+
+    String? topUid;
+    int maxStars = 0;
+    updatedContribs.forEach((k, v) {
+      if (k != 'system_daily_mission' && !k.startsWith('system_')) {
+        if (v > maxStars) {
+          maxStars = v;
+          topUid = k;
+        }
+      }
+    });
+
+    final newTotal = _jackpot.totalPoolAmount + stars;
+    _jackpot = _jackpot.copyWith(
+      totalPoolAmount: newTotal,
+      status: JackpotStatus.idle,
+      topContributorId: topUid,
+      topContributorName: updatedNames[topUid] ?? name,
+      contributions: updatedContribs,
+      memberNames: updatedNames,
+      clearShakeStartTime: true,
+      clearSuspenseStartTime: true,
+      lostDueToPremiumExpired: false,
+    );
+    notifyListeners();
+
+    // 3. Ghi vào StarEconomyService (ghi sổ cái `star_ledger`)
+    await StarEconomyService.instance.contributeStarsToJackpotPool(
+      familyId: effectiveFamId,
+      contributorId: uid.isNotEmpty ? uid : 'family_member',
+      contributorName: name,
+      stars: stars,
+      sourceTaskId: sourceTaskId,
+      note: note,
+    );
+
+    // 4. Mô tả chi tiết ghi vào Sổ cái biến động ví: ghi rõ cộng gốc bao nhiêu và làm tròn bao nhiêu
+    String txDescription = 'Đóng góp +$stars ⭐ bởi $name';
+    if (rawStars != null) {
+      final rawStr = (rawStars == rawStars.toInt())
+          ? rawStars.toInt().toString()
+          : rawStars.toStringAsFixed(1);
+      txDescription = 'Đóng góp +$stars ⭐ bởi $name (Gốc 10%: $rawStr ⭐, làm tròn: +$stars ⭐)';
+    } else if (note != null && note.isNotEmpty) {
+      txDescription = '$note • Đóng góp bởi $name';
+    }
+
+    await _recordTransaction(
+      type: WalletTransactionType.contribute,
+      amount: stars,
+      title: sourceTaskId != null
+          ? (sourceTaskId.startsWith('cashback_')
+              ? 'Tích điểm 10% đổi phúc lợi'
+              : (sourceTaskId.startsWith('daily_checkin')
+                  ? 'Nhiệm vụ: Cả nhà điểm danh'
+                  : 'Tích lũy sao vào Hũ'))
+          : 'Góp sao vào Hũ Sao Gia Đình',
+      description: txDescription,
+      targetUserId: uid,
+      targetUserName: name,
+    );
+
+    // 5. Bắn thông báo Realtime cho các thành viên trong gia đình
+    String notifTitle = '✨ Hũ Niềm Vui nhận thêm sao!';
+    String notifTitleEn = '✨ Family Pot Received Stars!';
+    String notifBody = '$name vừa tích lũy +$stars ⭐ vào Hũ Niềm Vui!';
+    String notifBodyEn = '$name deposited +$stars ⭐ into Family Jackpot!';
+
+    if (sourceTaskId != null && sourceTaskId.startsWith('cashback_')) {
+      final rawStr = rawStars != null
+          ? ((rawStars == rawStars.toInt()) ? rawStars.toInt().toString() : rawStars.toStringAsFixed(1))
+          : null;
+      notifTitle = '✨ Tích lũy 10% sao đổi phúc lợi vào Hũ!';
+      notifTitleEn = '✨ 10% Cashback added to Family Pot!';
+      notifBody = rawStr != null
+          ? '$name vừa được duyệt đổi phúc lợi, Hũ được tích lũy +$stars ⭐ (Gốc 10%: $rawStr ⭐, làm tròn: +$stars ⭐)!'
+          : '$name vừa được duyệt đổi phúc lợi, Hũ được tích lũy +$stars ⭐!';
+      notifBodyEn = '$name\'s reward was approved, Family Pot received +$stars ⭐!';
+    } else if (sourceTaskId != null && sourceTaskId.startsWith('daily_checkin')) {
+      notifTitle = '✨ Hoàn thành nhiệm vụ Cả nhà Điểm Danh!';
+      notifTitleEn = '✨ Daily Family Check-in Completed!';
+      notifBody = 'Gia đình đã điểm danh đầy đủ hôm nay, +10 ⭐ vừa được cộng vào Hũ Niềm Vui!';
+      notifBodyEn = 'All family members checked in today, +10 ⭐ added to Family Jackpot!';
+    }
+
+    unawaited(NotificationService.instance.addNotification(
+      familyId: effectiveFamId,
+      title: notifTitle,
+      titleEn: notifTitleEn,
+      body: notifBody,
+      bodyEn: notifBodyEn,
+      type: 'daily_checkin_completed',
+    ));
+  }
+
+  /// Phân bổ sao Heo Đất Gia Đình theo thuật toán tất định (60% Effort + 40% Lucky, loại trừ phụ huynh)
+  JackpotDistributionResult _computeDeterministicPiggyDistribution({
+    required int poolAmount,
+    required Map<String, int> shakes,
+    required List<String> participantIds,
+    required String roundId,
+  }) {
+    if (poolAmount <= 0 || participantIds.isEmpty) {
+      return const JackpotDistributionResult(prizes: {});
+    }
+
+    // Lọc danh sách con cái: Loại trừ chủ gia đình, bố mẹ, người giám hộ
+    final childUids = <String>[];
+    for (final uid in participantIds) {
+      final role = (_cachedMemberRoles[uid] ?? '').toUpperCase();
+      final isParent = role.contains('PARENT') ||
+          role.contains('OWNER') ||
+          role.contains('GUARDIAN') ||
+          role.contains('BỐ') ||
+          role.contains('MẸ');
+      if (!isParent) {
+        childUids.add(uid);
+      }
+    }
+
+    // Dự phòng: Nếu gia đình chỉ có các tài khoản người lớn thử nghiệm, chia cho các tài khoản không phải initiator hoặc tất cả
+    final targetChildren = childUids.isNotEmpty ? childUids : participantIds;
+
+    final shares = JackpotAlgorithm.computeDeterministicPartition(
+      totalPot: poolAmount,
+      checkinCounts: shakes,
+      childUids: targetChildren,
+      settlementId: roundId,
+    );
+
+    if (shares.isEmpty) {
+      return const JackpotDistributionResult(prizes: {});
+    }
+
+    String? topShakerId;
+    int maxShakes = 0;
+    for (final uid in targetChildren) {
+      final c = shakes[uid] ?? 0;
+      if (c > maxShakes) {
+        maxShakes = c;
+        topShakerId = uid;
+      }
+    }
+
+    String? topWinnerId;
+    int maxStars = 0;
+    for (final entry in shares.entries) {
+      if (entry.value > maxStars) {
+        maxStars = entry.value;
+        topWinnerId = entry.key;
+      }
+    }
+
+    return JackpotDistributionResult(
+      prizes: shares,
+      topShakerId: topShakerId,
+      topShakeCount: maxShakes,
+      firstPrizeWinnerId: topWinnerId,
+      isTopShakerUnlucky: false,
+    );
+  }
+
+  /// Thực thi chia sao Heo Đất Gia Đình ngay lập tức và cộng vào StarEconomyService
+  Future<JackpotDistributionResult> distributeStarPotNow({
+    Map<String, int>? overrideShakeCounts,
+    List<String>? overrideParticipantIds,
+    String? roundId,
+  }) async {
+    final participants = overrideParticipantIds ??
+        (_jackpot.lobbyAcceptedMemberIds.isNotEmpty
+            ? _jackpot.lobbyAcceptedMemberIds
+            : (_jackpot.memberNames.keys.isNotEmpty
+                ? _jackpot.memberNames.keys.toList()
+                : (overrideShakeCounts?.keys.toList() ?? <String>[])));
+    final shakes = overrideShakeCounts ?? _jackpot.shakeCounts;
+    final poolStars = _jackpot.totalPoolAmount;
+    final effectiveRoundId =
+        roundId ?? 'piggy_${DateTime.now().microsecondsSinceEpoch}';
+
+    final result = _computeDeterministicPiggyDistribution(
+      poolAmount: poolStars,
+      shakes: shakes,
+      participantIds: participants,
+      roundId: effectiveRoundId,
+    );
+
+    if (result.prizes.isEmpty) {
+      return result;
+    }
+
+    final famId = _currentFamilyId ?? 'f1';
+    final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
+
+    for (final entry in result.prizes.entries) {
+      final uid = entry.key;
+      final wonStars = entry.value;
+      if (wonStars > 0) {
+        updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonStars;
+        await StarEconomyService.instance.creditJackpotStarWin(
+          familyId: famId,
+          winnerId: uid,
+          winnerName: _jackpot.memberNames[uid] ?? 'Thành viên',
+          wonStars: wonStars,
+          roundId: effectiveRoundId,
+          isFirstPrize: uid == result.firstPrizeWinnerId,
+        );
+      }
+    }
+
+    _jackpot = _jackpot.copyWith(
+      totalPoolAmount: 0,
+      status: JackpotStatus.finished,
+      lobbyStatus: 'idle',
+      shakeCounts: shakes,
+      prizeResults: result.prizes,
+      memberWallets: updatedWallets,
+      topShakerId: result.topShakerId,
+      firstPrizeWinnerId: result.firstPrizeWinnerId,
+    );
+    notifyListeners();
+    await _saveToFirestore();
+    return result;
+  }
+
+  /// Quyết toán Heo Đất Gia Đình theo thuật toán chia sao tất định (INV-01, INV-02)
+  Future<Map<String, int>> settlePiggyBankPartition({
+    required List<String> childUids,
+    String? settlementId,
+  }) async {
+    final poolStars = _jackpot.totalPoolAmount;
+    if (poolStars <= 0 || childUids.isEmpty) {
+      return {};
+    }
+
+    // Kiểm tra tính lũy đẳng (Idempotency): Nếu đã ở trạng thái finished/settled thì không chia lại
+    if (_jackpot.status == JackpotStatus.finished) {
+      return _jackpot.prizeResults;
+    }
+
+    final shares = JackpotAlgorithm.computeDeterministicPartition(
+      totalPot: poolStars,
+      checkinCounts: _jackpot.shakeCounts,
+      childUids: childUids,
+      settlementId: settlementId ?? 'piggy_${DateTime.now().millisecondsSinceEpoch}',
+    );
+
+    if (shares.isEmpty) return {};
+
+    final effectiveRoundId = settlementId ?? 'piggy_${DateTime.now().millisecondsSinceEpoch}';
+    final famId = _currentFamilyId ?? 'f1';
+    final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
+
+    for (final entry in shares.entries) {
+      final uid = entry.key;
+      final wonStars = entry.value;
+      if (wonStars > 0) {
+        updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonStars;
+        await StarEconomyService.instance.creditJackpotStarWin(
+          familyId: famId,
+          winnerId: uid,
+          winnerName: _jackpot.memberNames[uid] ?? 'Bé',
+          wonStars: wonStars,
+          roundId: effectiveRoundId,
+          isFirstPrize: false,
+        );
+      }
+    }
+
+    _jackpot = _jackpot.copyWith(
+      totalPoolAmount: 0,
+      status: JackpotStatus.finished,
+      prizeResults: shares,
+      memberWallets: updatedWallets,
+    );
+    notifyListeners();
+    await _saveToFirestore();
+    return shares;
+  }
+
+  /// Bắt đầu 30s Nổ Hũ (participantIds: danh sách thành viên tham gia)
+  Future<void> startShakeBattle({List<String>? participantIds}) async {
     if (!canUseJackpot) {
-      throw Exception('Gói Premium không còn hiệu lực. Hũ đã bị tiêu hủy!');
+      throw Exception('Gia đình cần có gói Premium để bắt đầu Nổ Hũ! Số sao trong hũ vẫn được bảo toàn nguyên vẹn.');
     }
     if (_jackpot.totalPoolAmount <= 0) {
       throw Exception('Hũ hiện đang trống (0 đ). Hãy nạp tiền vào quỹ hũ trước khi bấm Nổ Hũ!');
@@ -981,13 +1874,19 @@ class FamilyJackpotService extends ChangeNotifier {
       updatedNames[currentUserId] = currentUserName;
     }
 
-    // Reset lại lượt lắc của tất cả thành viên về 0
+    final participants = participantIds ??
+        (_jackpot.lobbyAcceptedMemberIds.isNotEmpty
+            ? _jackpot.lobbyAcceptedMemberIds
+            : updatedNames.keys.toList());
+
+    // Reset lại lượt lắc của tất cả thành viên tham gia về 0
     final resetShakes = <String, int>{
-      for (final uid in updatedNames.keys) uid: 0,
+      for (final uid in participants) uid: 0,
     };
 
     _jackpot = _jackpot.copyWith(
       status: JackpotStatus.shaking,
+      lobbyStatus: 'started',
       memberNames: updatedNames,
       shakeCounts: resetShakes,
       prizeResults: const {},
@@ -1020,7 +1919,7 @@ class FamilyJackpotService extends ChangeNotifier {
 
   /// Đảm bảo bộ đếm giờ chạy mượt mà mà KHÔNG bị reset khi có snapshot Firestore mới gửi về
   void _ensureCountdownTimerRunning() {
-    if (!_jackpot.isShaking && !_jackpot.isSuspense) {
+    if (!_jackpot.isShaking && !_jackpot.isSuspense && !_jackpot.isLobbyActive) {
       _stopCountdownTimer();
       return;
     }
@@ -1033,7 +1932,7 @@ class FamilyJackpotService extends ChangeNotifier {
     }
 
     _countdownTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      if (!_jackpot.isShaking && !_jackpot.isSuspense) {
+      if (!_jackpot.isShaking && !_jackpot.isSuspense && !_jackpot.isLobbyActive) {
         _stopCountdownTimer();
         return;
       }
@@ -1045,7 +1944,9 @@ class FamilyJackpotService extends ChangeNotifier {
   void _checkPhaseTransitions() {
     if (_isTransitioningPhase) return;
 
-    if (_jackpot.isShaking && _jackpot.remainingShakeSeconds <= 0) {
+    if (_jackpot.isLobbyActive && _jackpot.remainingLobbySeconds <= 0) {
+      _handleLobbyExpired();
+    } else if (_jackpot.isShaking && _jackpot.remainingShakeSeconds <= 0) {
       _enterSuspensePhase();
     } else if (_jackpot.isSuspense && _jackpot.remainingSuspenseSeconds <= 0) {
       _finishShakeBattle();
@@ -1167,15 +2068,20 @@ class FamilyJackpotService extends ChangeNotifier {
 
           final rawNames = (data['memberNames'] as Map<String, dynamic>?) ?? {};
           final names = rawNames.map((k, v) => MapEntry(k, v.toString()));
-          final participantIds = names.keys.toList();
-          if (currentUserId.isNotEmpty && !participantIds.contains(currentUserId)) {
+          final rawLobbyAccepted = (data['lobbyAcceptedMemberIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+          final participantIds = rawLobbyAccepted.isNotEmpty
+              ? rawLobbyAccepted
+              : names.keys.toList();
+          if (currentUserId.isNotEmpty && rawLobbyAccepted.isEmpty && !participantIds.contains(currentUserId)) {
             participantIds.add(currentUserId);
           }
 
-          final result = JackpotAlgorithm.calculate(
-            totalAmount: poolAmount,
-            shakeCounts: finalShakes,
+          final roundId = 'piggy_${DateTime.now().microsecondsSinceEpoch}';
+          final result = _computeDeterministicPiggyDistribution(
+            poolAmount: poolAmount,
+            shakes: finalShakes,
             participantIds: participantIds,
+            roundId: roundId,
           );
           finalResult = result;
 
@@ -1183,6 +2089,7 @@ class FamilyJackpotService extends ChangeNotifier {
           if (result.prizes.isEmpty) {
             transaction.update(docRef, {
               'status': JackpotStatus.idle.name,
+              'lobbyStatus': 'idle',
               'shakeCounts': <String, dynamic>{},
               'prizeResults': <String, dynamic>{},
               'topShakerId': null,
@@ -1204,6 +2111,7 @@ class FamilyJackpotService extends ChangeNotifier {
           transaction.update(docRef, {
             'totalPoolAmount': 0, // Tiền quỹ vòng này đã được phân bổ 100% vào ví cá nhân
             'status': JackpotStatus.finished.name,
+            'lobbyStatus': 'idle',
             'shakeCounts': finalShakes,
             'prizeResults': result.prizes,
             'memberWallets': updatedWallets,
@@ -1217,15 +2125,27 @@ class FamilyJackpotService extends ChangeNotifier {
         });
 
         if (finalResult != null) {
+          final roundId = 'round_${DateTime.now().microsecondsSinceEpoch}';
+          final famId = _currentFamilyId ?? 'f1';
           finalResult!.prizes.forEach((uid, wonAmount) {
             if (wonAmount > 0) {
               final isTop1 = uid == finalResult!.firstPrizeWinnerId;
               final mName = _jackpot.memberNames[uid] ?? 'Thành viên';
+              unawaited(
+                StarEconomyService.instance.creditJackpotStarWin(
+                  familyId: famId,
+                  winnerId: uid,
+                  winnerName: mName,
+                  wonStars: wonAmount,
+                  roundId: roundId,
+                  isFirstPrize: isTop1,
+                ),
+              );
               _recordTransaction(
                 type: WalletTransactionType.prize,
                 amount: wonAmount,
-                title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
-                description: 'Phần thưởng chia từ quỹ Hũ',
+                title: isTop1 ? 'Thưởng Heo Đất Xuất Sắc 👑' : 'Thưởng Heo Đất gia đình',
+                description: 'Phần thưởng chia từ quỹ Heo Đất Sao',
                 targetUserId: uid,
                 targetUserName: mName,
               );
@@ -1240,17 +2160,19 @@ class FamilyJackpotService extends ChangeNotifier {
             );
             unawaited(NotificationService.instance.addNotification(
               familyId: _currentFamilyId ?? 'f1',
-              title: 'Kết quả Nổ Hũ Gia Đình! 🎉',
-              titleEn: 'Family Pot Battle Results! 🎉',
-              body: '$winnerName đã xuất sắc giành Giải Nhất với phần thưởng $formattedPrize đ!',
-              bodyEn: '$winnerName won 1st Prize with a reward of $formattedPrize đ!',
+              title: 'Kết quả Mở Heo Đất Gia Đình! ✨',
+              titleEn: 'Family Piggy Bank Results! ✨',
+              body: '$winnerName và các bé đã nhận $formattedPrize ⭐ từ Heo Đất!',
+              bodyEn: '$winnerName and the children received $formattedPrize ⭐ from the Piggy Bank!',
               type: 'jackpot_win',
             ));
           }
         }
       } else {
-        final participantIds = _jackpot.memberNames.keys.toList();
-        if (currentUserId.isNotEmpty && !participantIds.contains(currentUserId)) {
+        final participantIds = _jackpot.lobbyAcceptedMemberIds.isNotEmpty
+            ? _jackpot.lobbyAcceptedMemberIds
+            : _jackpot.memberNames.keys.toList();
+        if (currentUserId.isNotEmpty && _jackpot.lobbyAcceptedMemberIds.isEmpty && !participantIds.contains(currentUserId)) {
           participantIds.add(currentUserId);
         }
 
@@ -1259,15 +2181,18 @@ class FamilyJackpotService extends ChangeNotifier {
           finalShakes[currentUserId] = _localMyShakeCount;
         }
 
-        final result = JackpotAlgorithm.calculate(
-          totalAmount: _jackpot.totalPoolAmount,
-          shakeCounts: finalShakes,
+        final roundId = 'piggy_${DateTime.now().microsecondsSinceEpoch}';
+        final result = _computeDeterministicPiggyDistribution(
+          poolAmount: _jackpot.totalPoolAmount,
+          shakes: finalShakes,
           participantIds: participantIds,
+          roundId: roundId,
         );
 
         if (result.prizes.isEmpty) {
           _jackpot = _jackpot.copyWith(
             status: JackpotStatus.idle,
+            lobbyStatus: 'idle',
             shakeCounts: const {},
             prizeResults: const {},
             clearTopShakerId: true,
@@ -1280,16 +2205,27 @@ class FamilyJackpotService extends ChangeNotifier {
         }
 
         final updatedWallets = Map<String, int>.from(_jackpot.memberWallets);
+        final famId = _currentFamilyId ?? 'f1';
         result.prizes.forEach((uid, wonAmount) {
           updatedWallets[uid] = (updatedWallets[uid] ?? 0) + wonAmount;
           if (wonAmount > 0) {
             final isTop1 = uid == result.firstPrizeWinnerId;
             final mName = _jackpot.memberNames[uid] ?? 'Thành viên';
+            unawaited(
+              StarEconomyService.instance.creditJackpotStarWin(
+                familyId: famId,
+                winnerId: uid,
+                winnerName: mName,
+                wonStars: wonAmount,
+                roundId: roundId,
+                isFirstPrize: isTop1,
+              ),
+            );
             _recordTransaction(
               type: WalletTransactionType.prize,
               amount: wonAmount,
-              title: isTop1 ? 'Trúng Giải Nhất 👑' : 'Thưởng nổ hũ gia đình',
-              description: 'Phần thưởng chia từ quỹ Hũ',
+              title: isTop1 ? 'Thưởng Heo Đất Xuất Sắc 👑' : 'Thưởng Heo Đất gia đình',
+              description: 'Phần thưởng chia từ quỹ Heo Đất Sao',
               targetUserId: uid,
               targetUserName: mName,
             );
@@ -1299,6 +2235,7 @@ class FamilyJackpotService extends ChangeNotifier {
         _jackpot = _jackpot.copyWith(
           totalPoolAmount: 0,
           status: JackpotStatus.finished,
+          lobbyStatus: 'idle',
           shakeCounts: finalShakes,
           prizeResults: result.prizes,
           memberWallets: updatedWallets,
@@ -1414,14 +2351,32 @@ class FamilyJackpotService extends ChangeNotifier {
 
   /// Đặt lại Hũ mới sau khi nổ hũ xong (Bảo toàn 100% ví tiền thưởng tích lũy chưa rút của thành viên)
   Future<void> resetJackpot() async {
+    // Giữ nguyên lịch sử điểm danh hôm nay, KHÔNG xóa _awardedCheckInDates
+    // để tránh việc vừa nổ hũ xong lại cộng lặp 10 sao cho cùng một ngày
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
+    final todayCheckIns = _dailyCheckIns[todayKey];
+    _dailyCheckIns.clear();
+    if (todayCheckIns != null && todayCheckIns.isNotEmpty) {
+      _dailyCheckIns[todayKey] = todayCheckIns;
+    }
+
     _localMyShakeCount = 0;
     _isTransitioningPhase = false;
     _stopCountdownTimer();
     shakeEngine.reset();
+    _cachedFamilyMembers.clear();
+    _shakeVotes.clear();
 
     _jackpot = _jackpot.copyWith(
       totalPoolAmount: 0,
       status: JackpotStatus.idle,
+      lobbyStatus: 'idle',
+      clearLobbyInitiatorId: true,
+      lobbyInitiatorName: null,
+      clearLobbyCreatedAt: true,
+      clearLobbyExpiresAt: true,
+      lobbyTargetMemberIds: const [],
+      lobbyAcceptedMemberIds: const [],
       clearTopContributorId: true,
       topContributorName: 'Chưa có',
       contributions: const {},
@@ -1446,6 +2401,13 @@ class FamilyJackpotService extends ChangeNotifier {
       await docRef.update({
         'totalPoolAmount': 0,
         'status': JackpotStatus.idle.name,
+        'lobbyStatus': 'idle',
+        'lobbyInitiatorId': null,
+        'lobbyInitiatorName': null,
+        'lobbyCreatedAt': null,
+        'lobbyExpiresAt': null,
+        'lobbyTargetMemberIds': <String>[],
+        'lobbyAcceptedMemberIds': <String>[],
         'topContributorId': null,
         'topContributorName': 'Chưa có',
         'contributions': <String, dynamic>{},
