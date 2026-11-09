@@ -21,6 +21,23 @@ class DueReminderAlertDialog extends StatefulWidget {
 
   static bool _isShowing = false;
   static bool get isShowing => _isShowing;
+  static String? _currentShowingReminderId;
+  static BuildContext? _currentDialogContext;
+
+  /// Đóng popup báo thức ngay lập tức nếu đang hiển thị
+  static void dismissIfShowing([String? reminderId]) {
+    if (_isShowing && (reminderId == null || _currentShowingReminderId == reminderId)) {
+      AlarmSoundService.instance.stopAlarm();
+      if (_currentDialogContext != null && _currentDialogContext!.mounted) {
+        try {
+          Navigator.of(_currentDialogContext!).pop();
+        } catch (_) {}
+      }
+      _isShowing = false;
+      _currentShowingReminderId = null;
+      _currentDialogContext = null;
+    }
+  }
 
   static Future<void> show(
     BuildContext context, {
@@ -31,6 +48,7 @@ class DueReminderAlertDialog extends StatefulWidget {
   }) async {
     if (_isShowing) return;
     _isShowing = true;
+    _currentShowingReminderId = reminder.id;
 
     try {
       BuildContext? targetCtx;
@@ -46,12 +64,15 @@ class DueReminderAlertDialog extends StatefulWidget {
           useRootNavigator: true,
           barrierDismissible: false,
           barrierLabel: 'Thông báo đến hạn',
-          builder: (ctx) => DueReminderAlertDialog(
-            reminder: reminder,
-            isSnoozeFollowUp: isSnoozeFollowUp,
-            onOpenDetail: onOpenDetail,
-            onSnoozeDismiss: onSnoozeDismiss,
-          ),
+          builder: (ctx) {
+            _currentDialogContext = ctx;
+            return DueReminderAlertDialog(
+              reminder: reminder,
+              isSnoozeFollowUp: isSnoozeFollowUp,
+              onOpenDetail: onOpenDetail,
+              onSnoozeDismiss: onSnoozeDismiss,
+            );
+          },
         );
       } else if (navigatorKey.currentState != null) {
         final navState = navigatorKey.currentState!;
@@ -61,12 +82,15 @@ class DueReminderAlertDialog extends StatefulWidget {
             context: ctx,
             barrierDismissible: false,
             barrierLabel: 'Thông báo đến hạn',
-            builder: (routeCtx) => DueReminderAlertDialog(
-              reminder: reminder,
-              isSnoozeFollowUp: isSnoozeFollowUp,
-              onOpenDetail: onOpenDetail,
-              onSnoozeDismiss: onSnoozeDismiss,
-            ),
+            builder: (routeCtx) {
+              _currentDialogContext = routeCtx;
+              return DueReminderAlertDialog(
+                reminder: reminder,
+                isSnoozeFollowUp: isSnoozeFollowUp,
+                onOpenDetail: onOpenDetail,
+                onSnoozeDismiss: onSnoozeDismiss,
+              );
+            },
           ),
         );
       }
@@ -79,12 +103,15 @@ class DueReminderAlertDialog extends StatefulWidget {
             useRootNavigator: true,
             barrierDismissible: false,
             barrierLabel: 'Thông báo đến hạn',
-            builder: (ctx) => DueReminderAlertDialog(
-              reminder: reminder,
-              isSnoozeFollowUp: isSnoozeFollowUp,
-              onOpenDetail: onOpenDetail,
-              onSnoozeDismiss: onSnoozeDismiss,
-            ),
+            builder: (ctx) {
+              _currentDialogContext = ctx;
+              return DueReminderAlertDialog(
+                reminder: reminder,
+                isSnoozeFollowUp: isSnoozeFollowUp,
+                onOpenDetail: onOpenDetail,
+                onSnoozeDismiss: onSnoozeDismiss,
+              );
+            },
           );
         } catch (e2) {
           debugPrint('DueReminderAlertDialog fallback error: $e2');
@@ -92,6 +119,8 @@ class DueReminderAlertDialog extends StatefulWidget {
       }
     } finally {
       _isShowing = false;
+      _currentShowingReminderId = null;
+      _currentDialogContext = null;
       AlarmSoundService.instance.stopAlarm();
     }
   }

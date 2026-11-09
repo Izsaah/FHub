@@ -254,5 +254,102 @@ void main() {
 
       expect(DueReminderAlertDialog.isShowing, isFalse);
     });
+
+    test('7. Closed missed task (isClosedMissed == true) NEVER triggers alarm, popup, or timers', () {
+      final service = MultiTierEscalationService.instance;
+      final now = DateTime.now();
+      final pastDue = now.subtract(const Duration(minutes: 5));
+      final dateStr =
+          '${pastDue.day.toString().padLeft(2, '0')}/${pastDue.month.toString().padLeft(2, '0')}/${pastDue.year}';
+      final timeStr =
+          '${pastDue.hour.toString().padLeft(2, '0')}:${pastDue.minute.toString().padLeft(2, '0')}';
+
+      final closedTask = ReminderModel(
+        id: 'task_closed_missed_1',
+        familyId: 'fam_test',
+        creatorId: 'parent_1',
+        creatorName: 'Bố Tuấn',
+        assignedTo: 'child_1',
+        assignedToName: 'Trần Nguyễn Văn',
+        title: 'Nhiệm vụ đã đóng',
+        date: dateStr,
+        time: timeStr,
+        rewardStars: 3,
+        status: ReminderStatus.overdue,
+        isClosedMissed: true,
+      );
+
+      // Model properties validation
+      expect(closedTask.isClosedMissed, isTrue);
+      expect(closedTask.isOverdue, isFalse);
+      expect(closedTask.canBeCompleted, isFalse);
+      expect(closedTask.statusDisplayName, 'Đã đóng');
+
+      // Schedule escalation should do nothing
+      service.scheduleMultiTierEscalation(closedTask);
+      expect(service.hasActiveEscalation(closedTask.id), isFalse);
+
+      // Sync reminders should never alert or ring
+      service.syncReminders([closedTask], currentUserId: 'child_1');
+      expect(service.alertedDueReminderIds.contains(closedTask.id), isFalse);
+      expect(AlarmSoundService.instance.isPlaying, isFalse);
+
+      // Manual triggerDueAlarmAndPopup should also be blocked
+      service.triggerDueAlarmAndPopup(closedTask, currentUserId: 'child_1');
+      expect(service.alertedDueReminderIds.contains(closedTask.id), isFalse);
+      expect(AlarmSoundService.instance.isPlaying, isFalse);
+    });
+
+    testWidgets('8. Calling closeMissedTask stops ringing alarm and dismisses dialog', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          home: const Scaffold(body: Center(child: Text('Home'))),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final service = MultiTierEscalationService.instance;
+      final now = DateTime.now();
+      final pastDue = now.subtract(const Duration(minutes: 1));
+      final dateStr =
+          '${pastDue.day.toString().padLeft(2, '0')}/${pastDue.month.toString().padLeft(2, '0')}/${pastDue.year}';
+      final timeStr =
+          '${pastDue.hour.toString().padLeft(2, '0')}:${pastDue.minute.toString().padLeft(2, '0')}';
+
+      final task = ReminderModel(
+        id: 'task_to_be_closed_1',
+        familyId: 'fam_test',
+        creatorId: 'parent_1',
+        creatorName: 'Bố Tuấn',
+        assignedTo: 'child_1',
+        assignedToName: 'Trần Nguyễn Văn',
+        title: 'Lau nhà',
+        date: dateStr,
+        time: timeStr,
+        rewardStars: 2,
+        status: ReminderStatus.pending,
+      );
+
+      // 1. Sync for child -> Alarm rings
+      service.syncReminders([task], currentUserId: 'child_1');
+      expect(AlarmSoundService.instance.isPlaying, isTrue);
+
+      // 2. Open dialog
+      unawaited(DueReminderAlertDialog.show(navigatorKey.currentContext!, reminder: task));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(DueReminderAlertDialog.isShowing, isTrue);
+
+      // 3. Parent / system closes the task
+      await service.closeMissedTask(reminderId: task.id);
+      await tester.pumpAndSettle();
+
+      // 4. Alarm MUST be silenced and dialog MUST be dismissed!
+      expect(AlarmSoundService.instance.isPlaying, isFalse);
+      expect(DueReminderAlertDialog.isShowing, isFalse);
+
+      service.cancelAll();
+    });
   });
 }

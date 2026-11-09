@@ -1833,6 +1833,34 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                               ],
                             ),
                           )
+                        else if (reminder.isClosedMissed)
+                          Container(
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.lock_rounded, color: Color(0xFF64748B)),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    AppLanguage.text('Đã đóng (Bỏ lỡ hạn)', 'Closed (Missed deadline)'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Color(0xFF64748B),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
                         else if (reminder.taskStatus == TaskStatus.submitted) ...[
                           if ((isGuardian || reminder.creatorId == currentUserId) && reminder.assignedTo != currentUserId)
                             Row(
