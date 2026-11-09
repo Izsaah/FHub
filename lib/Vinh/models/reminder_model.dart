@@ -234,6 +234,7 @@ class ReminderModel {
 
   String get statusDisplayName {
     if (isDeleted) return 'Đã xóa';
+    if (isClosedMissed) return 'Đã đóng';
     if (isCompleted) return 'Đã xong';
     if (isRejected) return 'Yêu cầu làm lại';
     if (isSubmitted) return 'Chờ duyệt';
@@ -259,7 +260,7 @@ class ReminderModel {
       assignedTo == 'ALL';
 
   bool get isOverdue {
-    if (isCompleted || isDeleted || isSubmitted) return false;
+    if (isCompleted || isDeleted || isSubmitted || isClosedMissed) return false;
     if (status == ReminderStatus.overdue) return true;
     final dt = dueDateTime;
     if (dt != null && !dt.isAfter(DateTime.now())) return true;
@@ -285,7 +286,7 @@ class ReminderModel {
   /// Trạng thái công việc có được phép hoàn thành hay không:
   /// Không thể hoàn thành nếu ngày làm việc nằm ở tương lai (chưa đến ngày).
   /// Khi đã đến ngày thực hiện (hôm nay hoặc quá hạn), việc được mở và không bị khóa lại.
-  bool get canBeCompleted => !isFutureDate;
+  bool get canBeCompleted => !isFutureDate && !isClosedMissed;
 
   /// Returns parsed DateTime from [date] ("dd/MM/yyyy" or "yyyy-MM-dd") and [time] ("HH:mm" or "HH:mm:ss")
   DateTime? get dueDateTime {

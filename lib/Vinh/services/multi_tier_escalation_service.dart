@@ -295,7 +295,11 @@ class MultiTierEscalationService {
     cancelEscalation(reminder.id);
 
     final rawDueDt = reminder.dueDateTime;
-    if (rawDueDt == null || reminder.isCompleted || reminder.isDeleted) {
+    if (rawDueDt == null ||
+        reminder.isCompleted ||
+        reminder.isDeleted ||
+        reminder.isSubmitted ||
+        reminder.isClosedMissed) {
       return;
     }
 
@@ -399,7 +403,12 @@ class MultiTierEscalationService {
         fallbackReminder;
 
     if (latest == null) return;
-    if (latest.isCompleted || latest.isDeleted || latest.isSubmitted) return;
+    if (latest.isCompleted ||
+        latest.isDeleted ||
+        latest.isSubmitted ||
+        latest.isClosedMissed) {
+      return;
+    }
     if (!shouldNotifyUser(
       latest,
       currentUserId: _lastCurrentUserId,
@@ -445,6 +454,13 @@ class MultiTierEscalationService {
     }
     if (context != null) _lastContext = context;
     if (onOpenDetail != null) _lastOnOpenDetail = onOpenDetail;
+
+    if (reminder.isCompleted ||
+        reminder.isDeleted ||
+        reminder.isSubmitted ||
+        reminder.isClosedMissed) {
+      return;
+    }
 
     if (!shouldNotifyUser(
       reminder,
@@ -547,6 +563,12 @@ class MultiTierEscalationService {
     }
 
     final nextReminder = _safePendingAlertQueue.removeAt(0);
+    if (nextReminder.isCompleted ||
+        nextReminder.isDeleted ||
+        nextReminder.isSubmitted ||
+        nextReminder.isClosedMissed) {
+      return;
+    }
     final isFollowUp = _safeFollowUpActiveIds.contains(nextReminder.id);
     try {
       await DueReminderAlertDialog.show(
@@ -569,7 +591,12 @@ class MultiTierEscalationService {
 
   /// Đồng bộ trạng thái quá hạn lên Firestore thời gian thực để các tab/thiết bị khác nhận WebSocket event
   void _syncOverdueToFirestore(ReminderModel reminder) {
-    if (reminder.isCompleted || reminder.isDeleted || reminder.isSubmitted) return;
+    if (reminder.isCompleted ||
+        reminder.isDeleted ||
+        reminder.isSubmitted ||
+        reminder.isClosedMissed) {
+      return;
+    }
     if (reminder.status == ReminderStatus.overdue) return;
     if (_safeSyncedOverdueReminderIds.contains(reminder.id)) return;
     _safeSyncedOverdueReminderIds.add(reminder.id);
@@ -658,7 +685,10 @@ class MultiTierEscalationService {
     final effectiveFamilyName = currentUserFamilyName ?? _lastCurrentUserFamilyName;
 
     for (final r in reminders) {
-      if (r.isCompleted || r.isDeleted || r.isSubmitted) {
+      if (r.isCompleted ||
+          r.isDeleted ||
+          r.isSubmitted ||
+          r.isClosedMissed) {
         _safePreviouslyPendingIds.remove(r.id);
         cancelEscalation(r.id);
         continue;
@@ -767,6 +797,21 @@ class MultiTierEscalationService {
       snoozeDueAt.containsKey(reminderId);
 
   void _triggerTierAlert(ReminderModel reminder, EscalationTier tier) {
+    if (reminder.isCompleted ||
+        reminder.isDeleted ||
+        reminder.isSubmitted ||
+        reminder.isClosedMissed) {
+      return;
+    }
+    final latest =
+        _trackedReminders.where((r) => r.id == reminder.id).firstOrNull;
+    if (latest != null &&
+        (latest.isCompleted ||
+            latest.isDeleted ||
+            latest.isSubmitted ||
+            latest.isClosedMissed)) {
+      return;
+    }
     try {
       switch (tier) {
         case EscalationTier.tier1Due:
@@ -1027,6 +1072,8 @@ class MultiTierEscalationService {
     _safeFollowUpActiveIds.remove(reminderId);
     snoozeDueAt.remove(reminderId);
     cancelEscalation(reminderId);
+    AlarmSoundService.instance.stopAlarm();
+    DueReminderAlertDialog.dismissIfShowing(reminderId);
 
     final idx = _trackedReminders.indexWhere((r) => r.id == reminderId);
     if (idx != -1) {

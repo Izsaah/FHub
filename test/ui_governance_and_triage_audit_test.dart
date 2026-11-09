@@ -132,7 +132,8 @@ void main() {
         expect(overdueReminder.isOverdue, isTrue);
 
         // Filter condition used on ReminderListScreen
-        final isGuardian = true;
+        bool checkIsGuardian(String role) => role == 'PARENT';
+        final isGuardian = checkIsGuardian('PARENT');
         final needsParentTriage = overdueReminder.isOverdue &&
             !overdueReminder.isCompleted &&
             !overdueReminder.isDeleted &&

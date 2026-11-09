@@ -76,12 +76,14 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   bool get canComplete =>
       !reminder.isCompleted &&
       !reminder.isDeleted &&
+      !reminder.isClosedMissed &&
       isAssignedToMe &&
       reminder.canBeCompleted;
 
   bool get isLockedCompletion =>
       !reminder.isCompleted &&
       !reminder.isDeleted &&
+      !reminder.isClosedMissed &&
       isAssignedToMe &&
       reminder.isFutureDate;
 
@@ -226,6 +228,20 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   }
 
   Future<void> _handleChildSubmitProof(BuildContext context) async {
+    if (reminder.isClosedMissed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Công việc này đã đóng bỏ lỡ, không thể nộp ảnh nghiệm thu!',
+              'This task is closed and cannot submit proof!',
+            ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
     final proofUrl = await CameraProofDialog.show(
       context,
       reminder: reminder,
@@ -519,6 +535,20 @@ class ReminderDetailBottomSheet extends StatelessWidget {
   }
 
   Future<void> _handleComplete(BuildContext context) async {
+    if (reminder.isClosedMissed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLanguage.text(
+              'Công việc này đã đóng bỏ lỡ, không thể hoàn thành!',
+              'This task is closed and cannot be completed!',
+            ),
+          ),
+          backgroundColor: const Color(0xFFBA1A1A),
+        ),
+      );
+      return;
+    }
     if (reminder.isFutureDate) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1481,7 +1511,36 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                       const SizedBox(height: 24),
 
                       // Nút hành động: Xung phong nhận việc / Hoàn thành
-                      if (isOpenTask && !isCompleted) ...[
+                      if (reminder.isClosedMissed)
+                        Container(
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.lock_rounded, color: Color(0xFF64748B), size: 20),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  AppLanguage.text('Đã đóng (Bỏ lỡ hạn)', 'Closed (Missed deadline)'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (isOpenTask && !isCompleted) ...[
                         if (reminder.isFutureDate) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -1833,6 +1892,34 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                               ],
                             ),
                           )
+                        else if (reminder.isClosedMissed)
+                          Container(
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.lock_rounded, color: Color(0xFF64748B)),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    AppLanguage.text('Đã đóng (Bỏ lỡ hạn)', 'Closed (Missed deadline)'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Color(0xFF64748B),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
                         else if (reminder.taskStatus == TaskStatus.submitted) ...[
                           if ((isGuardian || reminder.creatorId == currentUserId) && reminder.assignedTo != currentUserId)
                             Row(
@@ -2097,7 +2184,11 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     Color fg = const Color(0xFF8A5100);
     String label = AppLanguage.text('CHỜ THỰC HIỆN', 'PENDING');
 
-    if (reminder.isCompleted) {
+    if (reminder.isClosedMissed) {
+      bg = const Color(0xFFF1F5F9);
+      fg = const Color(0xFF64748B);
+      label = AppLanguage.text('ĐÃ ĐÓNG (BỎ LỠ)', 'CLOSED (MISSED)');
+    } else if (reminder.isCompleted) {
       bg = const Color(0xFFE7F0EC);
       fg = const Color(0xFF0D7A68);
       label = AppLanguage.text('ĐÃ HOÀN THÀNH', 'COMPLETED');

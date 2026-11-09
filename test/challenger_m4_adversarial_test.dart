@@ -1,14 +1,9 @@
 import 'dart:collection';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_core_platform_interface/test.dart';
 
 import 'package:fhub/Danh/services/payment_service.dart';
-import 'package:fhub/Long/screens/family/family_screen.dart';
 import 'package:fhub/Long/screens/home/home_screen.dart';
 import 'package:fhub/Long/screens/profile/profile_screen.dart';
 import 'package:fhub/Long/widgets/custom_app_bar.dart';
@@ -19,9 +14,7 @@ import 'package:fhub/Vinh/screens/calendar_page.dart';
 import 'package:fhub/Vinh/screens/reminder_list_screen.dart';
 import 'package:fhub/Vinh/screens/views/reminder_list_view.dart';
 import 'package:fhub/Vinh/services/alarm_sound_service.dart';
-import 'package:fhub/Vinh/services/multi_tier_escalation_service.dart';
 import 'package:fhub/Vinh/services/reminder_repository.dart';
-import 'package:fhub/Vinh/widgets/reminder_empty_states.dart';
 import 'package:fhub/Vinh/widgets/weekly_calendar_strip.dart';
 
 void main() {

@@ -780,6 +780,13 @@ class FirebaseReminderRepository implements ReminderRepository {
     existingData['id'] = docSnap.id;
     final existing = ReminderModel.fromJson(existingData);
 
+    // Rule: Không thể complete việc đã đóng bỏ lỡ
+    if (existing.isClosedMissed) {
+      throw const ReminderValidationException(
+        'Công việc này đã đóng bỏ lỡ, không thể hoàn thành!',
+      );
+    }
+
     // Rule: Chỉ người được giao mới được Complete
     if (existing.assignedTo != currentUserId) {
       throw const ReminderPermissionException(
@@ -1077,6 +1084,12 @@ class FirebaseReminderRepository implements ReminderRepository {
     required String taskId,
     required String proofImageUrl,
   }) async {
+    final existingItem = _mockStore[taskId];
+    if (existingItem != null && existingItem.isClosedMissed) {
+      throw const ReminderValidationException(
+        'Công việc này đã đóng bỏ lỡ, không thể nộp ảnh nghiệm thu!',
+      );
+    }
     final col = _remindersCollection;
     if (col != null) {
       try {
