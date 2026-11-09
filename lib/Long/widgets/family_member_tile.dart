@@ -6,11 +6,13 @@ import '../utils/long_strings.dart';
 
 class FamilyMemberTile extends StatelessWidget {
   final FamilyMemberModel member;
+  final bool isPeerGroup;
   final VoidCallback? onTap;
 
   const FamilyMemberTile({
     super.key,
     required this.member,
+    this.isPeerGroup = false,
     this.onTap,
   });
 
@@ -114,7 +116,7 @@ class FamilyMemberTile extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      _buildHierarchyBadge(member.hierarchyRole),
+                      _buildHierarchyBadge(member.hierarchyRole, isPeerGroup: isPeerGroup),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -347,7 +349,7 @@ class FamilyMemberTile extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      _buildHierarchyBadge(member.hierarchyRole),
+                      _buildHierarchyBadge(member.hierarchyRole, isPeerGroup: isPeerGroup),
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -390,7 +392,7 @@ class FamilyMemberTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFDCBD),
+                  color: isPeerGroup ? const Color(0xFFE0F4EE) : const Color(0xFFFFDCBD),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -398,10 +400,12 @@ class FamilyMemberTile extends StatelessWidget {
                   children: [
                     const Text('👑 ', style: TextStyle(fontSize: 10)),
                     Text(
-                      LongStrings.t('Chủ nhà', 'Owner'),
-                      style: const TextStyle(
+                      isPeerGroup
+                          ? LongStrings.t('Trưởng nhóm', 'Leader')
+                          : LongStrings.t('Chủ nhà', 'Owner'),
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF6C3E00),
+                        color: isPeerGroup ? const Color(0xFF07866F) : const Color(0xFF6C3E00),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -414,28 +418,44 @@ class FamilyMemberTile extends StatelessWidget {
     );
   }
 
-  Widget _buildHierarchyBadge(HierarchyRole role, {bool isMuted = false}) {
+  Widget _buildHierarchyBadge(
+    HierarchyRole role, {
+    bool isMuted = false,
+    bool isPeerGroup = false,
+  }) {
     Color bg;
     Color fg;
-    String label = role.displayName;
+    String label;
 
-    switch (role) {
-      case HierarchyRole.grandparent:
-        bg = const Color(0xFFFFF3CD);
-        fg = const Color(0xFF856404);
-        break;
-      case HierarchyRole.parent:
-        bg = const Color(0xFFD1ECF1);
-        fg = const Color(0xFF0C5460);
-        break;
-      case HierarchyRole.child:
-        bg = const Color(0xFFE8DAEF);
-        fg = const Color(0xFF5B2C6F);
-        break;
-      case HierarchyRole.relative:
-        bg = const Color(0xFFE2F0D9);
-        fg = const Color(0xFF385723);
-        break;
+    if (isPeerGroup || role == HierarchyRole.member) {
+      bg = const Color(0xFFE0F4EE);
+      fg = const Color(0xFF07866F);
+      label = LongStrings.t('Bạn bè', 'Friend');
+    } else {
+      label = role.displayName;
+      switch (role) {
+        case HierarchyRole.grandparent:
+          bg = const Color(0xFFFFF3CD);
+          fg = const Color(0xFF856404);
+          break;
+        case HierarchyRole.parent:
+          bg = const Color(0xFFD1ECF1);
+          fg = const Color(0xFF0C5460);
+          break;
+        case HierarchyRole.child:
+          bg = const Color(0xFFE8DAEF);
+          fg = const Color(0xFF5B2C6F);
+          break;
+        case HierarchyRole.relative:
+          bg = const Color(0xFFE2F0D9);
+          fg = const Color(0xFF385723);
+          break;
+        case HierarchyRole.member:
+          bg = const Color(0xFFE0F4EE);
+          fg = const Color(0xFF07866F);
+          label = LongStrings.t('Bạn bè', 'Friend');
+          break;
+      }
     }
 
     if (isMuted) {

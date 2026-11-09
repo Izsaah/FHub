@@ -244,8 +244,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
   void _showMemberActionDialog(
     FamilyMemberModel targetMember,
     bool isCurrentUserOwner,
-    String familyId,
-  ) {
+    String familyId, {
+    bool isPeerGroup = false,
+  }) {
     final currentUserId = _familyDataService.currentUserId;
     final isSelf = targetMember.user.id == currentUserId;
 
@@ -370,7 +371,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     ),
                     onTap: () async {
                       Navigator.pop(ctx);
-                      if (targetMember.hierarchyRole != HierarchyRole.parent) {
+                      if (!isPeerGroup && targetMember.hierarchyRole != HierarchyRole.parent) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
@@ -906,10 +907,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           ...members.map(
                             (member) => FamilyMemberTile(
                               member: member,
+                              isPeerGroup: family.isPeerGroup,
                               onTap: () => _showMemberActionDialog(
                                 member,
                                 isOwner,
                                 family.id,
+                                isPeerGroup: family.isPeerGroup,
                               ),
                             ),
                           ),

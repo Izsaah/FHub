@@ -4,7 +4,8 @@ enum HierarchyRole {
   grandparent,
   parent,
   child,
-  relative;
+  relative,
+  member;
 
   String get displayName {
     switch (this) {
@@ -16,6 +17,8 @@ enum HierarchyRole {
         return 'Con cái';
       case HierarchyRole.relative:
         return LongStrings.t('Cô / Dì / Chú / Bác', 'Relative');
+      case HierarchyRole.member:
+        return LongStrings.t('Bạn bè', 'Friend');
     }
   }
 
@@ -29,6 +32,8 @@ enum HierarchyRole {
         return 'CHILD';
       case HierarchyRole.relative:
         return 'RELATIVE';
+      case HierarchyRole.member:
+        return 'MEMBER';
     }
   }
 
@@ -42,6 +47,8 @@ enum HierarchyRole {
         return 2;
       case HierarchyRole.child:
         return 1;
+      case HierarchyRole.member:
+        return 2;
     }
   }
 
@@ -68,6 +75,13 @@ enum HierarchyRole {
         upper == 'UNCLE' ||
         upper == 'AUNT') {
       return HierarchyRole.relative;
+    }
+    if (upper == 'MEMBER' ||
+        upper == 'BAN_BE' ||
+        upper == 'THANH_VIEN' ||
+        upper == 'ROOMMATE' ||
+        upper == 'FRIEND') {
+      return HierarchyRole.member;
     }
     return HierarchyRole.parent;
   }

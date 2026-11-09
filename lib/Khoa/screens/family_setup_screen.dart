@@ -92,6 +92,11 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
     final isOwner = member?.isOwner == true ||
         (family.ownerId.isNotEmpty &&
             family.ownerId == _dataService.currentUserId);
+    if (family.isPeerGroup || member?.role == FamilyMember.roleMember) {
+      return isOwner
+          ? AppLanguage.text('Trưởng nhóm • Bạn bè', 'Leader • Friend')
+          : AppLanguage.text('Bạn bè', 'Friend');
+    }
     final String rolePart;
     switch (member?.role) {
       case FamilyMember.roleGrandparent:
@@ -553,22 +558,10 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
                                   iconColor: primary,
                                   title: AppLanguage.text('Tạo gia đình mới', 'Create new family'),
                                   description: AppLanguage.text(
-                                    'Không gian gia đình có vai vế Bố Mẹ, Con cái, Ông Bà.',
-                                    'Family space with parent, child, grandparent hierarchy.',
+                                    'Không gian gia đình hoặc bạn bè sống chung (tuỳ chọn mô hình).',
+                                    'Family space or roommate group (choose model inside).',
                                   ),
                                   onTap: () => _openCreateFamily(isPeerGroup: false),
-                                ),
-                                const SizedBox(height: 14),
-                                _SetupOptionCard(
-                                  icon: Icons.groups_rounded,
-                                  iconBackground: const Color(0xFFE8F5E9),
-                                  iconColor: const Color(0xFF2E7D32),
-                                  title: AppLanguage.text('Tạo nhóm Bạn bè / Sống chung (Không role)', 'Create Roommate Group (No Role)'),
-                                  description: AppLanguage.text(
-                                    'Dành cho bạn bè hoặc phòng trọ sống chung. Bình đẳng, không role vai vế, tránh tranh chấp vai trò.',
-                                    'For roommates & friends living together. Equal, no hierarchy, zero role disputes.',
-                                  ),
-                                  onTap: () => _openCreateFamily(isPeerGroup: true),
                                 ),
                                 const SizedBox(height: 14),
                                 _SetupOptionCard(
