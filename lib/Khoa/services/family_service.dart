@@ -83,8 +83,8 @@ class FamilyService {
         'name': trimmedName,
         'joinCode': joinCode,
         'ownerId': uid,
-        'isPeerGroup': isPeerGroup,
-        'familyType': isPeerGroup ? 'PEER_GROUP' : 'FAMILY',
+        'isPeerGroup': false,
+        'familyType': 'FAMILY',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         if (isUserPrem) ...{
@@ -214,14 +214,10 @@ class FamilyService {
           'memberCount': currentCount + 1,
         });
 
-        final bool isPeerFam = famData['isPeerGroup'] == true ||
-            famData['familyType'] == 'PEER_GROUP';
-        final effectiveRole = isPeerFam ? FamilyMember.roleMember : role;
-
         transaction.set(memberRef, {
           'familyId': family.id,
           'userId': uid,
-          'role': effectiveRole,
+          'role': role,
           'isOwner': false,
           'status': FamilyMember.statusActive,
           'joinedAt': FieldValue.serverTimestamp(),

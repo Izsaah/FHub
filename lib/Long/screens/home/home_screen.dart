@@ -444,36 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    if (family.isPeerGroup) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE8F5E9),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF81C784)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.people_alt_outlined, color: Color(0xFF2E7D32), size: 22),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                LongStrings.t(
-                                  'Không gian Bạn bè / Sống chung: Mọi thành viên bình đẳng.',
-                                  'Peer Living Space: All members are equal.',
-                                ),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                  color: Color(0xFF1B5E20),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+
 
                     // Passive Takeover Banner (if eligible)
                     if (isTakeoverEligible && !isOwner) ...[

@@ -60,13 +60,11 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
           _previewFamily = fam;
           if (fam == null) {
             _lookupError = AppLanguage.text(
-              'Không tìm thấy không gian với mã này.',
-              'No space found with this code.',
+              'Không tìm thấy gia đình với mã này.',
+              'No family found with this code.',
             );
           } else {
-            if (fam.isPeerGroup) {
-              _selectedRole = FamilyMember.roleMember;
-            } else if (_selectedRole == FamilyMember.roleMember) {
+            if (_selectedRole == FamilyMember.roleMember) {
               _selectedRole = FamilyMember.roleChild;
             }
           }
@@ -100,13 +98,9 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
     setState(() => _isJoining = true);
 
     try {
-      final effectiveRole = (_previewFamily?.isPeerGroup == true)
-          ? FamilyMember.roleMember
-          : _selectedRole;
-
       final family = await _familyService.joinFamily(
         joinCode: _codeController.text,
-        role: effectiveRole,
+        role: _selectedRole,
       );
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
       FamilyDataService().clearCache();
@@ -126,15 +120,10 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
             style: const TextStyle(fontWeight: FontWeight.w800, color: darkText),
           ),
           content: Text(
-            family.isPeerGroup
-                ? AppLanguage.text(
-                    'Bạn đã tham gia không gian "${family.name}" với vai trò Bạn bè bình đẳng (Không role tranh chấp).',
-                    'You joined "${family.name}" as an equal Friend (Zero role dispute).',
-                  )
-                : AppLanguage.text(
-                    'Bạn đã tham gia gia đình "${family.name}" với vai vế ${_roleLabel(_selectedRole)}.',
-                    'You joined family "${family.name}" as ${_roleLabel(_selectedRole)}.',
-                  ),
+            AppLanguage.text(
+              'Bạn đã tham gia gia đình "${family.name}" với vai vế ${_roleLabel(_selectedRole)}.',
+              'You joined family "${family.name}" as ${_roleLabel(_selectedRole)}.',
+            ),
             style: const TextStyle(color: mutedText, height: 1.5),
           ),
           actions: [
@@ -379,19 +368,19 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(13),
                                   decoration: BoxDecoration(
-                                    color: _previewFamily!.isPeerGroup ? const Color(0xFFE8F5E9) : const Color(0xFFE0F4EE),
+                                    color: const Color(0xFFE0F4EE),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(
-                                      color: _previewFamily!.isPeerGroup ? const Color(0xFF2E7D32) : primary,
+                                      color: primary,
                                       width: 1.2,
                                     ),
                                   ),
                                   child: Row(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Icon(
-                                        _previewFamily!.isPeerGroup ? Icons.groups_rounded : Icons.family_restroom_rounded,
-                                        color: _previewFamily!.isPeerGroup ? const Color(0xFF2E7D32) : primary,
+                                      const Icon(
+                                        Icons.family_restroom_rounded,
+                                        color: primary,
                                         size: 26,
                                       ),
                                       const SizedBox(width: 10),
@@ -409,19 +398,14 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                             ),
                                             const SizedBox(height: 3),
                                             Text(
-                                              _previewFamily!.isPeerGroup
-                                                  ? AppLanguage.text(
-                                                      '🌿 Không gian Bạn bè / Sống chung (Bình đẳng, không phân chia vai vế)',
-                                                      '🌿 Roommate / Friends space (Equal, zero role hierarchy)',
-                                                    )
-                                                  : AppLanguage.text(
-                                                      '🏡 Tổ ấm gia đình (Có phân cấp phụ huynh Bố Mẹ, Con cái)',
-                                                      '🏡 Family Hub (Parent & Child hierarchy)',
-                                                    ),
-                                              style: TextStyle(
+                                              AppLanguage.text(
+                                                '🏡 Tổ ấm gia đình (Có phân cấp Bố Mẹ, Con cái, Ông Bà)',
+                                                '🏡 Family Hub (Parent, Child, Grandparent hierarchy)',
+                                              ),
+                                              style: const TextStyle(
                                                 fontSize: 11.5,
                                                 fontWeight: FontWeight.w600,
-                                                color: _previewFamily!.isPeerGroup ? const Color(0xFF2E7D32) : primary,
+                                                color: primary,
                                               ),
                                             ),
                                           ],
@@ -435,9 +419,7 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               Align(
                                 alignment: Alignment.centerLeft,
                                 child: _RequiredLabel(
-                                  text: _previewFamily?.isPeerGroup == true
-                                      ? AppLanguage.text('Vai trò trong nhóm', 'Role in group')
-                                      : AppLanguage.text('Vai vế của bạn', 'Your Role'),
+                                  text: AppLanguage.text('Vai vế của bạn', 'Your Role'),
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -450,16 +432,12 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                   FamilyMember.roleChild,
                                 ].contains(_selectedRole)
                                     ? _selectedRole
-                                    : (_previewFamily?.isPeerGroup == true
-                                        ? FamilyMember.roleMember
-                                        : FamilyMember.roleChild),
+                                    : FamilyMember.roleChild,
                                 decoration: InputDecoration(
-                                  prefixIcon: Icon(
-                                    _previewFamily?.isPeerGroup == true
-                                        ? Icons.groups_rounded
-                                        : Icons.family_restroom_rounded,
+                                  prefixIcon: const Icon(
+                                    Icons.family_restroom_rounded,
                                     size: 20,
-                                    color: const Color(0xFF6E8B83),
+                                    color: Color(0xFF6E8B83),
                                   ),
                                   filled: true,
                                   fillColor: const Color(0xFFF8FBFA),
@@ -487,36 +465,29 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                     ),
                                   ),
                                 ),
-                                items: _previewFamily?.isPeerGroup == true
-                                    ? [
-                                        DropdownMenuItem(
-                                          value: FamilyMember.roleMember,
-                                          child: Text(AppLanguage.text('Bạn bè bình đẳng (Không role)', 'Equal Friend (No role)')),
-                                        ),
-                                      ]
-                                    : [
-                                        DropdownMenuItem(
-                                          value: FamilyMember.roleChild,
-                                          child: Text(AppLanguage.text('Con cái (Mặc định)', 'Child (Default)')),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: FamilyMember.roleParent,
-                                          child: Text(AppLanguage.text('Bố / Mẹ', 'Parent')),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: FamilyMember.roleGrandparent,
-                                          child: Text(AppLanguage.text('Ông / Bà', 'Grandparent')),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: FamilyMember.roleRelative,
-                                          child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: FamilyMember.roleMember,
-                                          child: Text(AppLanguage.text('Thành viên / Bạn bè', 'Member / Friend')),
-                                        ),
-                                      ],
-                                onChanged: _isJoining || _previewFamily?.isPeerGroup == true
+                                items: [
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleChild,
+                                    child: Text(AppLanguage.text('Con cái (Mặc định)', 'Child (Default)')),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleParent,
+                                    child: Text(AppLanguage.text('Bố / Mẹ', 'Parent')),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleGrandparent,
+                                    child: Text(AppLanguage.text('Ông / Bà', 'Grandparent')),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleRelative,
+                                    child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleMember,
+                                    child: Text(AppLanguage.text('Thành viên / Bạn bè', 'Member / Friend')),
+                                  ),
+                                ],
+                                onChanged: _isJoining
                                     ? null
                                     : (value) {
                                         if (value != null) {
@@ -539,15 +510,10 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                     const SizedBox(width: 6),
                                     Expanded(
                                       child: Text(
-                                        _previewFamily?.isPeerGroup == true
-                                            ? AppLanguage.text(
-                                                'Mô hình Bạn bè: Mọi thành viên đều có trách nhiệm và quyền hạn sinh hoạt ngang hàng.',
-                                                'Friend model: All members share equal rights and responsibilities.',
-                                              )
-                                            : AppLanguage.text(
-                                                'Quản trị an toàn: Chủ nhà (Bố/Mẹ) có toàn quyền xác thực và điều chỉnh vai vế của bạn sau khi tham gia.',
-                                                'Family governance: Family Owner (Parents) can verify and adjust your role anytime after joining.',
-                                              ),
+                                        AppLanguage.text(
+                                          'Quản trị an toàn: Chủ nhà (Bố/Mẹ) có toàn quyền xác thực và điều chỉnh vai vế của bạn sau khi tham gia.',
+                                          'Family governance: Family Owner (Parents) can verify and adjust your role anytime after joining.',
+                                        ),
                                         style: const TextStyle(fontSize: 11, color: Color(0xFF5A726B), height: 1.35),
                                       ),
                                     ),

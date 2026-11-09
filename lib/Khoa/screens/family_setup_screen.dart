@@ -92,11 +92,7 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
     final isOwner = member?.isOwner == true ||
         (family.ownerId.isNotEmpty &&
             family.ownerId == _dataService.currentUserId);
-    if (family.isPeerGroup || member?.role == FamilyMember.roleMember) {
-      return isOwner
-          ? AppLanguage.text('Trưởng nhóm • Bạn bè', 'Leader • Friend')
-          : AppLanguage.text('Bạn bè', 'Friend');
-    }
+
     final String rolePart;
     switch (member?.role) {
       case FamilyMember.roleGrandparent:
@@ -153,10 +149,10 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
     );
   }
 
-  Future<void> _openCreateFamily({bool isPeerGroup = false}) async {
+  Future<void> _openCreateFamily() async {
     final hadNoFamily = _families.isEmpty;
     final created = await Navigator.of(context).push<Family>(
-      MaterialPageRoute(builder: (_) => CreateFamilyScreen(initialIsPeerGroup: isPeerGroup)),
+      MaterialPageRoute(builder: (_) => const CreateFamilyScreen()),
     );
     if (!mounted) return;
     if (created != null) {
@@ -558,20 +554,20 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
                                   iconColor: primary,
                                   title: AppLanguage.text('Tạo gia đình mới', 'Create new family'),
                                   description: AppLanguage.text(
-                                    'Không gian gia đình hoặc bạn bè sống chung (tuỳ chọn mô hình).',
-                                    'Family space or roommate group (choose model inside).',
+                                    'Không gian gia đình với vai vế Bố Mẹ, Con cái, Ông Bà.',
+                                    'Family space with Parent, Child, and Grandparent roles.',
                                   ),
-                                  onTap: () => _openCreateFamily(isPeerGroup: false),
+                                  onTap: _openCreateFamily,
                                 ),
                                 const SizedBox(height: 14),
                                 _SetupOptionCard(
                                   icon: Icons.group_add_rounded,
                                   iconBackground: const Color(0xFFFFF0DF),
                                   iconColor: const Color(0xFFE77D2B),
-                                  title: AppLanguage.text('Tham gia gia đình / nhóm', 'Join family or group'),
+                                  title: AppLanguage.text('Tham gia gia đình', 'Join family'),
                                   description: AppLanguage.text(
-                                    'Nhập mã 6 ký tự được chia sẻ bởi người thân hoặc bạn bè.',
-                                    'Enter the 6-character code shared by family or roommates.',
+                                    'Nhập mã 6 ký tự được chia sẻ bởi người thân trong gia đình.',
+                                    'Enter the 6-character code shared by your family.',
                                   ),
                                   onTap: _openJoinFamily,
                                 ),

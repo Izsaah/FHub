@@ -8,9 +8,7 @@ import '../models/family_member.dart';
 import '../services/family_service.dart';
 
 class CreateFamilyScreen extends StatefulWidget {
-  final bool initialIsPeerGroup;
-
-  const CreateFamilyScreen({super.key, this.initialIsPeerGroup = false});
+  const CreateFamilyScreen({super.key});
 
   @override
   State<CreateFamilyScreen> createState() => _CreateFamilyScreenState();
@@ -20,7 +18,6 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
   final _formKey = GlobalKey<FormState>();
   final _familyNameController = TextEditingController();
   final FamilyService _familyService = FamilyService();
-  late bool _isPeerGroup;
   String _selectedRole = FamilyMember.roleParent;
   bool _isCreating = false;
 
@@ -32,10 +29,6 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
   @override
   void initState() {
     super.initState();
-    _isPeerGroup = widget.initialIsPeerGroup;
-    if (_isPeerGroup) {
-      _selectedRole = FamilyMember.roleMember;
-    }
   }
 
   @override
@@ -52,8 +45,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
     try {
       final family = await _familyService.createFamily(
         name: _familyNameController.text.trim(),
-        role: _isPeerGroup ? FamilyMember.roleMember : _selectedRole,
-        isPeerGroup: _isPeerGroup,
+        role: _selectedRole,
       );
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
       FamilyDataService().clearCache();
@@ -69,9 +61,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
             borderRadius: BorderRadius.circular(22),
           ),
           title: Text(
-            _isPeerGroup
-                ? AppLanguage.text('Tạo nhóm bạn thành công', 'Group created successfully')
-                : AppLanguage.text('Tạo gia đình thành công', 'Family created successfully'),
+            AppLanguage.text('Tạo gia đình thành công', 'Family created successfully'),
             style: const TextStyle(fontWeight: FontWeight.w800, color: darkText),
           ),
           content: Column(
@@ -79,15 +69,10 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _isPeerGroup
-                    ? AppLanguage.text(
-                        'Không gian nhóm bạn "${family.name}" đã được tạo. Tất cả thành viên tham gia đều là Bạn bè bình đẳng, không ai là Bố/Mẹ hay Con cái, tránh mọi tranh chấp vai trò.',
-                        'Peer space "${family.name}" was created. All members join as equal friends without parent/child hierarchy, preventing any role disputes.',
-                      )
-                    : AppLanguage.text(
-                        'Gia đình "${family.name}" đã được tạo. Bạn là Chủ nhà của gia đình này.',
-                        'Family "${family.name}" was created. You are the Owner of this family.',
-                      ),
+                AppLanguage.text(
+                  'Gia đình "${family.name}" đã được tạo. Bạn là Chủ nhà của gia đình này.',
+                  'Family "${family.name}" was created. You are the Owner of this family.',
+                ),
                 style: const TextStyle(color: mutedText, height: 1.5),
               ),
               const SizedBox(height: 16),
@@ -180,18 +165,11 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _Header(
-                          title: _isPeerGroup
-                              ? AppLanguage.text('Tạo nhóm bạn bè', 'Create Peer Group')
-                              : AppLanguage.text('Tạo gia đình', 'Create Family'),
-                          subtitle: _isPeerGroup
-                              ? AppLanguage.text(
-                                  'Không gian sống chung bình đẳng, không role vai vế',
-                                  'Shared living space, equal peers, no role hierarchy',
-                                )
-                              : AppLanguage.text(
-                                  'Thiết lập không gian chung cho gia đình bạn',
-                                  'Set up a shared space for your family',
-                                ),
+                          title: AppLanguage.text('Tạo gia đình', 'Create Family'),
+                          subtitle: AppLanguage.text(
+                            'Thiết lập không gian chung cho gia đình bạn',
+                            'Set up a shared space for your family',
+                          ),
                           onBack: () => Navigator.of(context).pop(),
                         ),
                         const SizedBox(height: 22),
@@ -201,127 +179,13 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _FieldLabel(
-                                text: AppLanguage.text('Mô hình không gian', 'Space Model'),
-                                requiredField: false,
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: InkWell(
-                                      onTap: _isCreating
-                                          ? null
-                                          : () => setState(() {
-                                                _isPeerGroup = false;
-                                                if (_selectedRole == FamilyMember.roleMember) {
-                                                  _selectedRole = FamilyMember.roleParent;
-                                                }
-                                              }),
-                                      borderRadius: BorderRadius.circular(14),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                                        decoration: BoxDecoration(
-                                          color: !_isPeerGroup ? const Color(0xFFE0F4EE) : Colors.white,
-                                          borderRadius: BorderRadius.circular(14),
-                                          border: Border.all(
-                                            color: !_isPeerGroup ? primary : const Color(0xFFDCE9E5),
-                                            width: !_isPeerGroup ? 1.8 : 1.0,
-                                          ),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            Icon(
-                                              Icons.family_restroom_rounded,
-                                              color: !_isPeerGroup ? primary : mutedText,
-                                              size: 26,
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              AppLanguage.text('Tổ ấm gia đình', 'Family Hub'),
-                                              style: TextStyle(
-                                                fontSize: 12.5,
-                                                fontWeight: !_isPeerGroup ? FontWeight.bold : FontWeight.w500,
-                                                color: !_isPeerGroup ? darkText : mutedText,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              AppLanguage.text('Có vai vế phụ huynh', 'With role hierarchy'),
-                                              style: TextStyle(
-                                                fontSize: 10.5,
-                                                color: !_isPeerGroup ? primary : mutedText,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: InkWell(
-                                      onTap: _isCreating
-                                          ? null
-                                          : () => setState(() {
-                                                _isPeerGroup = true;
-                                                _selectedRole = FamilyMember.roleMember;
-                                              }),
-                                      borderRadius: BorderRadius.circular(14),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                                        decoration: BoxDecoration(
-                                          color: _isPeerGroup ? const Color(0xFFE8F5E9) : Colors.white,
-                                          borderRadius: BorderRadius.circular(14),
-                                          border: Border.all(
-                                            color: _isPeerGroup ? const Color(0xFF2E7D32) : const Color(0xFFDCE9E5),
-                                            width: _isPeerGroup ? 1.8 : 1.0,
-                                          ),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            Icon(
-                                              Icons.groups_rounded,
-                                              color: _isPeerGroup ? const Color(0xFF2E7D32) : mutedText,
-                                              size: 26,
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              AppLanguage.text('Bạn bè / Sống chung', 'Roommates / Friends'),
-                                              style: TextStyle(
-                                                fontSize: 12.5,
-                                                fontWeight: _isPeerGroup ? FontWeight.bold : FontWeight.w500,
-                                                color: _isPeerGroup ? darkText : mutedText,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              AppLanguage.text('Không role, bình đẳng', 'No role, equal peers'),
-                                              style: TextStyle(
-                                                fontSize: 10.5,
-                                                fontWeight: _isPeerGroup ? FontWeight.w600 : FontWeight.normal,
-                                                color: _isPeerGroup ? const Color(0xFF2E7D32) : mutedText,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 18),
                               _SectionTitle(
-                                icon: _isPeerGroup ? Icons.groups_rounded : Icons.home_work_rounded,
-                                title: _isPeerGroup
-                                    ? AppLanguage.text('Thông tin nhóm bạn', 'Group Information')
-                                    : AppLanguage.text('Thông tin gia đình', 'Family Information'),
+                                icon: Icons.home_work_rounded,
+                                title: AppLanguage.text('Thông tin gia đình', 'Family Information'),
                               ),
                               const SizedBox(height: 18),
                               _FieldLabel(
-                                text: _isPeerGroup
-                                    ? AppLanguage.text('Tên nhóm bạn / Tên phòng trọ', 'Group / Room Name')
-                                    : AppLanguage.text('Tên gia đình', 'Family Name'),
+                                text: AppLanguage.text('Tên gia đình', 'Family Name'),
                                 requiredField: true,
                               ),
                               const SizedBox(height: 8),
@@ -334,124 +198,64 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                                   fontWeight: FontWeight.w600,
                                 ),
                                 decoration: _inputDecoration(
-                                  hintText: _isPeerGroup
-                                      ? AppLanguage.text('Ví dụ: Phòng 402, Nhà KTX Bách Khoa', 'e.g. Room 402, Green Dorm')
-                                      : AppLanguage.text('Ví dụ: Gia đình Lê Hoàng', 'e.g. The Smith Family'),
-                                  prefixIcon: _isPeerGroup ? Icons.group_work_rounded : Icons.home_rounded,
+                                  hintText: AppLanguage.text('Ví dụ: Gia đình Lê Hoàng', 'e.g. The Smith Family'),
+                                  prefixIcon: Icons.home_rounded,
                                 ),
                                 validator: (value) {
                                   if (value == null || value.trim().isEmpty) {
-                                    return _isPeerGroup
-                                        ? AppLanguage.text('Vui lòng nhập tên nhóm / phòng trọ', 'Please enter a group name')
-                                        : AppLanguage.text('Vui lòng nhập tên gia đình', 'Please enter a family name');
+                                    return AppLanguage.text('Vui lòng nhập tên gia đình', 'Please enter a family name');
                                   }
                                   if (value.trim().length < 3) {
-                                    return _isPeerGroup
-                                        ? AppLanguage.text('Tên nhóm cần ít nhất 3 ký tự', 'Group name must be at least 3 characters')
-                                        : AppLanguage.text('Tên gia đình cần ít nhất 3 ký tự', 'Family name must be at least 3 characters');
+                                    return AppLanguage.text('Tên gia đình cần ít nhất 3 ký tự', 'Family name must be at least 3 characters');
                                   }
                                   return null;
                                 },
                               ),
-                              if (!_isPeerGroup) ...[
-                                const SizedBox(height: 16),
-                                _FieldLabel(
-                                  text: AppLanguage.text('Vai vế của bạn', 'Your Role'),
-                                  requiredField: true,
+                              const SizedBox(height: 16),
+                              _FieldLabel(
+                                text: AppLanguage.text('Vai vế của bạn', 'Your Role'),
+                                requiredField: true,
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String>(
+                                initialValue: [
+                                  FamilyMember.roleGrandparent,
+                                  FamilyMember.roleParent,
+                                  FamilyMember.roleRelative,
+                                  FamilyMember.roleChild,
+                                ].contains(_selectedRole)
+                                    ? _selectedRole
+                                    : FamilyMember.roleParent,
+                                decoration: _inputDecoration(
+                                  hintText: AppLanguage.text('Chọn vai vế', 'Select role'),
+                                  prefixIcon: Icons.family_restroom_rounded,
                                 ),
-                                const SizedBox(height: 8),
-                                DropdownButtonFormField<String>(
-                                  initialValue: [
-                                    FamilyMember.roleGrandparent,
-                                    FamilyMember.roleParent,
-                                    FamilyMember.roleRelative,
-                                    FamilyMember.roleMember,
-                                    FamilyMember.roleChild,
-                                  ].contains(_selectedRole)
-                                      ? _selectedRole
-                                      : FamilyMember.roleParent,
-                                  decoration: _inputDecoration(
-                                    hintText: AppLanguage.text('Chọn vai vế', 'Select role'),
-                                    prefixIcon: Icons.family_restroom_rounded,
+                                items: [
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleParent,
+                                    child: Text(AppLanguage.text('Bố / Mẹ', 'Parent')),
                                   ),
-                                  items: [
-                                    DropdownMenuItem(
-                                      value: FamilyMember.roleGrandparent,
-                                      child: Text(AppLanguage.text('Ông / Bà', 'Grandparent')),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: FamilyMember.roleParent,
-                                      child: Text(AppLanguage.text('Bố / Mẹ', 'Parent')),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: FamilyMember.roleRelative,
-                                      child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: FamilyMember.roleMember,
-                                      child: Text(AppLanguage.text('Thành viên / Bạn bè', 'Member / Friend')),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: FamilyMember.roleChild,
-                                      child: Text(AppLanguage.text('Con cái', 'Child')),
-                                    ),
-                                  ],
-                                  onChanged: _isCreating
-                                      ? null
-                                      : (value) {
-                                          if (value != null) {
-                                            setState(() => _selectedRole = value);
-                                          }
-                                        },
-                                ),
-                              ] else ...[
-                                const SizedBox(height: 16),
-                                Container(
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF1F8E9),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: const Color(0xFFC5E1A5)),
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleGrandparent,
+                                    child: Text(AppLanguage.text('Ông / Bà', 'Grandparent')),
                                   ),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Icon(Icons.shield_outlined, color: Color(0xFF2E7D32), size: 24),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              AppLanguage.text(
-                                                'Chế độ Không Role (Bạn bè sống chung)',
-                                                'No-Role Mode (Roommates Living Together)',
-                                              ),
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                                color: Color(0xFF1B5E20),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              AppLanguage.text(
-                                                'Tất cả thành viên đều là Bạn bè bình đẳng. Không có vai vế Bố/Mẹ hay Con cái, loại bỏ hoàn toàn tranh chấp vai trò trong nhà!',
-                                                'All members join as equal friends. No parent/child hierarchy, eliminating any role disputes!',
-                                              ),
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                color: Color(0xFF2E7D32),
-                                                height: 1.45,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleRelative,
+                                    child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
                                   ),
-                                ),
-                              ],
+                                  DropdownMenuItem(
+                                    value: FamilyMember.roleChild,
+                                    child: Text(AppLanguage.text('Con cái', 'Child')),
+                                  ),
+                                ],
+                                onChanged: _isCreating
+                                    ? null
+                                    : (value) {
+                                        if (value != null) {
+                                          setState(() => _selectedRole = value);
+                                        }
+                                      },
+                              ),
                             ],
                           ),
                         ),
@@ -506,9 +310,7 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                             label: Text(
                               _isCreating
                                   ? AppLanguage.text('Đang tạo...', 'Creating...')
-                                  : _isPeerGroup
-                                      ? AppLanguage.text('Tạo nhóm bạn bè', 'Create Peer Group')
-                                      : AppLanguage.text('Tạo gia đình', 'Create Family'),
+                                  : AppLanguage.text('Tạo gia đình', 'Create Family'),
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: primary,

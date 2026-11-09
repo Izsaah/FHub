@@ -392,7 +392,7 @@ class FamilyMemberTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
-                  color: isPeerGroup ? const Color(0xFFE0F4EE) : const Color(0xFFFFDCBD),
+                  color: const Color(0xFFFFDCBD),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -400,12 +400,10 @@ class FamilyMemberTile extends StatelessWidget {
                   children: [
                     const Text('👑 ', style: TextStyle(fontSize: 10)),
                     Text(
-                      isPeerGroup
-                          ? LongStrings.t('Trưởng nhóm', 'Leader')
-                          : LongStrings.t('Chủ nhà', 'Owner'),
-                      style: TextStyle(
+                      LongStrings.t('Chủ nhà', 'Owner'),
+                      style: const TextStyle(
                         fontSize: 11,
-                        color: isPeerGroup ? const Color(0xFF07866F) : const Color(0xFF6C3E00),
+                        color: Color(0xFF6C3E00),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -427,35 +425,32 @@ class FamilyMemberTile extends StatelessWidget {
     Color fg;
     String label;
 
-    if (isPeerGroup || role == HierarchyRole.member) {
-      bg = const Color(0xFFE0F4EE);
-      fg = const Color(0xFF07866F);
-      label = LongStrings.t('Bạn bè', 'Friend');
-    } else {
-      label = role.displayName;
-      switch (role) {
-        case HierarchyRole.grandparent:
-          bg = const Color(0xFFFFF3CD);
-          fg = const Color(0xFF856404);
-          break;
-        case HierarchyRole.parent:
-          bg = const Color(0xFFD1ECF1);
-          fg = const Color(0xFF0C5460);
-          break;
-        case HierarchyRole.child:
-          bg = const Color(0xFFE8DAEF);
-          fg = const Color(0xFF5B2C6F);
-          break;
-        case HierarchyRole.relative:
-          bg = const Color(0xFFE2F0D9);
-          fg = const Color(0xFF385723);
-          break;
-        case HierarchyRole.member:
-          bg = const Color(0xFFE0F4EE);
-          fg = const Color(0xFF07866F);
-          label = LongStrings.t('Bạn bè', 'Friend');
-          break;
-      }
+    switch (role) {
+      case HierarchyRole.grandparent:
+        bg = const Color(0xFFFFF3CD);
+        fg = const Color(0xFF856404);
+        label = role.displayName;
+        break;
+      case HierarchyRole.parent:
+        bg = const Color(0xFFD1ECF1);
+        fg = const Color(0xFF0C5460);
+        label = role.displayName;
+        break;
+      case HierarchyRole.child:
+        bg = const Color(0xFFE8DAEF);
+        fg = const Color(0xFF5B2C6F);
+        label = role.displayName;
+        break;
+      case HierarchyRole.relative:
+        bg = const Color(0xFFE2F0D9);
+        fg = const Color(0xFF385723);
+        label = role.displayName;
+        break;
+      case HierarchyRole.member:
+        bg = const Color(0xFFE0F4EE);
+        fg = const Color(0xFF07866F);
+        label = LongStrings.t('Thành viên', 'Member');
+        break;
     }
 
     if (isMuted) {

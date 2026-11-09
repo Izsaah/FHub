@@ -65,7 +65,7 @@ class FamilyMemberModel {
       case HierarchyRole.relative:
         return LongStrings.t('Cô / Dì / Chú / Bác', 'Relative');
       case HierarchyRole.member:
-        return LongStrings.t('Bạn bè', 'Friend');
+        return LongStrings.t('Thành viên', 'Member');
       case HierarchyRole.parent:
         return role == Role.owner
             ? LongStrings.t('Chủ nhà', 'Owner')
