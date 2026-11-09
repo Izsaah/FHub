@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 
 class ReminderValidator {
-  static const String futureTimeErrorMessage = 'Reminder time must be in the future.';
+  static String get futureTimeErrorMessage =>
+      AppLanguage.text('Thời gian lời nhắc phải ở tương lai.', 'Reminder time must be in the future.');
 
   /// Maximum allowed title length for security and UI consistency
   static const int maxTitleLength = 120;

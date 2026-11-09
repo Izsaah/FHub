@@ -549,9 +549,16 @@ class FirebaseReminderRepository implements ReminderRepository {
     // 3. Validate Date + Time must be in the future (nếu thay đổi ngày/giờ)
     final existingDue = existing.dueDateTime;
     final newDue = reminder.dueDateTime;
-    final isDateTimeChanged = existingDue != null && newDue != null
-        ? !existingDue.isAtSameMomentAs(newDue)
-        : (existing.date != reminder.date || existing.time != reminder.time);
+    final bool isDateTimeChanged;
+    if (existingDue != null && newDue != null) {
+      isDateTimeChanged = !(existingDue.year == newDue.year &&
+          existingDue.month == newDue.month &&
+          existingDue.day == newDue.day &&
+          existingDue.hour == newDue.hour &&
+          existingDue.minute == newDue.minute);
+    } else {
+      isDateTimeChanged = existing.date != reminder.date || existing.time != reminder.time;
+    }
     if (isDateTimeChanged) {
       final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
         reminder.date,

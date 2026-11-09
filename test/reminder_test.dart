@@ -433,12 +433,15 @@ void main() {
       expect(find.text('Tomorrow Task Wash Car'), findsNothing);
 
       // Tap "Tất cả" chip in WeeklyCalendarStrip
-      await tester.tap(find.text('Tất cả'));
+            await tester.tap(find.text('Tất cả'));
       await tester.pumpAndSettle();
+            await tester.pumpAndSettle();
 
       // Assert both today's and tomorrow's reminders are visible
       expect(find.text('Today Task Clean Room'), findsOneWidget);
-      expect(find.text('Tomorrow Task Wash Car'), findsOneWidget);
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+            expect(find.text('Tomorrow Task Wash Car'), findsOneWidget);
     });
 
     testWidgets('CalendarPage renders MonthlyCalendarGrid and tasks',

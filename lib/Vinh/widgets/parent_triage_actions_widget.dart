@@ -53,6 +53,8 @@ class _ParentTriageActionsWidgetState extends State<ParentTriageActionsWidget> {
       await MultiTierEscalationService.instance.convertToVolunteerBounty(
         reminderId: widget.reminder.id,
         bonusStars: 5,
+        initialRewardStars: widget.reminder.rewardStars,
+        familyId: widget.reminder.familyId,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -67,6 +69,20 @@ class _ParentTriageActionsWidgetState extends State<ParentTriageActionsWidget> {
           ),
         );
         widget.onActionCompleted?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                'Lỗi khi chuyển việc: $e',
+                'Error converting task: $e',
+              ),
+            ),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -92,6 +108,20 @@ class _ParentTriageActionsWidgetState extends State<ParentTriageActionsWidget> {
           ),
         );
         widget.onActionCompleted?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                'Lỗi khi đóng việc: $e',
+                'Error closing task: $e',
+              ),
+            ),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

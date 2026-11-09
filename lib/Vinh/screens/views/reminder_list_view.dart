@@ -30,6 +30,7 @@ class ReminderListView extends StatelessWidget {
   final ValueChanged<ReminderModel> onDeleteReminder;
   final ValueChanged<ReminderModel> onClaimReminder;
   final ValueChanged<ReminderModel>? onClaimAndCompleteReminder;
+  final Widget? triageBanner;
 
   const ReminderListView({
     super.key,
@@ -51,6 +52,7 @@ class ReminderListView extends StatelessWidget {
     required this.onDeleteReminder,
     required this.onClaimReminder,
     this.onClaimAndCompleteReminder,
+    this.triageBanner,
   });
 
   @override
@@ -84,24 +86,39 @@ class ReminderListView extends StatelessWidget {
             }
 
             final overdueList = activeReminders
-                .where((r) => r.isOverdue && !r.isCompleted && !r.isSubmitted)
+                .where((r) =>
+                    r.isOverdue &&
+                    !r.isCompleted &&
+                    !r.isSubmitted &&
+                    !r.isClosedMissed &&
+                    !r.isOpenTask)
                 .toList();
 
             final openList = activeReminders
-                .where((r) => r.isOpen && !r.isOverdue && !r.isCompleted)
+                .where((r) =>
+                    (r.isOpen || r.isOpenTask) &&
+                    !r.isCompleted &&
+                    !r.isClosedMissed)
                 .toList();
 
             final pendingList = activeReminders
                 .where((r) =>
-                    r.isPending && !r.isOverdue && !r.isOpen && !r.isCompleted)
+                    r.isPending &&
+                    !r.isOverdue &&
+                    !r.isOpen &&
+                    !r.isOpenTask &&
+                    !r.isCompleted &&
+                    !r.isClosedMissed)
                 .toList();
+
 
             final submittedList = activeReminders
-                .where((r) => r.isSubmitted && !r.isCompleted)
+                .where((r) => r.isSubmitted && !r.isCompleted && !r.isClosedMissed)
                 .toList();
 
-            final completedList =
-                activeReminders.where((r) => r.isCompleted).toList();
+            final completedList = activeReminders
+                .where((r) => r.isCompleted || r.isClosedMissed)
+                .toList();
 
             bool canDelete(ReminderModel r) {
               if (canDeletePredicate != null) {
@@ -122,6 +139,7 @@ class ReminderListView extends StatelessWidget {
               physics: physics,
               padding: EdgeInsets.fromLTRB(16, 4, 16, shrinkWrap ? 96 : 110),
               children: [
+                ?triageBanner,
                 // 1. Nhóm Quá Hạn (Ưu tiên cao nhất)
                 if (overdueList.isNotEmpty) ...[
                   ReminderSectionHeader(

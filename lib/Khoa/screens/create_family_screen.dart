@@ -218,9 +218,10 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                               ),
                               const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
+                                key: ValueKey(_selectedRole),
                                 initialValue: [
-                                  FamilyMember.roleGrandparent,
                                   FamilyMember.roleParent,
+                                  FamilyMember.roleGrandparent,
                                   FamilyMember.roleRelative,
                                   FamilyMember.roleChild,
                                 ].contains(_selectedRole)

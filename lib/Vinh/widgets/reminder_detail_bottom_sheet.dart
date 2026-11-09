@@ -2018,7 +2018,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
                               },
                             ),
                           )
-                        else if (reminder.isOverdue && (isGuardian || reminder.creatorId == currentUserId)) ...[
+                        else if (reminder.isOverdue && !reminder.isClosedMissed && !reminder.isOpenTask && (isGuardian || reminder.creatorId == currentUserId)) ...[
                           const SizedBox(height: 8),
                           ParentTriageActionsWidget(
                             reminder: reminder,

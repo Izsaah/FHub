@@ -1124,7 +1124,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<HierarchyRole>(
-                  initialValue: selectedRole,
+                  key: ValueKey(selectedRole),
+                  initialValue: HierarchyRole.values.contains(selectedRole) ? selectedRole : HierarchyRole.parent,
                   decoration: InputDecoration(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),

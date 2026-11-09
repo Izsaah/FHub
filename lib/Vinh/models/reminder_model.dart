@@ -166,6 +166,8 @@ class ReminderModel {
   final String? originalTaskId;
   final String? creatorHierarchyRole;
   final String? targetHierarchyRole;
+  final bool isClosedMissed;
+  final DateTime? closedMissedAt;
 
   const ReminderModel({
     required this.id,
@@ -196,6 +198,8 @@ class ReminderModel {
     this.originalTaskId,
     this.creatorHierarchyRole,
     this.targetHierarchyRole,
+    this.isClosedMissed = false,
+    this.closedMissedAt,
   });
 
   bool get hasVoiceNote => voiceNotePath != null && voiceNotePath!.isNotEmpty;
@@ -371,6 +375,8 @@ class ReminderModel {
     String? originalTaskId,
     String? creatorHierarchyRole,
     String? targetHierarchyRole,
+    bool? isClosedMissed,
+    DateTime? closedMissedAt,
   }) {
     final newStatus = status ?? this.status;
     final newTaskStatus = taskStatus ??
@@ -414,6 +420,8 @@ class ReminderModel {
       creatorHierarchyRole:
           creatorHierarchyRole ?? this.creatorHierarchyRole,
       targetHierarchyRole: targetHierarchyRole ?? this.targetHierarchyRole,
+      isClosedMissed: isClosedMissed ?? this.isClosedMissed,
+      closedMissedAt: closedMissedAt ?? this.closedMissedAt,
     );
   }
 
@@ -542,6 +550,14 @@ class ReminderModel {
           json['creator_hierarchy_role']) as String?,
       targetHierarchyRole: (json['targetHierarchyRole'] ??
           json['target_hierarchy_role']) as String?,
+      isClosedMissed: json['isClosedMissed'] == true ||
+          json['is_closed_missed'] == true ||
+          json['closedMissedAt'] != null ||
+          json['closed_missed_at'] != null ||
+          json['status'] == 'CLOSED' ||
+          json['status'] == 'MISSED',
+      closedMissedAt: _parseDateTime(
+          json['closedMissedAt'] ?? json['closed_missed_at']),
     );
   }
 
@@ -626,6 +642,12 @@ class ReminderModel {
         'targetHierarchyRole': targetHierarchyRole,
         'target_hierarchy_role': targetHierarchyRole,
       },
+      'isClosedMissed': isClosedMissed,
+      'is_closed_missed': isClosedMissed,
+      if (closedMissedAt != null) ...{
+        'closedMissedAt': closedMissedAt!.toIso8601String(),
+        'closed_missed_at': closedMissedAt!.toIso8601String(),
+      },
     };
   }
 
@@ -701,6 +723,12 @@ class ReminderModel {
       if (targetHierarchyRole != null) ...{
         'targetHierarchyRole': targetHierarchyRole,
         'target_hierarchy_role': targetHierarchyRole,
+      },
+      'isClosedMissed': isClosedMissed,
+      'is_closed_missed': isClosedMissed,
+      if (closedMissedAt != null) ...{
+        'closedMissedAt': Timestamp.fromDate(closedMissedAt!),
+        'closed_missed_at': Timestamp.fromDate(closedMissedAt!),
       },
     };
   }

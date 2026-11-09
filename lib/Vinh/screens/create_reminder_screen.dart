@@ -237,6 +237,8 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
 
   String _localizeValidationMessage(String raw) {
     if (raw.contains('Reminder time must be in the future') ||
+        raw.contains('Thời gian lời nhắc') ||
+        raw.contains('tương lai') ||
         raw == ReminderValidator.futureTimeErrorMessage) {
       return AppLanguage.text(
         'Thời gian lời nhắc phải ở tương lai.',

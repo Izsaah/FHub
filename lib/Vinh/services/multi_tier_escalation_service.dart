@@ -967,15 +967,34 @@ class MultiTierEscalationService {
   Future<void> convertToVolunteerBounty({
     required String reminderId,
     int bonusStars = 5,
+    int? initialRewardStars,
+    String? familyId,
   }) async {
+    final now = DateTime.now();
+    final newDueAt = now.add(const Duration(hours: 3));
+    final timeStr =
+        '${newDueAt.hour.toString().padLeft(2, '0')}:${newDueAt.minute.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${newDueAt.day.toString().padLeft(2, '0')}/${newDueAt.month.toString().padLeft(2, '0')}/${newDueAt.year}';
+
+    snoozedOnceReminderIds.remove(reminderId);
+    _safeFollowUpActiveIds.remove(reminderId);
+    snoozeDueAt.remove(reminderId);
+    cancelEscalation(reminderId);
+
     final idx = _trackedReminders.indexWhere((r) => r.id == reminderId);
-    int currentReward = 0;
+    int currentReward = initialRewardStars ?? 0;
     if (idx != -1) {
-      currentReward = _trackedReminders[idx].rewardStars;
+      if (initialRewardStars == null) {
+        currentReward = _trackedReminders[idx].rewardStars;
+      }
       _trackedReminders[idx] = _trackedReminders[idx].copyWith(
         assignedTo: 'OPEN',
+        assignedToName: 'Việc xung phong',
         status: ReminderStatus.open,
         rewardStars: currentReward + bonusStars,
+        date: dateStr,
+        time: timeStr,
       );
     }
 
@@ -983,24 +1002,37 @@ class MultiTierEscalationService {
       try {
         await FirebaseFirestore.instance.collection('reminders').doc(reminderId).update({
           'assignedTo': 'OPEN',
+          'assignedToName': 'Việc xung phong',
           'status': ReminderStatus.open,
           'isOpenTask': true,
           'rewardStars': currentReward + bonusStars,
           'bountyBonusStars': bonusStars,
           'convertedToBountyAt': FieldValue.serverTimestamp(),
+          'date': dateStr,
+          'time': timeStr,
+          'dueDate': Timestamp.fromDate(newDueAt),
+          'overdueAt': Timestamp.fromDate(newDueAt.add(snoozeDuration)),
+          'escalationCount': 0,
         });
       } catch (e) {
         debugPrint('[convertToVolunteerBounty] Firestore update error: $e');
+        rethrow;
       }
     }
   }
 
   /// Đóng việc khi bỏ lỡ hạn
   Future<void> closeMissedTask({required String reminderId}) async {
+    snoozedOnceReminderIds.remove(reminderId);
+    _safeFollowUpActiveIds.remove(reminderId);
+    snoozeDueAt.remove(reminderId);
+    cancelEscalation(reminderId);
+
     final idx = _trackedReminders.indexWhere((r) => r.id == reminderId);
     if (idx != -1) {
       _trackedReminders[idx] = _trackedReminders[idx].copyWith(
         status: ReminderStatus.overdue,
+        isClosedMissed: true,
       );
     }
 
@@ -1008,10 +1040,12 @@ class MultiTierEscalationService {
       try {
         await FirebaseFirestore.instance.collection('reminders').doc(reminderId).update({
           'status': ReminderStatus.overdue,
+          'isClosedMissed': true,
           'closedMissedAt': FieldValue.serverTimestamp(),
         });
       } catch (e) {
         debugPrint('[closeMissedTask] Firestore update error: $e');
+        rethrow;
       }
     }
   }

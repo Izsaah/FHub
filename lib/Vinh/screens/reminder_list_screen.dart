@@ -291,10 +291,11 @@ class _ReminderListScreenState extends State<ReminderListScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     MultiTierEscalationService.instance.clockTick.removeListener(_onClockTick);
+    MultiTierEscalationService.instance.stopClock();
+    MultiTierEscalationService.instance.cancelAll();
     FamilyDataService().selectedFamilyIdNotifier.removeListener(_onGlobalFamilyNotifierChanged);
     _clockTicker?.cancel();
     _clockTicker = null;
-    // Global escalation service continues running in background for active family members
     _familyMembersSub?.cancel();
     _deleteSnackBarTimer?.cancel();
     _searchController.dispose();
@@ -2088,25 +2089,22 @@ class _ReminderListScreenState extends State<ReminderListScreen>
                           dateTitle: _showAll ? AppLanguage.text('Tất cả', 'All') : selectedDateStr,
                         ),
 
-                        // Urgent Parent Triage Alert Card if tasks are escalated overdue
-                        Builder(
-                          builder: (context) {
-                            final overdueNeedingTriage = scopedReminders.where((r) {
-                              if (!r.isOverdue || r.isCompleted || r.isDeleted || r.isSubmitted) return false;
-                              final isGuardian = _familyMembers.any(
-                                (m) => m.id == _currentUserId && (m.isParent || m.isGrandparent || m.isOwner),
-                              );
-                              return isGuardian || r.creatorId == _currentUserId;
-                            }).toList();
-
-                            if (overdueNeedingTriage.isEmpty) return const SizedBox.shrink();
-                            return _buildParentTriageUrgentBanner(overdueNeedingTriage);
-                          },
-                        ),
-
                         // List View phân nhóm theo các mức ưu tiên
                         Expanded(
-                          child: ReminderListView(
+                          child: Builder(
+                            builder: (context) {
+                              final overdueNeedingTriage = scopedReminders.where((r) {
+                                if (!r.isOverdue || r.isCompleted || r.isDeleted || r.isSubmitted || r.isOpenTask || r.isOpen || r.isClosedMissed) return false;
+                                final isGuardian = _familyMembers.any(
+                                  (m) => m.id == _currentUserId && (m.isParent || m.isGrandparent || m.isOwner),
+                                );
+                                return isGuardian || r.creatorId == _currentUserId;
+                              }).toList();
+
+                              return ReminderListView(
+                                triageBanner: overdueNeedingTriage.isNotEmpty
+                                    ? _buildParentTriageUrgentBanner(overdueNeedingTriage)
+                                    : null,
                             allReminders: scopedReminders,
                             displayedReminders: displayedReminders,
                             currentUserId: _currentUserId,
@@ -2127,6 +2125,8 @@ class _ReminderListScreenState extends State<ReminderListScreen>
                             onDeleteReminder: _confirmAndDelete,
                             onClaimReminder: _claimReminder,
                             onClaimAndCompleteReminder: _claimAndCompleteReminder,
+                              );
+                            },
                           ),
                         ),
                       ],
@@ -2210,8 +2210,8 @@ class _ReminderListScreenState extends State<ReminderListScreen>
   }
   Widget _buildParentTriageUrgentBanner(List<ReminderModel> overdueTasks) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFFFFF0F0),
         borderRadius: BorderRadius.circular(16),
@@ -2254,10 +2254,10 @@ class _ReminderListScreenState extends State<ReminderListScreen>
             ),
             style: const TextStyle(fontSize: 12, color: Color(0xFF5D4037)),
           ),
-          const SizedBox(height: 10),
-          ...overdueTasks.take(3).map((task) => Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(10),
+          const SizedBox(height: 6),
+          ...overdueTasks.take(1).map((task) => Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
@@ -2281,7 +2281,7 @@ class _ReminderListScreenState extends State<ReminderListScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     ParentTriageActionsWidget(
                       reminder: task,
                       onActionCompleted: () {

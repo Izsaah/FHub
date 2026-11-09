@@ -566,7 +566,27 @@ class ReminderCard extends StatelessWidget {
                                         ],
                                       ),
                                     ),
-                                  if (reminder.isOverdue)
+                                  if (reminder.isClosedMissed)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFECEFF1),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        AppLanguage.text(
+                                          'Đã đóng',
+                                          'Closed',
+                                        ),
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF546E7A),
+                                        ),
+                                      ),
+                                    )
+                                  else if (reminder.isOverdue)
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 6, vertical: 1),
