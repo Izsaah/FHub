@@ -4,6 +4,7 @@ class FamilyMember {
   static const roleChild = 'CHILD';
   static const roleOwner = 'OWNER';
   static const roleRelative = 'RELATIVE';
+  static const roleMember = 'MEMBER';
 
   final String id;
   final String name;
@@ -12,6 +13,8 @@ class FamilyMember {
   final String? avatarType;
   final String familyId;
   final int rewardStarsTotal;
+  final String status;
+  final bool isActive;
 
   const FamilyMember({
     required this.id,
@@ -21,6 +24,8 @@ class FamilyMember {
     this.avatarType,
     required this.familyId,
     this.rewardStarsTotal = 0,
+    this.status = 'ACTIVE',
+    this.isActive = true,
   });
 
   String get _effectiveRole =>
@@ -63,6 +68,13 @@ class FamilyMember {
   bool get canCreateForOthers => isParent || isGrandparent || isRelative;
   bool get canAssignChores => (isParent || isGrandparent) && !isRelative;
 
+  bool get isMemorialized =>
+      status.toUpperCase() == 'MEMORIALIZED' ||
+      status.toUpperCase() == 'MEMORIAL';
+
+  bool get isDeactivated =>
+      status.toUpperCase() == 'DEACTIVATED' || !isActive;
+
   int get hierarchyLevel {
     if (isGrandparent) return 3;
     if (isParent || isOwner) return 2;
@@ -71,6 +83,8 @@ class FamilyMember {
   }
 
   String get roleDisplayName {
+    if (isMemorialized) return 'Tưởng nhớ (Đã khuất)';
+    if (isDeactivated) return 'Tạm ngưng kết nối';
     if (isGrandparent) return 'Ông Bà';
     if (isParent) return 'Bố Mẹ';
     if (isRelative) return 'Cô / Dì / Chú / Bác';
@@ -79,6 +93,11 @@ class FamilyMember {
   }
 
   factory FamilyMember.fromJson(Map<String, dynamic> json) {
+    final rawStatus = (json['status'] ?? 'ACTIVE').toString();
+    final bool active = json['isActive'] is bool
+        ? json['isActive'] as bool
+        : (rawStatus.toUpperCase() != 'DEACTIVATED');
+
     return FamilyMember(
       id: (json['user_id'] ?? json['id'] ?? '').toString(),
       name: json['name'] as String? ?? 'Member',
@@ -89,6 +108,8 @@ class FamilyMember {
       rewardStarsTotal: json['reward_stars_total'] as int? ??
           json['rewardStarsTotal'] as int? ??
           0,
+      status: rawStatus,
+      isActive: active,
     );
   }
 
@@ -101,6 +122,8 @@ class FamilyMember {
       'avatarType': avatarType,
       'familyId': familyId,
       'rewardStarsTotal': rewardStarsTotal,
+      'status': status,
+      'isActive': isActive,
     };
   }
 
@@ -112,6 +135,8 @@ class FamilyMember {
     String? avatarType,
     String? familyId,
     int? rewardStarsTotal,
+    String? status,
+    bool? isActive,
   }) {
     return FamilyMember(
       id: id ?? this.id,
@@ -121,6 +146,8 @@ class FamilyMember {
       avatarType: avatarType ?? this.avatarType,
       familyId: familyId ?? this.familyId,
       rewardStarsTotal: rewardStarsTotal ?? this.rewardStarsTotal,
+      status: status ?? this.status,
+      isActive: isActive ?? this.isActive,
     );
   }
 
@@ -134,7 +161,6 @@ class FamilyMember {
   @override
   int get hashCode => id.hashCode;
 }
-
 
 /// Đại diện cho một Gia đình mà người dùng tham gia (Hỗ trợ 1 người tham gia N gia đình)
 class FamilyOption {

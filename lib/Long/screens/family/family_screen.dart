@@ -644,6 +644,57 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     ),
                     const SizedBox(height: 16),
 
+                    // Peer Group / Roommate Badge Banner if isPeerGroup == true
+                    if (family.isPeerGroup) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFF81C784)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.people_alt_outlined, color: Color(0xFF2E7D32), size: 22),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    LongStrings.t(
+                                      'Mô hình Sống chung / Bạn bè (Không role)',
+                                      'Roommate / Peer Living Space (No Role)',
+                                    ),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: Color(0xFF1B5E20),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    LongStrings.t(
+                                      'Tất cả thành viên đều bình đẳng, cùng chia sẻ trách nhiệm sinh hoạt.',
+                                      'All members are equal peers with shared living responsibilities.',
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      color: Color(0xFF2E7D32),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    // Family Premium Status Widget (Member quota, Grace Period countdown, Piggy Bank)
+                    DanhPaymentEntry.buildFamilyPremiumStatus(members.length),
+
                     // Guardian Reviewer Section for Pending Join Requests
                     if (isGuardian) ...[
                       _buildPendingRequestsSection(family.id),

@@ -170,6 +170,55 @@ class DanhPaymentEntry {
   }
 
   /// Widget hiển thị tiến trình hạn mức và trạng thái gói cho TOÀN BỘ thành viên trong Family
+  /// Kiểm tra xem gia đình có đang bị đóng băng vượt ghế sau 7 ngày ân hạn hay không
+  static bool get isOverCapacityFrozen => service.isOverCapacityFrozen;
+  static bool get isGracePeriod => service.isGracePeriod;
+
+  /// Hiển thị thông báo khi tính năng bị tạm khóa do vượt ghế
+  /// Điều hướng tới Cửa Hàng Đổi Sao (Alias cho openWishlistAndLedger)
+  static Future<void> openWishlistShop(BuildContext context) => openWishlistAndLedger(context);
+
+  static Future<void> showOverCapacityFrozenDialog(BuildContext context) {
+    return showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.lock_clock_rounded, color: Colors.red),
+            const SizedBox(width: 8),
+            Text(AppLanguage.text('Tạm Khóa Tính Năng', 'Feature Frozen')),
+          ],
+        ),
+        content: Text(
+          AppLanguage.text(
+            'Gia đình đã vượt quá hạn mức 4 người của gói Miễn phí và hết thời gian ân hạn.\n\nTính năng tạo lời nhắc mới và điểm danh tạm thời bị khóa. Vui lòng nâng cấp gói Premium (10 người) hoặc chuyển bớt thành viên sang Tạm ngưng để tiếp tục sử dụng miễn phí!',
+            'Family has exceeded 4-member limit and grace period expired.\n\nCreating new tasks and check-ins are temporarily frozen. Please upgrade to Premium (10 members) or set members to inactive to continue for free!',
+          ),
+          style: const TextStyle(fontSize: 13.5, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppLanguage.text('Đóng', 'Close')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF005F50),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              openPremiumPlans(context);
+            },
+            child: Text(AppLanguage.text('Nâng cấp 10 người', 'Upgrade to 10')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Widget hiển thị tiến trình hạn mức và trạng thái gói cho TOÀN BỘ thành viên trong Family
   static Widget buildFamilyPremiumStatus(int currentMemberCount) {
     return FamilyPremiumStatusWidget(currentMemberCount: currentMemberCount);
   }

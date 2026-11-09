@@ -21,6 +21,9 @@ import 'calendar_page.dart';
 import 'create_reminder_screen.dart';
 import 'family_ai_chat_screen.dart';
 import 'wishlist_and_ledger_screen.dart';
+import '../../Danh/danh_payment_entry.dart';
+import '../widgets/multi_tier_simulation_dialog.dart';
+import '../widgets/parent_triage_actions_widget.dart';
 import 'views/reminder_calendar_view.dart';
 import 'views/reminder_list_view.dart';
 
@@ -700,6 +703,10 @@ class _ReminderListScreenState extends State<ReminderListScreen>
 
   Future<void> _openCreateReminder() async {
     if (!_hasFamily || _familyId.trim().isEmpty) return;
+    if (DanhPaymentEntry.isOverCapacityFrozen) {
+      await DanhPaymentEntry.showOverCapacityFrozenDialog(context);
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => CreateReminderScreen(
@@ -1747,6 +1754,29 @@ class _ReminderListScreenState extends State<ReminderListScreen>
                     );
                   } else if (val == 'ai_assistant') {
                     _openAiAssistant();
+                  } else if (val == 'demo_simulation') {
+                    final targetTask = _lastLoadedReminders.firstWhere(
+                      (task) => !task.isCompleted && !task.isDeleted,
+                      orElse: () => _lastLoadedReminders.isNotEmpty
+                          ? _lastLoadedReminders.first
+                          : ReminderModel(
+                              id: 'demo_simulation_task',
+                              familyId: _familyId,
+                              creatorId: _currentUserId,
+                              assignedTo: _currentUserId,
+                              assignedToName: _currentUserName,
+                              title: AppLanguage.text('Rửa bát (Demo 10s)', 'Wash dishes (Demo 10s)'),
+                              date: '01/01/2026',
+                              time: '08:00',
+                            ),
+                    );
+                    MultiTierSimulationDialog.show(
+                      context,
+                      reminder: targetTask,
+                      repository: _repository,
+                      currentUserId: _currentUserId,
+                      onReminderCompleted: _manualRefresh,
+                    );
                   } else if (val == 'wishlist_shop') {
                     _openWishlistShop();
                   } else if (val == 'create_reminder') {
@@ -1756,6 +1786,22 @@ class _ReminderListScreenState extends State<ReminderListScreen>
                   }
                 },
                 itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'demo_simulation',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.speed_rounded, size: 18, color: Color(0xFF005F50)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            AppLanguage.text('Mô phỏng leo thang 10s (Demo)', 'Simulate 10s Escalation (Demo)'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'wishlist_shop',
                     child: Row(
@@ -2043,6 +2089,22 @@ class _ReminderListScreenState extends State<ReminderListScreen>
                           dateTitle: _showAll ? AppLanguage.text('Tất cả', 'All') : selectedDateStr,
                         ),
 
+                        // Urgent Parent Triage Alert Card if tasks are escalated overdue
+                        Builder(
+                          builder: (context) {
+                            final overdueNeedingTriage = scopedReminders.where((r) {
+                              if (!r.isOverdue || r.isCompleted || r.isDeleted || r.isSubmitted) return false;
+                              final isGuardian = _familyMembers.any(
+                                (m) => m.id == _currentUserId && (m.isParent || m.isGrandparent || m.isOwner),
+                              );
+                              return isGuardian || r.creatorId == _currentUserId;
+                            }).toList();
+
+                            if (overdueNeedingTriage.isEmpty) return const SizedBox.shrink();
+                            return _buildParentTriageUrgentBanner(overdueNeedingTriage);
+                          },
+                        ),
+
                         // List View phân nhóm theo các mức ưu tiên
                         Expanded(
                           child: ReminderListView(
@@ -2147,4 +2209,92 @@ class _ReminderListScreenState extends State<ReminderListScreen>
       },
     );
   }
+  Widget _buildParentTriageUrgentBanner(List<ReminderModel> overdueTasks) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0F0),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE57373), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Color(0xFFD32F2F), size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppLanguage.text(
+                    '🚨 Cần Phụ Huynh Can Thiệp (${overdueTasks.length} việc quá hạn)',
+                    '🚨 Needs Parent Intervention (${overdueTasks.length} overdue)',
+                  ),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13.5,
+                    color: Color(0xFFC62828),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            AppLanguage.text(
+              'Thành viên chưa hoàn thành việc nhà đúng hẹn. Hãy chọn giải pháp xử lý ngay:',
+              'Members have not completed chores on time. Please choose an action below:',
+            ),
+            style: const TextStyle(fontSize: 12, color: Color(0xFF5D4037)),
+          ),
+          const SizedBox(height: 10),
+          ...overdueTasks.take(3).map((task) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade100),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            task.title,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                        Text(
+                          task.assignedToName,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ParentTriageActionsWidget(
+                      reminder: task,
+                      onActionCompleted: () {
+                        _manualRefresh();
+                      },
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
 }

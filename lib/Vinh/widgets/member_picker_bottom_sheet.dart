@@ -147,10 +147,13 @@ class MemberPickerBottomSheet extends StatelessWidget {
                       itemBuilder: (ctx, index) {
                         final member = familyMembers[index];
                         final isSelected = member.id == selectedMember?.id;
-                        final primary =
-                            MemberColorHelper.getPrimaryColor(member.name);
-                        final bg =
-                            MemberColorHelper.getBackgroundColor(member.name);
+                        final isAssignable = !member.isMemorialized && !member.isDeactivated;
+                        final primary = isAssignable
+                            ? MemberColorHelper.getPrimaryColor(member.name)
+                            : Colors.grey;
+                        final bg = isAssignable
+                            ? MemberColorHelper.getBackgroundColor(member.name)
+                            : Colors.grey.shade200;
 
                         return ListTile(
                           leading: CircleAvatar(
@@ -176,26 +179,63 @@ class MemberPickerBottomSheet extends StatelessWidget {
                               fontWeight: isSelected
                                   ? FontWeight.bold
                                   : FontWeight.w500,
-                              color: textPrimary,
+                              color: isAssignable ? textPrimary : Colors.grey.shade500,
+                              decoration: !isAssignable ? TextDecoration.lineThrough : null,
                             ),
                           ),
                           subtitle: Text(
                             member.roleDisplayName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
-                              color: textMuted,
+                              color: isAssignable ? textMuted : Colors.grey.shade400,
                             ),
                           ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check_circle,
-                                  color: primaryColor)
-                              : null,
+                          trailing: !isAssignable
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: member.isMemorialized
+                                        ? const Color(0xFFEFEBE9)
+                                        : const Color(0xFFFFF3E0),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    member.isMemorialized
+                                        ? AppLanguage.text('Tưởng nhớ', 'Memorial')
+                                        : AppLanguage.text('Tạm ngưng', 'Inactive'),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: member.isMemorialized
+                                          ? const Color(0xFF795548)
+                                          : const Color(0xFFE65100),
+                                    ),
+                                  ),
+                                )
+                              : (isSelected
+                                  ? const Icon(Icons.check_circle, color: primaryColor)
+                                  : null),
                           tileColor: isSelected
                               ? const Color(0xFFE7F5F2)
                               : Colors.transparent,
-                          onTap: () => Navigator.of(context).pop(member),
+                          onTap: isAssignable
+                              ? () => Navigator.of(context).pop(member)
+                              : () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        AppLanguage.text(
+                                          'Không thể giao việc cho thành viên .',
+                                          'Cannot assign tasks to  members.',
+                                        ),
+                                      ),
+                                      behavior: SnackBarBehavior.floating,
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                },
                         );
                       },
                     ),

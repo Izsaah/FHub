@@ -12,6 +12,7 @@ import '../services/reminder_validator.dart';
 import '../widgets/chore_reward_card.dart';
 import '../widgets/member_picker_bottom_sheet.dart';
 import '../widgets/voice_recorder_widget.dart';
+import '../../Danh/danh_payment_entry.dart';
 
 class CreateReminderScreen extends StatefulWidget {
   final String familyId;
@@ -343,6 +344,30 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
   }
 
   Future<void> _submit() async {
+    if (DanhPaymentEntry.isOverCapacityFrozen) {
+      await DanhPaymentEntry.showOverCapacityFrozenDialog(context);
+      return;
+    }
+
+    if (_selectedMember != null && _selectedMember!.id != 'OPEN') {
+      if (_selectedMember!.isMemorialized || _selectedMember!.isDeactivated) {
+        final statusVn = _selectedMember!.isMemorialized ? 'đã khuất' : 'đã tạm ngưng';
+        final statusEn = _selectedMember!.isMemorialized ? 'deceased' : 'inactive';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLanguage.text(
+                'Không thể giao việc cho thành viên $statusVn.',
+                'Cannot assign tasks to $statusEn members.',
+              ),
+            ),
+            backgroundColor: const Color(0xFFBA1A1A),
+          ),
+        );
+        return;
+      }
+    }
+
     if (_activeFamilyId.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

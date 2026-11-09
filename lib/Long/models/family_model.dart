@@ -4,6 +4,7 @@ class FamilyModel {
   final String joinCode;
   final String ownerId;
   final DateTime createdAt;
+  final bool isPeerGroup;
 
   FamilyModel({
     required this.id,
@@ -11,6 +12,7 @@ class FamilyModel {
     required this.joinCode,
     required this.ownerId,
     DateTime? createdAt,
+    this.isPeerGroup = false,
   }) : createdAt = createdAt ?? DateTime.now();
 
   factory FamilyModel.fromJson(Map<String, dynamic> json) {
@@ -22,6 +24,7 @@ class FamilyModel {
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
+      isPeerGroup: json['isPeerGroup'] == true || json['is_peer_group'] == true,
     );
   }
 
@@ -32,6 +35,8 @@ class FamilyModel {
       'join_code': joinCode,
       'owner_id': ownerId,
       'created_at': createdAt.toIso8601String(),
+      'isPeerGroup': isPeerGroup,
+      'is_peer_group': isPeerGroup,
     };
   }
 
@@ -41,6 +46,7 @@ class FamilyModel {
     String? joinCode,
     String? ownerId,
     DateTime? createdAt,
+    bool? isPeerGroup,
   }) {
     return FamilyModel(
       id: id ?? this.id,
@@ -48,6 +54,7 @@ class FamilyModel {
       joinCode: joinCode ?? this.joinCode,
       ownerId: ownerId ?? this.ownerId,
       createdAt: createdAt ?? this.createdAt,
+      isPeerGroup: isPeerGroup ?? this.isPeerGroup,
     );
   }
 }

@@ -392,6 +392,7 @@ class FamilyDataService implements IFamilyService {
                   (data['joinCode'] ?? data['join_code'])?.toString() ?? '',
               ownerId:
                   (data['ownerId'] ?? data['owner_id'])?.toString() ?? '',
+              isPeerGroup: data['isPeerGroup'] == true || data['is_peer_group'] == true,
             ),
           );
         }
@@ -662,11 +663,13 @@ class FamilyDataService implements IFamilyService {
       clearCache();
       await selectFamily(familyId);
 
+      final famData = famDoc.data();
       return FamilyModel(
         id: familyId,
-        name: famDoc.data()['name']?.toString() ?? 'Gia đình',
+        name: famData['name']?.toString() ?? 'Gia đình',
         joinCode: joinCode.toUpperCase(),
-        ownerId: famDoc.data()['ownerId']?.toString() ?? '',
+        ownerId: famData['ownerId']?.toString() ?? '',
+        isPeerGroup: famData['isPeerGroup'] == true || famData['is_peer_group'] == true,
       );
     } catch (e) {
       debugPrint('joinFamily error: $e');

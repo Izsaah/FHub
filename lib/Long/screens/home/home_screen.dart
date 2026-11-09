@@ -9,6 +9,7 @@ import '../../models/family_member_model.dart';
 import '../../models/reminder_model.dart';
 import '../../utils/long_strings.dart';
 import '../../widgets/check_in_button.dart';
+import '../../../Danh/danh_payment_entry.dart';
 import '../../widgets/check_in_sheet.dart';
 import '../../widgets/check_in_feed_view.dart';
 import '../../widgets/check_in_reminder_card.dart';
@@ -144,6 +145,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleCheckInPress(bool isAlreadyCheckedIn) {
+    if (DanhPaymentEntry.isOverCapacityFrozen) {
+      DanhPaymentEntry.showOverCapacityFrozenDialog(context);
+      return;
+    }
+
     if (isAlreadyCheckedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -438,6 +444,37 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 16),
 
+                    if (family.isPeerGroup) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF81C784)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.people_alt_outlined, color: Color(0xFF2E7D32), size: 22),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                LongStrings.t(
+                                  'Không gian Bạn bè / Sống chung: Mọi thành viên bình đẳng.',
+                                  'Peer Living Space: All members are equal.',
+                                ),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: Color(0xFF1B5E20),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     // Passive Takeover Banner (if eligible)
                     if (isTakeoverEligible && !isOwner) ...[
                       Container(
@@ -607,6 +644,108 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
+
+                    // Quick Action Cards: Heo Đất Gia Đình & Cửa Hàng Đổi Sao
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () => DanhPaymentEntry.openFamilyJackpot(context),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF8E1),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFFFFD54F)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFECB3),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(Icons.savings_rounded, color: Color(0xFFE65100), size: 20),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          LongStrings.t('Heo Đất', 'Piggy Bank'),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFFBF360C)),
+                                        ),
+                                        Text(
+                                          LongStrings.t('Tiết kiệm & Lắc hũ', 'Save & Shake'),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 10.5, color: Color(0xFF8D6E63)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () => DanhPaymentEntry.openWishlistShop(context),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8F5E9),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFFA5D6A7)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFC8E6C9),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(Icons.stars_rounded, color: Color(0xFF2E7D32), size: 20),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          LongStrings.t('Đổi Sao ⭐', 'Star Shop ⭐'),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1B5E20)),
+                                        ),
+                                        Text(
+                                          LongStrings.t('Đổi quà & Lì xì', 'Redeem & Gifts'),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 10.5, color: Color(0xFF558B2F)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
 
                     // Module 3: CheckInButton
                     CheckInButton(
