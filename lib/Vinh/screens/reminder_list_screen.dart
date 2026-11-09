@@ -294,8 +294,7 @@ class _ReminderListScreenState extends State<ReminderListScreen>
     FamilyDataService().selectedFamilyIdNotifier.removeListener(_onGlobalFamilyNotifierChanged);
     _clockTicker?.cancel();
     _clockTicker = null;
-    MultiTierEscalationService.instance.stopClock();
-    MultiTierEscalationService.instance.cancelAll();
+    // Global escalation service continues running in background for active family members
     _familyMembersSub?.cancel();
     _deleteSnackBarTimer?.cancel();
     _searchController.dispose();

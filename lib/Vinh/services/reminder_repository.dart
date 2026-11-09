@@ -584,8 +584,11 @@ class InMemoryReminderRepository implements ReminderRepository {
     }
 
     // 3. Validate Date + Time must be in the future (Chỉ kiểm tra nếu ngày hoặc giờ thay đổi)
-    final isDateTimeChanged =
-        existing.date != reminder.date || existing.time != reminder.time;
+    final existingDue = existing.dueDateTime;
+    final newDue = reminder.dueDateTime;
+    final isDateTimeChanged = existingDue != null && newDue != null
+        ? !existingDue.isAtSameMomentAs(newDue)
+        : (existing.date != reminder.date || existing.time != reminder.time);
     if (isDateTimeChanged) {
       final futureError = ReminderValidator.validateFutureDateTimeFromStrings(
         reminder.date,

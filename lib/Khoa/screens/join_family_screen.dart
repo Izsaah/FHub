@@ -277,7 +277,15 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                               ),
                               const SizedBox(height: 8),
                               DropdownButtonFormField<String>(
-                                initialValue: _selectedRole,
+                                initialValue: [
+                                  FamilyMember.roleGrandparent,
+                                  FamilyMember.roleParent,
+                                  FamilyMember.roleRelative,
+                                  FamilyMember.roleMember,
+                                  FamilyMember.roleChild,
+                                ].contains(_selectedRole)
+                                    ? _selectedRole
+                                    : FamilyMember.roleParent,
                                 decoration: InputDecoration(
                                   prefixIcon: const Icon(
                                     Icons.family_restroom_rounded,

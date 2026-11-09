@@ -20,6 +20,9 @@ import '../theme/danh_colors.dart';
 import '../theme/danh_svgs.dart';
 import 'premium_plan_screen.dart';
 import '../danh_payment_entry.dart';
+import '../../Vinh/screens/reminder_list_screen.dart';
+import '../../Vinh/screens/wishlist_and_ledger_screen.dart';
+import '../../Vinh/models/family_member.dart' as vinh_member;
 
 /// Màn hình Heo Đất Gia Đình (Piggy Bank)
 /// Tính năng độc quyền cho gói Tổ Ấm Premium
@@ -3377,6 +3380,16 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                         } else if (n.type == 'wallet_withdraw') {
                           iconData = Icons.account_balance_rounded;
                           iconColor = const Color(0xFF1565C0);
+                        } else if (n.type.startsWith('task_') ||
+                            n.type == 'reminder' ||
+                            n.type.contains('escalation') ||
+                            n.type.contains('overdue')) {
+                          iconData = Icons.alarm_rounded;
+                          iconColor = const Color(0xFFD32F2F);
+                        } else if (n.type.startsWith('wishlist_') ||
+                            n.type.contains('star')) {
+                          iconData = Icons.stars_rounded;
+                          iconColor = const Color(0xFFFFA000);
                         } else {
                           iconData = Icons.info_outline_rounded;
                           iconColor = DanhColors.brand800;
@@ -3386,6 +3399,42 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                           onTap: () {
                             if (!n.isRead) {
                               NotificationService.instance.markAsRead(familyId, n.id);
+                            }
+                            Navigator.pop(ctx);
+
+                            if (n.type.startsWith('task_') ||
+                                n.type == 'reminder' ||
+                                n.type.contains('escalation') ||
+                                n.type.contains('overdue')) {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ReminderListScreen(
+                                    familyId: familyId,
+                                  ),
+                                ),
+                              );
+                            } else if (n.type.startsWith('wishlist_') ||
+                                n.type.contains('star')) {
+                              final myMember = _currentFamilyMembers.cast<FamilyMemberModel?>().firstWhere(
+                                (m) => m?.user.id == currentUserId,
+                                orElse: () => null,
+                              );
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => WishlistAndLedgerScreen(
+                                    familyId: familyId,
+                                    currentUserId: currentUserId,
+                                    currentUserName: myMember?.user.name ?? 'Tôi',
+                                    currentUserRole: myMember?.memberRole ?? 'PARENT',
+                                    familyMembers: _currentFamilyMembers.map((m) => vinh_member.FamilyMember(
+                                      id: m.user.id,
+                                      name: m.user.name,
+                                      role: m.memberRole,
+                                      familyId: m.familyId,
+                                    )).toList(),
+                                  ),
+                                ),
+                              );
                             }
                           },
                           child: Padding(

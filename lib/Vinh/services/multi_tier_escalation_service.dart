@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../main.dart';
@@ -535,10 +536,10 @@ class MultiTierEscalationService {
     BuildContext? targetContext;
     if (_lastContext != null && _lastContext!.mounted) {
       targetContext = _lastContext;
-    } else if (navigatorKey.currentState?.overlay?.context != null) {
-      targetContext = navigatorKey.currentState!.overlay!.context;
     } else if (navigatorKey.currentContext != null) {
       targetContext = navigatorKey.currentContext;
+    } else if (navigatorKey.currentState?.overlay?.context != null) {
+      targetContext = navigatorKey.currentState!.overlay!.context;
     }
 
     if (targetContext == null) {
@@ -721,7 +722,7 @@ class MultiTierEscalationService {
     _safeSnoozeTimers.remove(reminderId)?.cancel();
     snoozeDueAt.remove(reminderId);
     _safeFollowUpActiveIds.remove(reminderId);
-    _safeSyncedOverdueReminderIds.remove(reminderId);
+    // Do not remove synced overdue ID on timer cancel to prevent duplicate Firestore writes
     _safePendingAlertQueue.removeWhere((r) => r.id == reminderId);
     if (_currentlyRingingReminderId == reminderId) {
       _currentlyRingingReminderId = null;
@@ -788,12 +789,14 @@ class MultiTierEscalationService {
           )) {
             break;
           }
-          HapticFeedback.heavyImpact();
-          Future.delayed(const Duration(milliseconds: 250), () {
-            try {
-              HapticFeedback.heavyImpact();
-            } catch (_) {}
-          });
+          if (!kIsWeb) {
+            HapticFeedback.heavyImpact();
+            Future.delayed(const Duration(milliseconds: 250), () {
+              try {
+                HapticFeedback.heavyImpact();
+              } catch (_) {}
+            });
+          }
           unawaited(
             NotificationService.instance.addNotification(
               familyId: reminder.familyId,
@@ -811,12 +814,14 @@ class MultiTierEscalationService {
           break;
 
         case EscalationTier.tier3TwelveHours:
-          HapticFeedback.vibrate();
-          Future.delayed(const Duration(milliseconds: 300), () {
-            try {
-              HapticFeedback.vibrate();
-            } catch (_) {}
-          });
+          if (!kIsWeb) {
+            HapticFeedback.vibrate();
+            Future.delayed(const Duration(milliseconds: 300), () {
+              try {
+                HapticFeedback.vibrate();
+              } catch (_) {}
+            });
+          }
           unawaited(
             NotificationService.instance.addNotification(
               familyId: reminder.familyId,

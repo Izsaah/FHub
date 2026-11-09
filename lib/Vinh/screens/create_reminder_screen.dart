@@ -235,6 +235,47 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
     return '$h:$m';
   }
 
+  String _localizeValidationMessage(String raw) {
+    if (raw.contains('Reminder time must be in the future') ||
+        raw == ReminderValidator.futureTimeErrorMessage) {
+      return AppLanguage.text(
+        'Thời gian lời nhắc phải ở tương lai.',
+        'Reminder time must be in the future.',
+      );
+    }
+    if (raw.contains('Title is required') || raw.contains('Title cannot exceed')) {
+      return AppLanguage.text(
+        'Tiêu đề lời nhắc không hợp lệ hoặc để trống.',
+        'Invalid or empty reminder title.',
+      );
+    }
+    if (raw.contains('Assigned member is required')) {
+      return AppLanguage.text(
+        'Vui lòng chọn người nhận việc.',
+        'Assigned member is required.',
+      );
+    }
+    if (raw.contains('Assigned member must belong to current Family')) {
+      return AppLanguage.text(
+        'Người nhận việc phải thuộc gia đình này.',
+        'Assigned member must belong to current Family.',
+      );
+    }
+    if (raw.contains('Only the creator or a parent/owner can edit this reminder')) {
+      return AppLanguage.text(
+        'Chỉ người tạo hoặc Phụ huynh/Chủ nhà mới có quyền sửa lời nhắc này.',
+        'Only the creator or a parent/owner can edit this reminder.',
+      );
+    }
+    if (raw.contains('Only the creator can set their ID as creator')) {
+      return AppLanguage.text(
+        'Bạn chỉ có thể tạo lời nhắc cho chính mình.',
+        'Only the creator can set their ID as creator.',
+      );
+    }
+    return raw;
+  }
+
   bool _validateDateTime() {
     if (_selectedDate == null || _selectedTime == null) {
       setState(() {
@@ -246,12 +287,34 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       return false;
     }
 
-    final err = widget.isEditing
-        ? null
-        : ReminderValidator.validateFutureDateTime(
-            _selectedDate,
-            _selectedTime,
-          );
+    final scheduledDateTime = DateTime(
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
+      _selectedTime!.hour,
+      _selectedTime!.minute,
+    );
+
+    bool shouldCheckFuture = true;
+    if (widget.isEditing && widget.existingReminder?.dueDateTime != null) {
+      final existingDue = widget.existingReminder!.dueDateTime!;
+      final isSameMoment = existingDue.year == scheduledDateTime.year &&
+          existingDue.month == scheduledDateTime.month &&
+          existingDue.day == scheduledDateTime.day &&
+          existingDue.hour == scheduledDateTime.hour &&
+          existingDue.minute == scheduledDateTime.minute;
+      if (isSameMoment) {
+        shouldCheckFuture = false;
+      }
+    }
+
+    String? err;
+    if (shouldCheckFuture && !scheduledDateTime.isAfter(DateTime.now())) {
+      err = AppLanguage.text(
+        'Thời gian lời nhắc phải ở tương lai.',
+        'Reminder time must be in the future.',
+      );
+    }
 
     setState(() {
       _dateTimeError = err;
@@ -653,9 +716,14 @@ class _CreateReminderScreenState extends State<CreateReminderScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final rawMsg = e
+            .toString()
+            .replaceFirst('Exception: ', '')
+            .replaceFirst('ReminderValidationException: ', '');
+        final localizedMsg = _localizeValidationMessage(rawMsg);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            content: Text(localizedMsg),
             backgroundColor: const Color(0xFFBA1A1A),
           ),
         );

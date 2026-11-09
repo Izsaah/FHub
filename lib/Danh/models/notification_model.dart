@@ -56,6 +56,28 @@ class NotificationModel {
         case 'walletWithdraw':
         case 'wallet_withdraw':
           return 'Bank Withdrawal Request';
+        case 'task_assigned':
+          return 'New Task Assigned';
+        case 'task_approved':
+          return 'Task Approved (+stars)';
+        case 'task_rejected':
+          return 'Task Revision Requested';
+        case 'task_overdue':
+          return 'Task Overdue Notice';
+        case 'task_completed':
+          return 'Task Completed';
+        case 'reminder':
+          return 'Reminder Notification';
+        case 'escalation':
+          return 'Escalation Alert';
+        case 'wishlist_request':
+          return 'New Wishlist Request';
+        case 'wishlist_approved':
+          return 'Wishlist Request Approved';
+        case 'wishlist_redeemed':
+          return 'Reward Redeemed';
+        case 'star_sponsorship':
+          return 'Stars Sponsored';
         default:
           return title;
       }
@@ -65,8 +87,17 @@ class NotificationModel {
 
   /// Trả về Nội dung hiển thị theo ngôn ngữ hiện tại (Tiếng Anh hoặc Tiếng Việt)
   String localizedBody(bool isEnglish) {
-    if (isEnglish && bodyEn != null && bodyEn!.isNotEmpty) {
-      return bodyEn!;
+    if (isEnglish) {
+      if (bodyEn != null && bodyEn!.isNotEmpty) return bodyEn!;
+      // Tự động chuyển đổi các tiền tố/mẫu câu tiếng Việt sang tiếng Anh
+      var translated = body;
+      translated = translated.replaceAll('Đã đến giờ thực hiện: ', 'Time to perform: ');
+      translated = translated.replaceAll('Đến giờ thực hiện: ', 'Time to perform: ');
+      translated = translated.replaceAll('Quá hạn: ', 'Overdue: ');
+      translated = translated.replaceAll('Đã hoàn thành công việc: ', 'Completed task: ');
+      translated = translated.replaceAll('Đã nạp quỹ: ', 'Fund deposited: ');
+      translated = translated.replaceAll('Yêu cầu đổi quà: ', 'Redemption request: ');
+      return translated;
     }
     return body;
   }

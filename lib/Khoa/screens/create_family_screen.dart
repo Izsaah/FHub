@@ -210,7 +210,14 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                                 children: [
                                   Expanded(
                                     child: InkWell(
-                                      onTap: _isCreating ? null : () => setState(() => _isPeerGroup = false),
+                                      onTap: _isCreating
+                                          ? null
+                                          : () => setState(() {
+                                                _isPeerGroup = false;
+                                                if (_selectedRole == FamilyMember.roleMember) {
+                                                  _selectedRole = FamilyMember.roleParent;
+                                                }
+                                              }),
                                       borderRadius: BorderRadius.circular(14),
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -254,7 +261,12 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: InkWell(
-                                      onTap: _isCreating ? null : () => setState(() => _isPeerGroup = true),
+                                      onTap: _isCreating
+                                          ? null
+                                          : () => setState(() {
+                                                _isPeerGroup = true;
+                                                _selectedRole = FamilyMember.roleMember;
+                                              }),
                                       borderRadius: BorderRadius.circular(14),
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -349,7 +361,15 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 DropdownButtonFormField<String>(
-                                  initialValue: _selectedRole,
+                                  initialValue: [
+                                    FamilyMember.roleGrandparent,
+                                    FamilyMember.roleParent,
+                                    FamilyMember.roleRelative,
+                                    FamilyMember.roleMember,
+                                    FamilyMember.roleChild,
+                                  ].contains(_selectedRole)
+                                      ? _selectedRole
+                                      : FamilyMember.roleParent,
                                   decoration: _inputDecoration(
                                     hintText: AppLanguage.text('Chọn vai vế', 'Select role'),
                                     prefixIcon: Icons.family_restroom_rounded,
@@ -366,6 +386,10 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                                     DropdownMenuItem(
                                       value: FamilyMember.roleRelative,
                                       child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: FamilyMember.roleMember,
+                                      child: Text(AppLanguage.text('Thành viên / Bạn bè', 'Member / Friend')),
                                     ),
                                     DropdownMenuItem(
                                       value: FamilyMember.roleChild,
