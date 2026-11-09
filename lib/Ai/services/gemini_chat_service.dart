@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:google_generative_ai/google_generative_ai.dart' hide TaskType;
 
 import '../../Vinh/models/family_member.dart';
 import '../../Vinh/models/reminder_model.dart';
@@ -93,13 +93,13 @@ class GeminiChatService {
   bool get _isChild => !_canAssignChores;
 
   static const List<String> _candidateModels = [
-    'gemini-3.8-flash',
+    'gemini-3.1-pro-preview',
     'gemini-3.1-pro',
-    'gemini-3.5-flash',
-    'gemini-3.1-flash-lite',
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-flash-lite-latest',
     'gemini-2.5-flash',
     'gemini-2.0-flash',
-    'gemini-1.5-pro',
     'gemini-1.5-flash',
   ];
 
@@ -159,7 +159,12 @@ class GeminiChatService {
     String? userName,
     String? userRole,
     String? familyName,
+    List<FamilyMember>? familyMembers,
   }) async {
+    if (familyMembers != null && familyMembers.isNotEmpty) {
+      _cachedFamilyMembers = familyMembers;
+    }
+
     if (_customApiKey == null) {
       await loadSavedApiKey();
     }
@@ -494,7 +499,15 @@ class GeminiChatService {
                       'success': true,
                       'taskId': task.id,
                       'title': task.title,
-                      'message': 'Đã tạo công việc thành công vào hệ thống nhắc việc gia đình.',
+                      'assignedTo': task.assignedTo,
+                      'assignedToName': task.assignedToName,
+                      'requiresProof': task.requiresProofImage,
+                      'rewardStars': task.rewardStars,
+                      'time': task.time,
+                      'date': task.date,
+                      'message': 'Đã tạo công việc thành công: "${task.title}" cho ${task.assignedToName} lúc ${task.time} ngày ${task.date}'
+                          '${task.requiresProofImage ? " (bật yêu cầu chụp ảnh nghiệm thu)" : ""}'
+                          '${task.rewardStars > 0 ? " (thưởng ${task.rewardStars} sao)" : ""}.',
                     },
                   ),
                 );
@@ -617,7 +630,9 @@ class GeminiChatService {
             parts.add('Dạ em $savedMemorySummary vào bộ nhớ gia đình rồi nhé! 🧠✨');
           }
           if (createdTaskResult != null) {
-            parts.add('Dạ em đã tạo xong công việc "${createdTaskResult.title}" vào lúc ${createdTaskResult.time} ngày ${createdTaskResult.date} cho ${createdTaskResult.assignedToName} rồi ạ! ✅');
+            final proofStr = createdTaskResult.requiresProofImage ? ' (📸 Có yêu cầu chụp ảnh nghiệm thu)' : '';
+            final starStr = createdTaskResult.rewardStars > 0 ? ' (⭐ Thưởng ${createdTaskResult.rewardStars} sao)' : '';
+            parts.add('Dạ em đã tạo xong công việc "${createdTaskResult.title}" vào lúc ${createdTaskResult.time} ngày ${createdTaskResult.date} cho ${createdTaskResult.assignedToName}$proofStr$starStr rồi ạ! ✅');
           }
           aiText = parts.isNotEmpty
               ? parts.join('\n\n')
@@ -644,7 +659,9 @@ class GeminiChatService {
             parts.add('Dạ em $savedMemorySummary vào bộ nhớ gia đình rồi nhé! 🧠✨');
           }
           if (createdTaskResult != null) {
-            parts.add('Dạ em đã tạo xong công việc "${createdTaskResult.title}" vào lúc ${createdTaskResult.time} ngày ${createdTaskResult.date} cho ${createdTaskResult.assignedToName} rồi ạ! ✅');
+            final proofStr = createdTaskResult.requiresProofImage ? ' (📸 Có yêu cầu chụp ảnh nghiệm thu)' : '';
+            final starStr = createdTaskResult.rewardStars > 0 ? ' (⭐ Thưởng ${createdTaskResult.rewardStars} sao)' : '';
+            parts.add('Dạ em đã tạo xong công việc "${createdTaskResult.title}" vào lúc ${createdTaskResult.time} ngày ${createdTaskResult.date} cho ${createdTaskResult.assignedToName}$proofStr$starStr rồi ạ! ✅');
           }
           final fallbackText = parts.isNotEmpty
               ? parts.join('\n\n')
@@ -804,15 +821,60 @@ class GeminiChatService {
             .get();
 
         if (membersSnap.docs.isEmpty) {
-          membersInfo.writeln('- $_currentUserName (Vai trò: $_currentUserRole)');
+          if (_cachedFamilyMembers != null && _cachedFamilyMembers!.isNotEmpty) {
+            for (final m in _cachedFamilyMembers!) {
+              membersInfo.writeln('- Họ tên: ${m.name} | Vai trò: ${m.roleDisplayName} | Mã ID: ${m.id} | Điểm danh hôm nay: Chưa điểm danh');
+            }
+          } else {
+            membersInfo.writeln('- Họ tên: $_currentUserName | Vai trò: $_currentUserRole | Mã ID: $_currentUserId | Điểm danh hôm nay: Sẵn sàng');
+          }
         } else {
           for (final doc in membersSnap.docs) {
             final data = doc.data();
-            final name = (data['displayName'] ?? data['name'] ?? data['userName'] ?? 'Thành viên').toString().trim();
-            final role = (data['role'] ?? 'Thành viên').toString().trim();
-            final lastCheckIn = data['lastCheckInAt'] ?? data['last_check_in_at'];
+            final uid = (data['userId'] ?? data['user_id'] ?? doc.id).toString();
+            String name = (data['displayName'] ?? data['name'] ?? data['userName'] ?? '').toString().trim();
+            final rawRole = (data['role'] ?? 'Thành viên').toString().trim();
 
-            String checkInStatus = 'Chưa điểm danh hôm nay';
+            // Ưu tiên tra cứu tên thật từ _cachedFamilyMembers hoặc collection users
+            if (name.isEmpty || name == 'Thành viên') {
+              final cached = _cachedFamilyMembers?.where((m) => m.id == uid).firstOrNull;
+              if (cached != null && cached.name.isNotEmpty && cached.name != 'Thành viên') {
+                name = cached.name;
+              } else if (uid == _currentUserId) {
+                name = _currentUserName;
+              } else {
+                try {
+                  final uDoc = await _firestore!.collection('users').doc(uid).get();
+                  if (uDoc.exists && uDoc.data() != null) {
+                    final n = (uDoc.data()!['name'] ?? uDoc.data()!['displayName'])?.toString().trim();
+                    if (n != null && n.isNotEmpty) {
+                      name = n;
+                    }
+                  }
+                } catch (_) {}
+              }
+            }
+            if (name.isEmpty) name = 'Thành viên ($uid)';
+
+            String roleDisplay = rawRole;
+            final rUpper = rawRole.toUpperCase();
+            if (rUpper == 'PARENT' || rUpper == 'OWNER') {
+              roleDisplay = 'Bố/Mẹ';
+            } else if (rUpper == 'CHILD') {
+              roleDisplay = 'Con cái';
+            } else if (rUpper == 'GRANDPARENT') {
+              roleDisplay = 'Ông/Bà';
+            }
+
+            var lastCheckIn = data['lastCheckInAt'] ?? data['last_check_in_at'];
+            if (lastCheckIn == null) {
+              try {
+                final uDoc = await _firestore!.collection('users').doc(uid).get();
+                lastCheckIn = uDoc.data()?['lastCheckInAt'] ?? uDoc.data()?['last_check_in_at'];
+              } catch (_) {}
+            }
+
+            String checkInStatus = 'CHƯA ĐIỂM DANH hôm nay';
             if (lastCheckIn is Timestamp) {
               final checkInDate = lastCheckIn.toDate();
               if (checkInDate.year == now.year &&
@@ -821,15 +883,30 @@ class GeminiChatService {
                 checkInStatus =
                     'ĐÃ ĐIỂM DANH lúc ${checkInDate.hour.toString().padLeft(2, '0')}:${checkInDate.minute.toString().padLeft(2, '0')}';
               }
+            } else if (lastCheckIn is String) {
+              final checkInDate = DateTime.tryParse(lastCheckIn);
+              if (checkInDate != null &&
+                  checkInDate.year == now.year &&
+                  checkInDate.month == now.month &&
+                  checkInDate.day == now.day) {
+                checkInStatus =
+                    'ĐÃ ĐIỂM DANH lúc ${checkInDate.hour.toString().padLeft(2, '0')}:${checkInDate.minute.toString().padLeft(2, '0')}';
+              }
             }
-            membersInfo.writeln('- $name (Vai trò: $role): $checkInStatus');
+            membersInfo.writeln('- Họ tên: $name | Vai trò: $roleDisplay ($rawRole) | Mã ID: $uid | Điểm danh hôm nay: $checkInStatus');
           }
         }
       } catch (_) {
-        membersInfo.writeln('- $_currentUserName (Vai trò: $_currentUserRole)');
+        membersInfo.writeln('- Họ tên: $_currentUserName | Vai trò: $_currentUserRole | Mã ID: $_currentUserId');
       }
     } else {
-      membersInfo.writeln('- $_currentUserName (Vai trò: $_currentUserRole)');
+      if (_cachedFamilyMembers != null && _cachedFamilyMembers!.isNotEmpty) {
+        for (final m in _cachedFamilyMembers!) {
+          membersInfo.writeln('- Họ tên: ${m.name} | Vai trò: ${m.roleDisplayName} | Mã ID: ${m.id} | Điểm danh hôm nay: Chưa điểm danh');
+        }
+      } else {
+        membersInfo.writeln('- Họ tên: $_currentUserName | Vai trò: $_currentUserRole | Mã ID: $_currentUserId');
+      }
     }
 
     // 2. Đọc danh sách công việc gia đình hôm nay
@@ -990,15 +1067,21 @@ $memoriesInfo
 - GIỚI HẠN VỀ HEO ĐẤT GIA ĐÌNH (PIGGY BANK): Bạn nắm rõ thông tin số sao Heo Đất, nhưng bạn KHÔNG THỂ VÀ KHÔNG ĐƯỢC PHÉP tự bấm mở heo giùm người dùng! Heo Đất được mở bởi Bố Mẹ khi tổng kết tuần. Sao trong heo được chia công bằng (60% nỗ lực + 40% may mắn) cho các con để đổi quà trong Cửa Hàng Phúc Lợi (Wishlist). Nếu người dùng bảo bạn "mở heo đi", hãy giải thích vui vẻ rằng bạn không có tay để mở hộ được, và mời họ vào tab Heo Đất Gia Đình để cùng cả nhà mở nhé!
 
 === CÁC CHỈ DẪN TRẢ LỜI NGHIỆP VỤ ===
-1. Khi người dùng hỏi "ai đã điểm danh", "hôm nay ai chưa check-in", "tình hình điểm danh":
-   Đọc chính xác danh sách thành viên ở trên để trả lời rõ ràng ai đã điểm danh lúc mấy giờ, ai chưa điểm danh.
-2. Khi người dùng hỏi "tóm tắt tiến độ công việc", "tình hình việc nhà hôm nay", "hôm nay có việc gì":
+1. Khi người dùng hỏi "ai đã điểm danh", "hôm nay ai chưa check-in", "tình hình điểm danh", "liệt kê tên thành viên điểm danh":
+   - BẮT BUỘC liệt kê chính xác bằng HỌ TÊN THỰC TẾ của từng thành viên trong danh sách trên (Ví dụ: "Khoa Cao", "Bin Su", "Bé Bo")!
+   - TUYỆT ĐỐI CẤM liệt kê chung chung vô danh như "Bố/Mẹ (Parent)", "Con cái (Child)". Hãy chỉ rõ tên ai đã điểm danh và lúc mấy giờ, tên ai chưa điểm danh.
+2. Khi người dùng yêu cầu tạo việc nhà / lời nhắc:
+   - Gọi tool createFamilyTask với đầy đủ thông số:
+     + Gán đúng tên người nhận vào assignedToName và ID/Tên vào assignedTo.
+     + NẾU người dùng bảo "bật nghiệm thu", "chụp ảnh nghiệm thu", "cần chụp ảnh": BẮT BUỘC đặt requiresProof: true.
+     + NẾU người dùng nói thưởng sao (VD: "thưởng 2 sao", "cho 5 sao"): BẮT BUỘC đặt rewardStars tương ứng.
+     + NẾU là việc mở cho cả nhà tự nhận: đặt assignedTo: "ALL", isOpenTask: true.
+3. Khi người dùng hỏi "tóm tắt tiến độ công việc", "tình hình việc nhà hôm nay", "hôm nay có việc gì":
    Báo cáo tổng kết súc tích: việc nào đã xong, việc nào chưa xong, ai phụ trách.
-3. Khi người dùng hỏi về vai trò hoặc quyền hạn của mình trong gia đình:
+4. Khi người dùng hỏi về vai trò hoặc quyền hạn của mình trong gia đình:
    Trả lời chính xác theo vai trò thực tế của họ (quyền giao việc, quyền mở heo đất, nhận sao thưởng).
-4. Khi người dùng hỏi về Heo Đất Gia Đình:
+5. Khi người dùng hỏi về Heo Đất Gia Đình:
    Cung cấp số dư sao heo đất, ai đóng góp nhiều nhất và quy chế chia sao cho các bé đổi quà.
-5. Khi người dùng muốn giao việc mở cho các con: Gọi tool createFamilyTask với assignedTo: "ALL".
 6. Luôn giao tiếp lịch sự, ngắn gọn, tự nhiên và giàu cảm xúc gia đình.
 ''';
   }
@@ -1274,7 +1357,24 @@ $memoriesInfo
 
           for (final doc in membersSnap.docs) {
             final data = doc.data();
-            final name = (data['displayName'] ?? data['name'] ?? data['userName'] ?? 'Thành viên').toString().trim();
+            final uid = (data['userId'] ?? data['user_id'] ?? doc.id).toString();
+            String name = (data['displayName'] ?? data['name'] ?? data['userName'] ?? '').toString().trim();
+            if (name.isEmpty || name == 'Thành viên') {
+              final cached = _cachedFamilyMembers?.where((m) => m.id == uid).firstOrNull;
+              if (cached != null && cached.name.isNotEmpty && cached.name != 'Thành viên') {
+                name = cached.name;
+              } else if (uid == _currentUserId) {
+                name = _currentUserName;
+              } else {
+                try {
+                  final uDoc = await _firestore!.collection('users').doc(uid).get();
+                  final n = (uDoc.data()?['name'] ?? uDoc.data()?['displayName'])?.toString().trim();
+                  if (n != null && n.isNotEmpty) name = n;
+                } catch (_) {}
+              }
+            }
+            if (name.isEmpty) name = 'Thành viên ($uid)';
+
             final lastCheckIn = data['lastCheckInAt'] ?? data['last_check_in_at'];
 
             bool isToday = false;
@@ -1525,10 +1625,10 @@ $memoriesInfo
 
       return ChatMessageModel(
         id: 'msg_${now.millisecondsSinceEpoch}',
-        text: '🐷 **HEO ĐẤT GIA ĐÌNH**:\n'
+        text: '🐷 **HŨ NIỀM VUI & HEO ĐẤT GIA ĐÌNH**:\n'
             '• Tổng quỹ sao hiện tại: **$poolStr ⭐**.\n'
             '• Người đóng góp nhiều nhất: **$topName**.\n'
-            '• Khi Bố Mẹ mở heo, toàn bộ số sao sẽ được chia công bằng cho các con (60% nỗ lực + 40% may mắn) và cộng thẳng vào Ví Sao để đổi quà trong Cửa Hàng Phúc Lợi! ✨',
+            '• Quy chế: Đóng góp trong phiên mở 30 giây để nhận thưởng vào Ví cá nhân đổi quà phúc lợi! Khi Bố Mẹ mở heo, toàn bộ số sao sẽ được chia công bằng cho các con (60% nỗ lực + 40% may mắn) và cộng thẳng vào Ví cá nhân / Ví Sao để đổi quà trong Cửa Hàng Phúc Lợi! ✨',
         sender: ChatSender.ai,
         timestamp: now,
       );
@@ -1685,6 +1785,68 @@ $memoriesInfo
     }
   }
 
+  (String, String) _resolveAssignee(dynamic rawAssignedTo, dynamic rawAssignedToName) {
+    final strTo = rawAssignedTo?.toString().trim() ?? '';
+    final strName = rawAssignedToName?.toString().trim() ?? '';
+    final combined = '$strTo $strName'.trim().toLowerCase();
+
+    if (combined.isEmpty ||
+        combined == 'all' ||
+        combined == 'open' ||
+        combined.contains('cả nhà') ||
+        combined.contains('việc chung') ||
+        combined.contains('mọi người')) {
+      return ('ALL', 'Cả nhà (Việc chung)');
+    }
+
+    if (combined.contains('tôi') ||
+        combined.contains('mình') ||
+        combined.contains('bản thân') ||
+        strTo == _currentUserId) {
+      return (_currentUserId.isNotEmpty ? _currentUserId : 'user_creator', _currentUserName);
+    }
+
+    // Đối soát với danh sách thành viên trong gia đình
+    if (_cachedFamilyMembers != null && _cachedFamilyMembers!.isNotEmpty) {
+      final byId = _cachedFamilyMembers!.where((m) => m.id == strTo).firstOrNull;
+      if (byId != null) return (byId.id, byId.name);
+
+      for (final m in _cachedFamilyMembers!) {
+        final mn = m.name.toLowerCase().trim();
+        if (mn.isNotEmpty && (combined.contains(mn) || mn.contains(combined))) {
+          return (m.id, m.name);
+        }
+      }
+
+      for (final m in _cachedFamilyMembers!) {
+        final tokens = m.name.toLowerCase().trim().split(RegExp(r'\s+'));
+        for (final token in tokens) {
+          if (token.length >= 2 && combined.contains(token)) {
+            return (m.id, m.name);
+          }
+        }
+      }
+
+      for (final m in _cachedFamilyMembers!) {
+        if ((combined.contains('bố') || combined.contains('ba') || combined.contains('dad')) &&
+            (m.isParent || m.role.toLowerCase().contains('bố') || m.name.toLowerCase().contains('bố'))) {
+          return (m.id, m.name);
+        }
+        if ((combined.contains('mẹ') || combined.contains('má') || combined.contains('mom')) &&
+            (m.isParent || m.role.toLowerCase().contains('mẹ') || m.name.toLowerCase().contains('mẹ'))) {
+          return (m.id, m.name);
+        }
+        if (combined.contains('con') && m.isChild) {
+          return (m.id, m.name);
+        }
+      }
+    }
+
+    final effName = strName.isNotEmpty ? strName : (strTo.isNotEmpty ? strTo : 'Việc chung');
+    final effId = strTo.isNotEmpty ? strTo : 'ALL';
+    return (effId, effName);
+  }
+
   /// Xử lý tạo ReminderModel thật và ghi vào Firestore collection `reminders`
   Future<ReminderModel> _handleCreateFamilyTask(Map<String, dynamic> args) async {
     final title = args['title']?.toString() ?? 'Việc nhà';
@@ -1701,11 +1863,14 @@ $memoriesInfo
         lowerTitle.startsWith('tôi có thể')) {
       throw Exception('Không thể tạo việc nhà từ câu hỏi thắc mắc của người dùng.');
     }
-    final assignedTo = args['assignedTo']?.toString() ?? 'ALL';
-    final assignedToName = args['assignedToName']?.toString() ?? 'Việc chung';
+
+    final (resolvedAssigneeId, resolvedAssigneeName) = _resolveAssignee(
+      args['assignedTo'],
+      args['assignedToName'],
+    );
 
     // Ràng buộc bảo mật & phân quyền: Con cái không được giao việc nhà bắt buộc cho Phụ huynh
-    if (_isChild && assignedTo != _currentUserId && assignedTo != 'ALL' && assignedTo != 'OPEN') {
+    if (_isChild && resolvedAssigneeId != _currentUserId && resolvedAssigneeId != 'ALL' && resolvedAssigneeId != 'OPEN') {
       final isPoliteRequest = lowerTitle.contains('nhờ') ||
           lowerTitle.contains('nhắc') ||
           lowerTitle.contains('đón') ||
@@ -1722,11 +1887,36 @@ $memoriesInfo
     }
 
     String effectiveTitle = title;
-    if (_isChild && assignedTo != _currentUserId && assignedTo != 'ALL' && assignedTo != 'OPEN') {
+    if (_isChild && resolvedAssigneeId != _currentUserId && resolvedAssigneeId != 'ALL' && resolvedAssigneeId != 'OPEN') {
       if (!effectiveTitle.startsWith('[Lời nhờ')) {
         effectiveTitle = '[Lời nhờ từ con] $effectiveTitle';
       }
     }
+
+    final bool requiresProof = args['requiresProof'] == true ||
+        args['requires_proof'] == true ||
+        args['requiresProofImage'] == true ||
+        lowerTitle.contains('nghiệm thu') ||
+        lowerTitle.contains('chụp ảnh');
+
+    int stars = 0;
+    final rawStars = args['rewardStars'] ?? args['reward_stars'] ?? args['stars'];
+    if (rawStars is int) {
+      stars = rawStars;
+    } else if (rawStars is num) {
+      stars = rawStars.toInt();
+    } else if (rawStars != null) {
+      stars = int.tryParse(rawStars.toString()) ?? 0;
+    }
+    if (stars <= 0) {
+      final starMatch = RegExp(r'(\d+)\s*(sao|star)', caseSensitive: false).firstMatch(lowerTitle);
+      if (starMatch != null) {
+        stars = int.tryParse(starMatch.group(1)!) ?? 0;
+      }
+    }
+
+    final rawTaskType = args['taskType'] ?? args['task_type'];
+    final taskType = TaskType.fromValue(rawTaskType);
 
     final date = _normalizeDate(args['date']?.toString());
     final time = _normalizeTime(args['time']?.toString());
@@ -1735,17 +1925,22 @@ $memoriesInfo
     final docRef = _firestore?.collection('reminders').doc();
     final docId = docRef?.id ?? 'rem_${now.millisecondsSinceEpoch}';
 
+    final isOpen = resolvedAssigneeId == 'ALL' || (args['isOpenTask'] == true);
+
     final reminder = ReminderModel(
       id: docId,
       familyId: _currentFamilyId,
       creatorId: _currentUserId.isNotEmpty ? _currentUserId : 'user_creator',
       creatorName: _currentUserName,
-      assignedTo: assignedTo,
-      assignedToName: assignedToName,
+      assignedTo: resolvedAssigneeId,
+      assignedToName: resolvedAssigneeName,
       title: effectiveTitle,
       date: date,
       time: time,
-      status: ReminderStatus.pending,
+      status: isOpen ? ReminderStatus.open : ReminderStatus.pending,
+      requiresProofImage: requiresProof,
+      rewardStars: stars,
+      taskType: taskType,
       createdAt: now,
     );
 
@@ -1754,13 +1949,20 @@ $memoriesInfo
         ...reminder.toJson(),
         'family_id': _currentFamilyId,
         'creator_id': reminder.creatorId,
+        'creator_name': reminder.creatorName,
         'assigned_to': reminder.assignedTo,
         'assigned_to_name': reminder.assignedToName,
-        'isOpenTask': assignedTo == 'ALL' || (args['isOpenTask'] == true),
+        'isOpenTask': isOpen,
+        'requires_proof_image': reminder.requiresProofImage,
+        'requiresProofImage': reminder.requiresProofImage,
+        'reward_stars': reminder.rewardStars,
+        'rewardStars': reminder.rewardStars,
+        'taskType': reminder.taskType.dbValue,
+        'task_type': reminder.taskType.dbValue,
       });
     }
 
-    debugPrint('GeminiChatService: Created Firestore Reminder $docId - $effectiveTitle');
+    debugPrint('GeminiChatService: Created Firestore Reminder $docId - $effectiveTitle (Assignee: $resolvedAssigneeName, Proof: $requiresProof, Stars: $stars)');
     return reminder;
   }
 

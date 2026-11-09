@@ -38,6 +38,18 @@ class AiToolsDeclarations {
           description:
               'true nếu là việc mở không gán cho ai để các con tự nhận; false nếu giao đích danh.',
         ),
+        'requiresProof': Schema.boolean(
+          description:
+              'true nếu công việc này yêu cầu bật nghiệm thu / chụp ảnh xác thực khi hoàn thành (khi người dùng nói: "bật nghiệm thu", "cần chụp ảnh", "chụp ảnh xác nhận", "yêu cầu nghiệm thu"). Mặc định false.',
+        ),
+        'rewardStars': Schema.integer(
+          description:
+              'Số sao thưởng cho công việc này (ví dụ: 1, 2, 3, 5 sao). Mặc định 0.',
+        ),
+        'taskType': Schema.string(
+          description:
+              'Loại công việc: "ASSIGN" (giao việc), "FAVOR" (nhờ vả), "CARE" (chăm sóc ông bà / y tế). Mặc định "ASSIGN".',
+        ),
       },
       requiredProperties: ['title', 'date', 'time'],
     ),

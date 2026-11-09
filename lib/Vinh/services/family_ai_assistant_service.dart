@@ -398,7 +398,7 @@ class FamilyAiAssistantService {
         roleDisplay = 'Thành viên gia đình';
       }
       final desc = myMember?.isParent == true
-          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, duyệt quà đổi sao và mở Heo Đất khen thưởng cho cả nhà nhé! 👑'
+          ? 'Bạn giữ quyền **Phụ huynh (Bố Mẹ - Quản trị gia đình)**: Có toàn quyền giao việc cho con cái, tạo việc chung, duyệt quà đổi sao và mở Heo Đất / Nổ Hũ khen thưởng cho cả nhà nhé! 👑'
           : (myMember?.isGrandparent == true
               ? 'Bạn là **Ông Bà (Trưởng bối)**: Có quyền giao việc, gắn kết các thế hệ và cùng theo dõi tiến độ gia đình ấm cúng! 🏡'
               : 'Bạn là **Con cái (Thành viên tích cực)**: Có thể xung phong nhận các công việc chung trên bảng việc, hoàn thành nhiệm vụ để tích lũy sao thưởng nuôi Heo Đất và đổi những món quà mơ ước trong Cửa hàng phúc lợi nhé! 🌟');
@@ -797,6 +797,13 @@ class FamilyAiAssistantService {
           }
         }
 
+        final bool requiresProof = lower.contains('nghiệm thu') || lower.contains('chụp ảnh');
+        int stars = 0;
+        final starMatch = RegExp(r'(\d+)\s*(sao|star)', caseSensitive: false).firstMatch(lower);
+        if (starMatch != null) {
+          stars = int.tryParse(starMatch.group(1)!) ?? 0;
+        }
+
         final created = await repository.createReminder(
           reminder: ReminderModel(
             id: 'rem_${DateTime.now().millisecondsSinceEpoch}_$i',
@@ -809,6 +816,8 @@ class FamilyAiAssistantService {
             date: dateStr,
             time: timeStr,
             status: isOpen ? ReminderStatus.open : ReminderStatus.pending,
+            requiresProofImage: requiresProof,
+            rewardStars: stars,
             taskType: isChild && (assignee.isParent || assignee.isGrandparent) ? TaskType.favor : TaskType.assign,
             taskStatus: (isChild && (assignee.isParent || assignee.isGrandparent)) ? TaskStatus.accepted : TaskStatus.pending,
             createdAt: DateTime.now(),
@@ -1847,9 +1856,17 @@ class FamilyAiAssistantService {
 
     // Kiểm tra xem có nhắc tên thành viên nào trong gia đình không
     for (final member in familyMembers) {
-      final mName = member.name.toLowerCase();
-      if (mName.isNotEmpty && lower.contains(mName)) {
-        return member;
+      final mName = member.name.toLowerCase().trim();
+      if (mName.isNotEmpty) {
+        if (lower.contains(mName)) {
+          return member;
+        }
+        final tokens = mName.split(RegExp(r'\s+'));
+        for (final token in tokens) {
+          if (token.length >= 2 && RegExp('\\b$token\\b', caseSensitive: false).hasMatch(lower)) {
+            return member;
+          }
+        }
       }
     }
 

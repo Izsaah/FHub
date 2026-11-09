@@ -7,6 +7,7 @@ import 'package:fhub/Ai/services/gemini_chat_service.dart';
 import 'package:fhub/Vinh/models/family_member.dart';
 import 'package:fhub/Vinh/models/reminder_model.dart';
 import 'package:fhub/Vinh/screens/family_ai_chat_screen.dart';
+import 'package:fhub/Vinh/services/ai_speech_service.dart';
 import 'package:fhub/Vinh/services/family_ai_assistant_service.dart';
 import 'package:fhub/Vinh/services/reminder_repository.dart';
 
@@ -1224,6 +1225,99 @@ void main() {
 
       // Advance through cooldown so the periodic timer completes cleanly
       await tester.pump(const Duration(seconds: 6));
+    });
+
+    test('43. Asking check-in status lists members by their real names, never generic role placeholders', () async {
+      final members = [
+        const FamilyMember(
+          id: 'u_khoa',
+          name: 'Khoa Cao',
+          role: FamilyMember.roleParent,
+          familyId: 'fam_test',
+        ),
+        const FamilyMember(
+          id: 'u_bin',
+          name: 'Bin Su',
+          role: FamilyMember.roleParent,
+          familyId: 'fam_test',
+        ),
+        const FamilyMember(
+          id: 'u_bebo',
+          name: 'Bé Bo',
+          role: FamilyMember.roleChild,
+          familyId: 'fam_test',
+        ),
+      ];
+
+      await aiService.initChat(
+        familyId: 'fam_test',
+        userId: 'u_khoa',
+        userName: 'Khoa Cao',
+        userRole: 'Bố/Mẹ (Parent)',
+        familyName: 'Yeah',
+        familyMembers: members,
+      );
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        familyId: 'fam_test',
+        currentUserId: 'u_khoa',
+        currentUserName: 'Khoa Cao',
+        familyMembers: members,
+        repository: InMemoryReminderRepository(),
+        userMessage: 'liệt kê tên thành viên nào đã điểm danh và chưa điểm danh',
+      );
+
+      expect(res.text, contains('Khoa Cao'));
+      expect(res.text, contains('Bin Su'));
+      expect(res.text, contains('Bé Bo'));
+      expect(res.text.contains('Bố/Mẹ (Parent):'), isFalse);
+      expect(res.text.contains('Con cái (Child):'), isFalse);
+    });
+
+    test('44. Complex reminder creation assigns directly to designated member with proof and star reward', () async {
+      final members = [
+        const FamilyMember(
+          id: 'u_khoa',
+          name: 'Khoa Cao',
+          role: FamilyMember.roleParent,
+          familyId: 'fam_test',
+        ),
+        const FamilyMember(
+          id: 'u_bin',
+          name: 'Bin Su',
+          role: FamilyMember.roleChild,
+          familyId: 'fam_test',
+        ),
+      ];
+
+      final repo = InMemoryReminderRepository();
+
+      final res = await FamilyAiAssistantService.instance.processMessage(
+        familyId: 'fam_test',
+        currentUserId: 'u_khoa',
+        currentUserName: 'Khoa Cao',
+        familyMembers: members,
+        repository: repo,
+        userMessage: 'giao việc rửa chén cho Bin lúc 18h cần chụp ảnh nghiệm thu thưởng 2 sao',
+      );
+
+      expect(res.attachedReminder, isNotNull);
+      final r = res.attachedReminder!;
+      expect(r.assignedTo, 'u_bin');
+      expect(r.assignedToName, 'Bin Su');
+      expect(r.requiresProofImage, isTrue);
+      expect(r.rewardStars, 2);
+    });
+
+    test('45. AiSpeechPlatform TTS cleans markdown and triggers speak/stop cleanly', () async {
+      await AiSpeechPlatform.instance.speak(
+        '**Dạ em chào Bố!** ✅ Hôm nay có 2 việc nhà cần làm.',
+        isEnglish: false,
+      );
+
+      expect(AiSpeechPlatform.instance.isSpeaking, isTrue);
+      await AiSpeechPlatform.instance.stopSpeaking();
+      expect(AiSpeechPlatform.instance.isSpeaking, isFalse);
     });
   });
 }

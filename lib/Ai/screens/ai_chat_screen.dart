@@ -92,6 +92,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
       // Đọc danh sách thành viên trong gia đình hiện tại
       final List<FamilyMember> members = [];
       try {
+        // 1. Lấy thông tin từ FamilyDataService vốn đã liên kết bảng users
+        final nameMap = <String, String>{};
+        try {
+          final serviceMembers = await dataService.getFamilyMembers(familyId: _familyId);
+          for (final sm in serviceMembers) {
+            if (sm.user.name.isNotEmpty && sm.user.name != 'Thành viên') {
+              nameMap[sm.user.id] = sm.user.name;
+            }
+          }
+        } catch (_) {}
+
         final snap = await FirebaseFirestore.instance
             .collection('family_members')
             .where('familyId', isEqualTo: _familyId)
@@ -107,9 +118,32 @@ class _AiChatScreenState extends State<AiChatScreen> {
           final role = (d['role'] ?? FamilyMember.roleParent).toString();
           var mName = (d['name'] ?? d['userName'] ?? '').toString().trim();
 
+          if (mName.isEmpty && nameMap.containsKey(uid)) {
+            mName = nameMap[uid]!;
+          }
+
           if (mName.isEmpty && uid == _currentUserId) {
             mName = _currentUserName;
           }
+
+          if (mName.isEmpty) {
+            try {
+              final uDoc = await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(uid)
+                  .get()
+                  .timeout(const Duration(seconds: 2));
+              if (uDoc.exists && uDoc.data() != null) {
+                final n = (uDoc.data()!['name'] ?? uDoc.data()!['displayName'])
+                    ?.toString()
+                    .trim();
+                if (n != null && n.isNotEmpty) {
+                  mName = n;
+                }
+              }
+            } catch (_) {}
+          }
+
           if (mName.isEmpty) {
             mName = 'Thành viên';
           }
@@ -148,6 +182,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         userId: _currentUserId,
         userName: _currentUserName,
         userRole: myRole,
+        familyMembers: _familyMembers,
       ));
     } catch (_) {}
 
