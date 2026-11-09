@@ -148,10 +148,10 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
     );
   }
 
-  Future<void> _openCreateFamily() async {
+  Future<void> _openCreateFamily({bool isPeerGroup = false}) async {
     final hadNoFamily = _families.isEmpty;
     final created = await Navigator.of(context).push<Family>(
-      MaterialPageRoute(builder: (_) => const CreateFamilyScreen()),
+      MaterialPageRoute(builder: (_) => CreateFamilyScreen(initialIsPeerGroup: isPeerGroup)),
     );
     if (!mounted) return;
     if (created != null) {
@@ -553,20 +553,32 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
                                   iconColor: primary,
                                   title: AppLanguage.text('Tạo gia đình mới', 'Create new family'),
                                   description: AppLanguage.text(
-                                    'Bạn sẽ là người quản trị và có thể mời các thành viên.',
-                                    'You will be the owner and can invite members.',
+                                    'Không gian gia đình có vai vế Bố Mẹ, Con cái, Ông Bà.',
+                                    'Family space with parent, child, grandparent hierarchy.',
                                   ),
-                                  onTap: _openCreateFamily,
+                                  onTap: () => _openCreateFamily(isPeerGroup: false),
+                                ),
+                                const SizedBox(height: 14),
+                                _SetupOptionCard(
+                                  icon: Icons.groups_rounded,
+                                  iconBackground: const Color(0xFFE8F5E9),
+                                  iconColor: const Color(0xFF2E7D32),
+                                  title: AppLanguage.text('Tạo nhóm Bạn bè / Sống chung (Không role)', 'Create Roommate Group (No Role)'),
+                                  description: AppLanguage.text(
+                                    'Dành cho bạn bè hoặc phòng trọ sống chung. Bình đẳng, không role vai vế, tránh tranh chấp vai trò.',
+                                    'For roommates & friends living together. Equal, no hierarchy, zero role disputes.',
+                                  ),
+                                  onTap: () => _openCreateFamily(isPeerGroup: true),
                                 ),
                                 const SizedBox(height: 14),
                                 _SetupOptionCard(
                                   icon: Icons.group_add_rounded,
                                   iconBackground: const Color(0xFFFFF0DF),
                                   iconColor: const Color(0xFFE77D2B),
-                                  title: AppLanguage.text('Tham gia gia đình', 'Join a family'),
+                                  title: AppLanguage.text('Tham gia gia đình / nhóm', 'Join family or group'),
                                   description: AppLanguage.text(
-                                    'Nhập mã gia đình được chia sẻ bởi người thân.',
-                                    'Enter the family code shared by your family member.',
+                                    'Nhập mã 6 ký tự được chia sẻ bởi người thân hoặc bạn bè.',
+                                    'Enter the 6-character code shared by family or roommates.',
                                   ),
                                   onTap: _openJoinFamily,
                                 ),

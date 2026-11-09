@@ -60,10 +60,15 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
             style: const TextStyle(fontWeight: FontWeight.w800, color: darkText),
           ),
           content: Text(
-            AppLanguage.text(
-              'Bạn đã tham gia gia đình "${family.name}" với vai vế ${_roleLabel(_selectedRole)}.',
-              'You joined family "${family.name}" as ${_roleLabel(_selectedRole)}.',
-            ),
+            family.isPeerGroup
+                ? AppLanguage.text(
+                    'Bạn đã tham gia không gian "${family.name}" với vai trò Bạn bè bình đẳng (Không role tranh chấp).',
+                    'You joined "${family.name}" as an equal Friend (Zero role dispute).',
+                  )
+                : AppLanguage.text(
+                    'Bạn đã tham gia gia đình "${family.name}" với vai vế ${_roleLabel(_selectedRole)}.',
+                    'You joined family "${family.name}" as ${_roleLabel(_selectedRole)}.',
+                  ),
             style: const TextStyle(color: mutedText, height: 1.5),
           ),
           actions: [
