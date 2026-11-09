@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../Danh/danh_payment_entry.dart';
 import '../../Long/services/family_data_service.dart';
 import '../../Thinh/theme/app_language.dart';
+import '../models/family.dart';
 import '../models/family_member.dart';
 import '../services/family_service.dart';
 
@@ -19,7 +21,65 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
   final FamilyService _familyService = FamilyService();
 
   bool _isJoining = false;
-  String _selectedRole = FamilyMember.roleParent;
+  String _selectedRole = FamilyMember.roleChild;
+  Family? _previewFamily;
+  bool _isLookingUp = false;
+  String? _lookupError;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _codeController.addListener(_onCodeChanged);
+  }
+
+  void _onCodeChanged() {
+    final code = _codeController.text.trim().toUpperCase();
+    _debounce?.cancel();
+    if (code.length < 6) {
+      if (_previewFamily != null || _lookupError != null || _isLookingUp) {
+        setState(() {
+          _previewFamily = null;
+          _lookupError = null;
+          _isLookingUp = false;
+        });
+      }
+      return;
+    }
+
+    _debounce = Timer(const Duration(milliseconds: 350), () async {
+      setState(() {
+        _isLookingUp = true;
+        _lookupError = null;
+      });
+      try {
+        final fam = await _familyService.findFamilyByJoinCode(code);
+        if (!mounted) return;
+        setState(() {
+          _isLookingUp = false;
+          _previewFamily = fam;
+          if (fam == null) {
+            _lookupError = AppLanguage.text(
+              'Không tìm thấy không gian với mã này.',
+              'No space found with this code.',
+            );
+          } else {
+            if (fam.isPeerGroup) {
+              _selectedRole = FamilyMember.roleMember;
+            } else if (_selectedRole == FamilyMember.roleMember) {
+              _selectedRole = FamilyMember.roleChild;
+            }
+          }
+        });
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _isLookingUp = false;
+          });
+        }
+      }
+    });
+  }
 
   static const Color background = Color(0xFFF2FAF7);
   static const Color primary = Color(0xFF07866F);
@@ -28,6 +88,8 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _codeController.removeListener(_onCodeChanged);
     _codeController.dispose();
     super.dispose();
   }
@@ -38,9 +100,13 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
     setState(() => _isJoining = true);
 
     try {
+      final effectiveRole = (_previewFamily?.isPeerGroup == true)
+          ? FamilyMember.roleMember
+          : _selectedRole;
+
       final family = await _familyService.joinFamily(
         joinCode: _codeController.text,
-        role: _selectedRole,
+        role: effectiveRole,
       );
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
       FamilyDataService().clearCache();
@@ -269,10 +335,109 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                 },
                               ),
                               const SizedBox(height: 16),
+                              // Preview Không Gian khi nhập mã
+                              if (_isLookingUp) ...[
+                                const SizedBox(height: 12),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      AppLanguage.text('Đang nhận diện không gian...', 'Identifying space...'),
+                                      style: const TextStyle(fontSize: 12, color: mutedText, fontWeight: FontWeight.w500),
+                                    ),
+                                  ],
+                                ),
+                              ] else if (_lookupError != null) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFDE8E8),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.error_outline_rounded, size: 16, color: Color(0xFFD32F2F)),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _lookupError!,
+                                          style: const TextStyle(fontSize: 12, color: Color(0xFFD32F2F), fontWeight: FontWeight.w500),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ] else if (_previewFamily != null) ...[
+                                const SizedBox(height: 14),
+                                Container(
+                                  padding: const EdgeInsets.all(13),
+                                  decoration: BoxDecoration(
+                                    color: _previewFamily!.isPeerGroup ? const Color(0xFFE8F5E9) : const Color(0xFFE0F4EE),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: _previewFamily!.isPeerGroup ? const Color(0xFF2E7D32) : primary,
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        _previewFamily!.isPeerGroup ? Icons.groups_rounded : Icons.family_restroom_rounded,
+                                        color: _previewFamily!.isPeerGroup ? const Color(0xFF2E7D32) : primary,
+                                        size: 26,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _previewFamily!.name,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: darkText,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              _previewFamily!.isPeerGroup
+                                                  ? AppLanguage.text(
+                                                      '🌿 Không gian Bạn bè / Sống chung (Bình đẳng, không phân chia vai vế)',
+                                                      '🌿 Roommate / Friends space (Equal, zero role hierarchy)',
+                                                    )
+                                                  : AppLanguage.text(
+                                                      '🏡 Tổ ấm gia đình (Có phân cấp phụ huynh Bố Mẹ, Con cái)',
+                                                      '🏡 Family Hub (Parent & Child hierarchy)',
+                                                    ),
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: _previewFamily!.isPeerGroup ? const Color(0xFF2E7D32) : primary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 16),
                               Align(
                                 alignment: Alignment.centerLeft,
                                 child: _RequiredLabel(
-                                  text: AppLanguage.text('Vai vế của bạn', 'Your Role'),
+                                  text: _previewFamily?.isPeerGroup == true
+                                      ? AppLanguage.text('Vai trò trong nhóm', 'Role in group')
+                                      : AppLanguage.text('Vai vế của bạn', 'Your Role'),
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -285,12 +450,16 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                   FamilyMember.roleChild,
                                 ].contains(_selectedRole)
                                     ? _selectedRole
-                                    : FamilyMember.roleParent,
+                                    : (_previewFamily?.isPeerGroup == true
+                                        ? FamilyMember.roleMember
+                                        : FamilyMember.roleChild),
                                 decoration: InputDecoration(
-                                  prefixIcon: const Icon(
-                                    Icons.family_restroom_rounded,
+                                  prefixIcon: Icon(
+                                    _previewFamily?.isPeerGroup == true
+                                        ? Icons.groups_rounded
+                                        : Icons.family_restroom_rounded,
                                     size: 20,
-                                    color: Color(0xFF6E8B83),
+                                    color: const Color(0xFF6E8B83),
                                   ),
                                   filled: true,
                                   fillColor: const Color(0xFFF8FBFA),
@@ -318,35 +487,72 @@ class _JoinFamilyScreenState extends State<JoinFamilyScreen> {
                                     ),
                                   ),
                                 ),
-                                items: [
-                                  DropdownMenuItem(
-                                    value: FamilyMember.roleGrandparent,
-                                    child: Text(AppLanguage.text('Ông / Bà', 'Grandparent')),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: FamilyMember.roleParent,
-                                    child: Text(AppLanguage.text('Bố / Mẹ', 'Parent')),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: FamilyMember.roleRelative,
-                                    child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: FamilyMember.roleMember,
-                                    child: Text(AppLanguage.text('Thành viên / Bạn bè', 'Member / Friend')),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: FamilyMember.roleChild,
-                                    child: Text(AppLanguage.text('Con cái', 'Child')),
-                                  ),
-                                ],
-                                onChanged: _isJoining
+                                items: _previewFamily?.isPeerGroup == true
+                                    ? [
+                                        DropdownMenuItem(
+                                          value: FamilyMember.roleMember,
+                                          child: Text(AppLanguage.text('Bạn bè bình đẳng (Không role)', 'Equal Friend (No role)')),
+                                        ),
+                                      ]
+                                    : [
+                                        DropdownMenuItem(
+                                          value: FamilyMember.roleChild,
+                                          child: Text(AppLanguage.text('Con cái (Mặc định)', 'Child (Default)')),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: FamilyMember.roleParent,
+                                          child: Text(AppLanguage.text('Bố / Mẹ', 'Parent')),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: FamilyMember.roleGrandparent,
+                                          child: Text(AppLanguage.text('Ông / Bà', 'Grandparent')),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: FamilyMember.roleRelative,
+                                          child: Text(AppLanguage.text('Cô / Dì / Chú / Bác', 'Relative')),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: FamilyMember.roleMember,
+                                          child: Text(AppLanguage.text('Thành viên / Bạn bè', 'Member / Friend')),
+                                        ),
+                                      ],
+                                onChanged: _isJoining || _previewFamily?.isPeerGroup == true
                                     ? null
                                     : (value) {
                                         if (value != null) {
                                           setState(() => _selectedRole = value);
                                         }
                                       },
+                              ),
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF7FBF9),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFFE2EFEA)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(Icons.shield_outlined, size: 15, color: primary),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        _previewFamily?.isPeerGroup == true
+                                            ? AppLanguage.text(
+                                                'Mô hình Bạn bè: Mọi thành viên đều có trách nhiệm và quyền hạn sinh hoạt ngang hàng.',
+                                                'Friend model: All members share equal rights and responsibilities.',
+                                              )
+                                            : AppLanguage.text(
+                                                'Quản trị an toàn: Chủ nhà (Bố/Mẹ) có toàn quyền xác thực và điều chỉnh vai vế của bạn sau khi tham gia.',
+                                                'Family governance: Family Owner (Parents) can verify and adjust your role anytime after joining.',
+                                              ),
+                                        style: const TextStyle(fontSize: 11, color: Color(0xFF5A726B), height: 1.35),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                               const SizedBox(height: 13),
                               Container(
