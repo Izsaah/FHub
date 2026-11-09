@@ -495,6 +495,7 @@ class ReminderDetailBottomSheet extends StatelessWidget {
     final selectedChild = await MemberPickerBottomSheet.show(
       context,
       familyMembers: childMembers,
+      currentUserId: currentUserId,
     );
     if (selectedChild == null || !context.mounted) return;
 

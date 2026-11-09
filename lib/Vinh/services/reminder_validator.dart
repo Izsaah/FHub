@@ -42,10 +42,15 @@ class ReminderValidator {
   /// - must belong to current Family
   static String? validateAssignedMember(
     String? memberId,
-    List<FamilyMember> currentFamilyMembers,
-  ) {
+    List<FamilyMember> currentFamilyMembers, {
+    String? currentUserId,
+  }) {
     if (memberId == null || memberId.trim().isEmpty) {
       return 'Assigned member is required';
+    }
+    if (memberId == 'OPEN' || memberId == 'ALL') return null;
+    if (currentUserId != null && memberId == currentUserId) {
+      return AppLanguage.text('Không thể tự giao việc cho chính bản thân.', 'Cannot assign tasks to yourself.');
     }
     final isBelongToFamily = currentFamilyMembers.any((m) => m.id == memberId);
     if (!isBelongToFamily) {

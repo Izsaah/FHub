@@ -108,6 +108,50 @@ void main() {
         isNotNull,
       );
     });
+
+    test('Cannot assign tasks to yourself when currentUserId is provided', () {
+      const currentFamilyMembers = [
+        FamilyMember(
+          id: 'user_1',
+          name: 'Dad',
+          role: 'Parent',
+          familyId: 'family_1',
+        ),
+        FamilyMember(
+          id: 'user_2',
+          name: 'Mom',
+          role: 'Parent',
+          familyId: 'family_1',
+        ),
+      ];
+
+      expect(
+        ReminderValidator.validateAssignedMember(
+          'user_1',
+          currentFamilyMembers,
+          currentUserId: 'user_1',
+        ),
+        isNotNull,
+      );
+
+      expect(
+        ReminderValidator.validateAssignedMember(
+          'user_2',
+          currentFamilyMembers,
+          currentUserId: 'user_1',
+        ),
+        isNull,
+      );
+
+      expect(
+        ReminderValidator.validateAssignedMember(
+          'OPEN',
+          currentFamilyMembers,
+          currentUserId: 'user_1',
+        ),
+        isNull,
+      );
+    });
   });
 
   group('Reminder Repository & Permission Tests (Lab 11 Cases)', () {

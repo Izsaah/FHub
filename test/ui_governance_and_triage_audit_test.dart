@@ -3,6 +3,7 @@ import 'package:fhub/Long/models/family_model.dart';
 import 'package:fhub/Vinh/models/family_member.dart';
 import 'package:fhub/Vinh/models/reminder_model.dart';
 import 'package:fhub/Danh/models/family_subscription_model.dart';
+import 'package:fhub/Vinh/services/reminder_validator.dart';
 
 void main() {
   group('UI Governance & Triage Audit Test Suite', () {
@@ -109,6 +110,49 @@ void main() {
         expect(childMember.isDeactivated, isFalse);
         final isAssignable = !childMember.isMemorialized && !childMember.isDeactivated;
         expect(isAssignable, isTrue);
+      });
+
+      test('2.4 Self-assignment is blocked for creator/current user', () {
+        const currentFamilyMembers = [
+          FamilyMember(
+            id: 'user_danh',
+            name: 'Danh',
+            role: 'PARENT',
+            familyId: 'fam_vn',
+            status: 'ACTIVE',
+          ),
+          FamilyMember(
+            id: 'user_vinh',
+            name: 'Vinh',
+            role: 'CHILD',
+            familyId: 'fam_vn',
+            status: 'ACTIVE',
+          ),
+        ];
+
+        // Self-assignment rejected
+        final selfError = ReminderValidator.validateAssignedMember(
+          'user_danh',
+          currentFamilyMembers,
+          currentUserId: 'user_danh',
+        );
+        expect(selfError, isNotNull, reason: 'Must not allow self-assignment');
+
+        // Other member assignment accepted
+        final otherError = ReminderValidator.validateAssignedMember(
+          'user_vinh',
+          currentFamilyMembers,
+          currentUserId: 'user_danh',
+        );
+        expect(otherError, isNull);
+
+        // OPEN (Whole family) assignment accepted
+        final openError = ReminderValidator.validateAssignedMember(
+          'OPEN',
+          currentFamilyMembers,
+          currentUserId: 'user_danh',
+        );
+        expect(openError, isNull);
       });
     });
 

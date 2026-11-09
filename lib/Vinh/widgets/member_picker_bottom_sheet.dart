@@ -9,11 +9,13 @@ import '../services/member_color_helper.dart';
 class MemberPickerBottomSheet extends StatelessWidget {
   final List<FamilyMember> familyMembers;
   final FamilyMember? selectedMember;
+  final String? currentUserId;
 
   const MemberPickerBottomSheet({
     super.key,
     required this.familyMembers,
     this.selectedMember,
+    this.currentUserId,
   });
 
   static const Color primaryColor = Color(0xFF005F50);
@@ -24,6 +26,7 @@ class MemberPickerBottomSheet extends StatelessWidget {
     BuildContext context, {
     required List<FamilyMember> familyMembers,
     FamilyMember? selectedMember,
+    String? currentUserId,
   }) {
     return showModalBottomSheet<FamilyMember>(
       context: context,
@@ -35,6 +38,7 @@ class MemberPickerBottomSheet extends StatelessWidget {
       builder: (ctx) => MemberPickerBottomSheet(
         familyMembers: familyMembers,
         selectedMember: selectedMember,
+        currentUserId: currentUserId,
       ),
     );
   }
@@ -147,7 +151,8 @@ class MemberPickerBottomSheet extends StatelessWidget {
                       itemBuilder: (ctx, index) {
                         final member = familyMembers[index];
                         final isSelected = member.id == selectedMember?.id;
-                        final isAssignable = !member.isMemorialized && !member.isDeactivated;
+                        final isSelf = currentUserId != null && member.id == currentUserId;
+                        final isAssignable = !member.isMemorialized && !member.isDeactivated && !isSelf;
                         final primary = isAssignable
                             ? MemberColorHelper.getPrimaryColor(member.name)
                             : Colors.grey;
@@ -196,21 +201,27 @@ class MemberPickerBottomSheet extends StatelessWidget {
                               ? Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: member.isMemorialized
-                                        ? const Color(0xFFEFEBE9)
-                                        : const Color(0xFFFFF3E0),
+                                    color: isSelf
+                                        ? const Color(0xFFECEFF1)
+                                        : (member.isMemorialized
+                                            ? const Color(0xFFEFEBE9)
+                                            : const Color(0xFFFFF3E0)),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
-                                    member.isMemorialized
-                                        ? AppLanguage.text('Tưởng nhớ', 'Memorial')
-                                        : AppLanguage.text('Tạm ngưng', 'Inactive'),
+                                    isSelf
+                                        ? AppLanguage.text('Chính bạn', 'You')
+                                        : (member.isMemorialized
+                                            ? AppLanguage.text('Tưởng nhớ', 'Memorial')
+                                            : AppLanguage.text('Tạm ngưng', 'Inactive')),
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
-                                      color: member.isMemorialized
-                                          ? const Color(0xFF795548)
-                                          : const Color(0xFFE65100),
+                                      color: isSelf
+                                          ? const Color(0xFF546E7A)
+                                          : (member.isMemorialized
+                                              ? const Color(0xFF795548)
+                                              : const Color(0xFFE65100)),
                                     ),
                                   ),
                                 )
@@ -226,10 +237,15 @@ class MemberPickerBottomSheet extends StatelessWidget {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                        AppLanguage.text(
-                                          'Không thể giao việc cho thành viên .',
-                                          'Cannot assign tasks to  members.',
-                                        ),
+                                        isSelf
+                                            ? AppLanguage.text(
+                                                'Không thể tự giao việc cho chính bản thân. Vui lòng chọn thành viên khác hoặc Cả nhà.',
+                                                'Cannot assign tasks to yourself. Please choose another member or Shared task.',
+                                              )
+                                            : AppLanguage.text(
+                                                'Không thể giao việc cho thành viên ${member.isMemorialized ? "đã khuất" : "đã tạm ngưng"}.',
+                                                'Cannot assign tasks to ${member.isMemorialized ? "deceased" : "inactive"} members.',
+                                              ),
                                       ),
                                       behavior: SnackBarBehavior.floating,
                                       duration: const Duration(seconds: 2),
