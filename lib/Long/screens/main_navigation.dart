@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'home/home_screen.dart';
@@ -6,7 +7,10 @@ import 'profile/profile_screen.dart';
 import '../services/family_data_service.dart';
 import '../services/family_state_manager.dart';
 import '../utils/long_strings.dart';
+import '../widgets/app_toast.dart';
 import '../../Ai/screens/ai_chat_screen.dart';
+import '../../Danh/models/notification_model.dart';
+import '../../Danh/services/notification_service.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../../Vinh/screens/reminder_list_screen.dart';
 
@@ -19,31 +23,69 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
-  late final List<Widget> _screens;
+  StreamSubscription<NotificationModel>? _notifBusSub;
+
+  void _goToFamilyTab() {
+    if (_currentIndex != 2) {
+      setState(() => _currentIndex = 2);
+    }
+  }
+
+  void _goToRemindersTab() {
+    if (_currentIndex != 1) {
+      setState(() => _currentIndex = 1);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     FamilyDataService().ensureRealtimeSync();
     FamilyStateManager().initialize();
-    _screens = [
-      HomeScreen(
-        onNavigateToFamily: () => setState(() => _currentIndex = 2),
-        onNavigateToReminders: () => setState(() => _currentIndex = 1),
-      ),
-      ReminderListScreen(
-        isActive: _currentIndex == 1,
-        onNavigateToFamily: () => setState(() => _currentIndex = 2),
-      ),
-      const FamilyScreen(),
-      const ProfileScreen(),
-    ];
+    unawaited(NotificationService.instance.flushOutbox());
+    _notifBusSub = NotificationService.instance.onNotificationDispatched.listen((notif) {
+      if (!mounted) return;
+      final selectedFamId = FamilyDataService().selectedFamilyIdNotifier.value;
+      final currentUid = FamilyDataService().currentUserId;
+      if (selectedFamId != null &&
+          selectedFamId == notif.familyId &&
+          (notif.targetUserId == 'ALL' || notif.targetUserId == currentUid)) {
+        final msg = AppLanguage.isEnglish.value &&
+                notif.titleEn != null &&
+                notif.titleEn!.isNotEmpty
+            ? notif.titleEn!
+            : notif.title;
+        AppToast.showInfo(context, msg);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _notifBusSub?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: _screens),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          HomeScreen(
+            key: const ValueKey('tab_home'),
+            onNavigateToFamily: _goToFamilyTab,
+            onNavigateToReminders: _goToRemindersTab,
+          ),
+          ReminderListScreen(
+            key: const ValueKey('tab_reminders'),
+            isActive: _currentIndex == 1,
+            onNavigateToFamily: _goToFamilyTab,
+          ),
+          const FamilyScreen(key: ValueKey('tab_family')),
+          const ProfileScreen(key: ValueKey('tab_profile')),
+        ],
+      ),
       floatingActionButton: _currentIndex == 1
           ? null
           : ValueListenableBuilder<String?>(

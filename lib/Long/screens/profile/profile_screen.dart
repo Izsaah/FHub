@@ -73,8 +73,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<Map<String, dynamic>> _fetchProfileData() async {
-    final user = await _familyDataService.getCurrentUser();
-    final families = await _familyDataService.getMyFamilies();
+    final results = await Future.wait([
+      _familyDataService.getCurrentUser(),
+      _familyDataService.getMyFamilies(),
+    ]);
+    final user = results[0] as UserModel;
+    final families = results[1] as List<FamilyModel>;
     final family = await _familyDataService.getCurrentFamily();
     if (family != null && families.isNotEmpty) {
       DanhPaymentEntry.onFamilyCreatedOrJoined(family.id);
@@ -1162,7 +1166,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _familyDataService.clearCache();
       if (mounted) {
         setState(_loadData);
-        AppToast.show(
+        AppToast.showSuccess(
           context,
           LongStrings.t(
             'Đã cập nhật ảnh đại diện thành công!',
@@ -1172,13 +1176,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        AppToast.show(
+        AppToast.showInfo(
           context,
           LongStrings.t(
             'Không thể cập nhật ảnh: $e',
             'Could not update avatar: $e',
           ),
-          isSuccess: false,
         );
       }
     }

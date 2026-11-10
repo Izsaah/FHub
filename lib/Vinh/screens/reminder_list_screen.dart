@@ -91,11 +91,21 @@ class _ReminderListScreenState extends State<ReminderListScreen>
   String _searchQuery = '';
   final _searchController = TextEditingController();
   Timer? _deleteSnackBarTimer;
-  Timer? _clockTicker;
   List<ReminderModel> _lastLoadedReminders = [];
   Stream<List<ReminderModel>>? _remindersStream;
   String? _cachedStreamFamilyId;
   bool? _cachedStreamFilterOnlyMine;
+
+  static final List<MapEntry<RegExp, String>> _accentRegexps = [
+    MapEntry(RegExp('à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ'), 'a'),
+    MapEntry(RegExp('è|é|ề|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ'), 'e'),
+    MapEntry(RegExp('ì|í|ị|ỉ|ĩ'), 'i'),
+    MapEntry(RegExp('ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ'), 'o'),
+    MapEntry(RegExp('ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ'), 'u'),
+    MapEntry(RegExp('ỳ|ý|ỵ|ỷ|ỹ'), 'y'),
+    MapEntry(RegExp('đ'), 'd'),
+  ];
+  static final RegExp _multiSpaceRegex = RegExp(r'\s+');
 
   void _invalidateRemindersStream() {
     _remindersStream = null;
@@ -125,19 +135,10 @@ class _ReminderListScreenState extends State<ReminderListScreen>
 
   String _normalizeName(String s) {
     var res = s.trim().toLowerCase();
-    const accents = {
-      'à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ': 'a',
-      'è|é|ề|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ': 'e',
-      'ì|í|ị|ỉ|ĩ': 'i',
-      'ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ': 'o',
-      'ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ': 'u',
-      'ỳ|ý|ỵ|ỷ|ỹ': 'y',
-      'đ': 'd',
-    };
-    for (final entry in accents.entries) {
-      res = res.replaceAll(RegExp(entry.key), entry.value);
+    for (final entry in _accentRegexps) {
+      res = res.replaceAll(entry.key, entry.value);
     }
-    return res.replaceAll(RegExp(r'\s+'), ' ');
+    return res.replaceAll(_multiSpaceRegex, ' ');
   }
 
   void _checkDueReminders() {
@@ -238,28 +239,9 @@ class _ReminderListScreenState extends State<ReminderListScreen>
     // 3. Đăng ký lắng nghe sự kiện thay đổi family_members từ Firestore theo thời gian thực (Realtime)
     _listenToFirestoreFamilyMembers();
 
-    // 4. Lắng nghe Lifecycle và sự kiện Ticker toàn cục
+    // 4. Lắng nghe Lifecycle và khởi chạy bộ đếm đồng hồ toàn cục
     WidgetsBinding.instance.addObserver(this);
-    MultiTierEscalationService.instance.clockTick.addListener(_onClockTick);
-
-    // 5. Ticker đồng hồ thời gian thực mỗi 1 giây: Tự động đổi trạng thái Quá hạn và Bật chuông/thông báo khi tới giờ
-    _startClockTicker();
-  }
-
-  void _startClockTicker() {
-    _clockTicker?.cancel();
     MultiTierEscalationService.instance.ensureClockRunning();
-    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      try {
-        _checkDueReminders();
-      } catch (e) {
-        debugPrint('ReminderListScreen clock ticker error: $e');
-      }
-      if (mounted) {
-        setState(() {});
-      }
-    });
   }
 
   @override
@@ -269,20 +251,6 @@ class _ReminderListScreenState extends State<ReminderListScreen>
       _checkDueReminders();
       if (mounted) setState(() {});
     }
-  }
-
-  void _onClockTick() {
-    if (!mounted) return;
-    try {
-      _checkDueReminders();
-    } catch (_) {}
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void reassemble() {
-    super.reassemble();
-    _startClockTicker();
   }
 
   @override
@@ -300,13 +268,10 @@ class _ReminderListScreenState extends State<ReminderListScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    MultiTierEscalationService.instance.clockTick.removeListener(_onClockTick);
     MultiTierEscalationService.instance.stopClock();
     MultiTierEscalationService.instance.cancelAll();
     FamilyDataService().selectedFamilyIdNotifier.removeListener(_onGlobalFamilyNotifierChanged);
     FamilyDataService().membershipRevisionNotifier.removeListener(_onGlobalMembershipRevisionChanged);
-    _clockTicker?.cancel();
-    _clockTicker = null;
     _familyMembersSub?.cancel();
     _deleteSnackBarTimer?.cancel();
     _searchController.dispose();
@@ -2142,6 +2107,7 @@ class _ReminderListScreenState extends State<ReminderListScreen>
                             builder: (context) {
                               final overdueNeedingTriage = scopedReminders.where((r) {
                                 if (!r.isOverdue || r.isCompleted || r.isDeleted || r.isSubmitted || r.isOpenTask || r.isOpen || r.isClosedMissed) return false;
+                                if (r.assignedTo == _currentUserId) return false;
                                 final isGuardian = _familyMembers.any(
                                   (m) => m.id == _currentUserId && (m.isParent || m.isGrandparent || m.isOwner),
                                 );

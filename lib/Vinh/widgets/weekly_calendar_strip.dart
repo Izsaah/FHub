@@ -129,8 +129,8 @@ class _WeeklyCalendarStripState extends State<WeeklyCalendarStrip> {
             : '${_getMonthName(_weekStart.month, false)}, ${_weekStart.year}';
 
         return Container(
-          margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          margin: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),

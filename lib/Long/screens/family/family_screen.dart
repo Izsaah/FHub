@@ -160,30 +160,23 @@ class _FamilyScreenState extends State<FamilyScreen> {
       DanhPaymentEntry.clearFamilyContext();
       _familyDataService.resetAll();
       setState(_loadData);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result == LeaveFamilyResult.familyDeleted
-                ? LongStrings.t(
-                    'Đã xóa gia đình. Lời nhắc và dữ liệu lịch sử được giữ lại.',
-                    'Family deleted. Reminders and historical data were kept.',
-                  )
-                : LongStrings.t(
-                    'Bạn đã rời khỏi gia đình.',
-                    'You have left the family.',
-                  ),
-          ),
-          backgroundColor: const Color(0xFF005F50),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.showSuccess(
+        context,
+        result == LeaveFamilyResult.familyDeleted
+            ? LongStrings.t(
+                'Đã xóa gia đình. Lời nhắc và dữ liệu lịch sử được giữ lại.',
+                'Family deleted. Reminders and historical data were kept.',
+              )
+            : LongStrings.t(
+                'Bạn đã rời khỏi gia đình.',
+                'You have left the family.',
+              ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red.shade700,
-        ),
+      AppToast.showInfo(
+        context,
+        e.toString().replaceAll('Exception: ', ''),
       );
     } finally {
       if (mounted) setState(() => _isLeaving = false);
@@ -329,22 +322,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         await _familyDataService.claimOwnership(familyId: familyId);
                         setState(_loadData);
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              LongStrings.t(
-                                '🎉 Bạn đã tiếp quản quyền Chủ gia đình thành công!',
-                                '🎉 You have successfully claimed ownership!',
-                              ),
-                            ),
-                            backgroundColor: const Color(0xFF005F50),
+                        AppToast.showSuccess(
+                          context,
+                          LongStrings.t(
+                            '🎉 Bạn đã tiếp quản quyền Chủ gia đình thành công!',
+                            '🎉 You have successfully claimed ownership!',
                           ),
                         );
                       } catch (e) {
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(e.toString())),
-                        );
+                        AppToast.showInfo(context, e.toString());
                       }
                     },
                   ),
@@ -370,15 +357,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     onTap: () async {
                       Navigator.pop(ctx);
                       if (targetMember.hierarchyRole != HierarchyRole.parent) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              LongStrings.t(
-                                'Chỉ có thể chuyển quyền Chủ phòng cho thành viên vai vế Bố / Mẹ!',
-                                'Can only transfer ownership to active Parent members!',
-                              ),
-                            ),
-                            backgroundColor: Colors.red[700],
+                        AppToast.showInfo(
+                          context,
+                          LongStrings.t(
+                            'Chỉ có thể chuyển quyền Chủ phòng cho thành viên vai vế Bố / Mẹ!',
+                            'Can only transfer ownership to active Parent members!',
                           ),
                         );
                         return;
@@ -418,22 +401,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           );
                           setState(_loadData);
                           if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                LongStrings.t(
-                                  'Đã chuyển quyền Chủ gia đình cho "${targetMember.user.name}"!',
-                                  'Ownership transferred to "${targetMember.user.name}"!',
-                                ),
-                              ),
-                              backgroundColor: const Color(0xFF005F50),
+                          AppToast.showSuccess(
+                            context,
+                            LongStrings.t(
+                              'Đã chuyển quyền Chủ gia đình cho "${targetMember.user.name}"!',
+                              'Ownership transferred to "${targetMember.user.name}"!',
                             ),
                           );
                         } catch (e) {
                           if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(e.toString())),
-                          );
+                          AppToast.showInfo(context, e.toString());
                         }
                       }
                     },
@@ -716,22 +693,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                   );
                                   setState(_loadData);
                                   if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        LongStrings.t(
-                                          '🎉 Bạn đã tiếp quản quyền Owner thành công!',
-                                          '🎉 You successfully claimed ownership!',
-                                        ),
-                                      ),
-                                      backgroundColor: const Color(0xFF005F50),
+                                  AppToast.showSuccess(
+                                    context,
+                                    LongStrings.t(
+                                      '🎉 Bạn đã tiếp quản quyền Owner thành công!',
+                                      '🎉 You successfully claimed ownership!',
                                     ),
                                   );
                                 } catch (e) {
                                   if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(e.toString())),
-                                  );
+                                  AppToast.showInfo(context, e.toString());
                                 }
                               },
                               child: Text(
@@ -1192,22 +1163,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     _familyDataService.clearCache();
                     setState(_loadData);
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          LongStrings.t(
-                            'Đã duyệt "${req.userName}" vào gia đình!',
-                            'Approved "${req.userName}" into family!',
-                          ),
-                        ),
-                        backgroundColor: const Color(0xFF005F50),
+                    AppToast.showSuccess(
+                      context,
+                      LongStrings.t(
+                        'Đã duyệt "${req.userName}" vào gia đình!',
+                        'Approved "${req.userName}" into family!',
                       ),
                     );
                   } catch (e) {
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(e.toString()), backgroundColor: Colors.red[700]),
-                    );
+                    AppToast.showInfo(context, e.toString());
                   }
                 },
                 child: Text(LongStrings.confirm),
@@ -1251,18 +1216,13 @@ class _FamilyScreenState extends State<FamilyScreen> {
       try {
         await _joinRequestService.rejectJoinRequest(req.id);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              LongStrings.t('Đã từ chối yêu cầu tham gia.', 'Join request rejected.'),
-            ),
-          ),
+        AppToast.showInfo(
+          context,
+          LongStrings.t('Đã từ chối yêu cầu tham gia.', 'Join request rejected.'),
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red[700]),
-        );
+        AppToast.showInfo(context, e.toString());
       }
     }
   }

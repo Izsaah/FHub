@@ -37,10 +37,20 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
       DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDate = DateTime.now();
   Timer? _deleteSnackBarTimer;
-  Timer? _clockTicker;
   List<ReminderModel> _lastLoadedReminders = [];
   Stream<List<ReminderModel>>? _remindersStream;
   String? _cachedStreamFamilyId;
+
+  static final List<MapEntry<RegExp, String>> _accentRegexps = [
+    MapEntry(RegExp('à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ'), 'a'),
+    MapEntry(RegExp('è|é|ề|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ'), 'e'),
+    MapEntry(RegExp('ì|í|ị|ỉ|ĩ'), 'i'),
+    MapEntry(RegExp('ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ'), 'o'),
+    MapEntry(RegExp('ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ'), 'u'),
+    MapEntry(RegExp('ỳ|ý|ỵ|ỷ|ỹ'), 'y'),
+    MapEntry(RegExp('đ'), 'd'),
+  ];
+  static final RegExp _multiSpaceRegex = RegExp(r'\s+');
 
   Stream<List<ReminderModel>> _getRemindersStream() {
     if (_remindersStream == null || _cachedStreamFamilyId != widget.familyId) {
@@ -52,43 +62,17 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
 
   String _normalizeName(String s) {
     var res = s.trim().toLowerCase();
-    const accents = {
-      'à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ': 'a',
-      'è|é|ề|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ': 'e',
-      'ì|í|ị|ỉ|ĩ': 'i',
-      'ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ': 'o',
-      'ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ': 'u',
-      'ỳ|ý|ỵ|ỷ|ỹ': 'y',
-      'đ': 'd',
-    };
-    for (final entry in accents.entries) {
-      res = res.replaceAll(RegExp(entry.key), entry.value);
+    for (final entry in _accentRegexps) {
+      res = res.replaceAll(entry.key, entry.value);
     }
-    return res.replaceAll(RegExp(r'\s+'), ' ');
+    return res.replaceAll(_multiSpaceRegex, ' ');
   }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    MultiTierEscalationService.instance.clockTick.addListener(_onClockTick);
-    _startClockTicker();
-  }
-
-  void _startClockTicker() {
-    _clockTicker?.cancel();
     MultiTierEscalationService.instance.ensureClockRunning();
-    _clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      try {
-        _checkDueReminders();
-      } catch (e) {
-        debugPrint('CalendarPage clock ticker error: $e');
-      }
-      if (mounted) {
-        setState(() {});
-      }
-    });
   }
 
   @override
@@ -98,20 +82,6 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
       _checkDueReminders();
       if (mounted) setState(() {});
     }
-  }
-
-  void _onClockTick() {
-    if (!mounted) return;
-    try {
-      _checkDueReminders();
-    } catch (_) {}
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void reassemble() {
-    super.reassemble();
-    _startClockTicker();
   }
 
   void _checkDueReminders() {
@@ -140,11 +110,8 @@ class _CalendarPageState extends State<CalendarPage> with WidgetsBindingObserver
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    MultiTierEscalationService.instance.clockTick.removeListener(_onClockTick);
-    _clockTicker?.cancel();
-    _clockTicker = null;
     _deleteSnackBarTimer?.cancel();
-    // Global escalation service continues running in background for active family members
+    MultiTierEscalationService.instance.stopClock();
     super.dispose();
   }
 

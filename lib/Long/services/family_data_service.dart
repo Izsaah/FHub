@@ -110,6 +110,8 @@ class FamilyDataService implements IFamilyService {
   String? _cachedFamilyIdUserId;
   List<FamilyModel>? _cachedFamilies;
   Future<List<FamilyModel>>? _inFlightFamiliesFuture;
+  Future<UserModel>? _inFlightCurrentUserFuture;
+  final Map<String, Future<List<FamilyMemberModel>>> _inFlightFamilyMembersFutures = {};
 
   final ValueNotifier<String?> selectedFamilyIdNotifier =
       ValueNotifier<String?>(null);
@@ -217,6 +219,8 @@ class FamilyDataService implements IFamilyService {
   void clearCache() {
     _cachedFamilies = null;
     _inFlightFamiliesFuture = null;
+    _inFlightCurrentUserFuture = null;
+    _inFlightFamilyMembersFutures.clear();
   }
 
   void resetAll() {
@@ -227,6 +231,8 @@ class FamilyDataService implements IFamilyService {
     _cachedFamilyIdUserId = null;
     _cachedFamilies = null;
     _inFlightFamiliesFuture = null;
+    _inFlightCurrentUserFuture = null;
+    _inFlightFamilyMembersFutures.clear();
     _lastMembershipSignature = null;
     if (selectedFamilyIdNotifier.value != null) {
       selectedFamilyIdNotifier.value = null;
@@ -501,6 +507,21 @@ class FamilyDataService implements IFamilyService {
   @override
   Future<UserModel> getCurrentUser() async {
     if (!_isFirebaseAvailable) return _mock.getCurrentUser();
+    if (_inFlightCurrentUserFuture != null) {
+      return _inFlightCurrentUserFuture!;
+    }
+    final future = _fetchCurrentUserInternal();
+    _inFlightCurrentUserFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_inFlightCurrentUserFuture, future)) {
+        _inFlightCurrentUserFuture = null;
+      }
+    }
+  }
+
+  Future<UserModel> _fetchCurrentUserInternal() async {
     try {
       final fbUser = _firebaseAuth.currentUser;
       if (fbUser != null) {
@@ -717,6 +738,25 @@ class FamilyDataService implements IFamilyService {
       return <FamilyMemberModel>[];
     }
 
+    final inFlight = _inFlightFamilyMembersFutures[targetFamilyId];
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final future = _fetchFamilyMembersInternal(targetFamilyId);
+    _inFlightFamilyMembersFutures[targetFamilyId] = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_inFlightFamilyMembersFutures[targetFamilyId], future)) {
+        _inFlightFamilyMembersFutures.remove(targetFamilyId);
+      }
+    }
+  }
+
+  Future<List<FamilyMemberModel>> _fetchFamilyMembersInternal(
+    String targetFamilyId,
+  ) async {
     try {
       final memberDocs = await _firestore
           .collection('family_members')
@@ -725,103 +765,104 @@ class FamilyDataService implements IFamilyService {
           .timeout(const Duration(seconds: 4));
 
       if (memberDocs.docs.isNotEmpty) {
-        final List<FamilyMemberModel> members = [];
+        final resolvedMembers = await Future.wait(
+          memberDocs.docs.map((memberDoc) async {
+            final memberData = memberDoc.data();
+            final userId =
+                (memberData['userId'] ?? memberData['user_id'])?.toString() ?? '';
+            if (userId.isEmpty) return null;
 
-        for (final memberDoc in memberDocs.docs) {
-          final memberData = memberDoc.data();
-          final userId =
-              (memberData['userId'] ?? memberData['user_id'])?.toString() ?? '';
-          if (userId.isEmpty) continue;
-
-          UserModel userModel;
-          DateTime? userLastCheckInAt;
-          String? userLastCheckInDate;
-          try {
-            final userDoc =
-                await _firestore.collection('users').doc(userId).get();
-            if (userDoc.exists && userDoc.data() != null) {
-              final userData = userDoc.data()!;
-              userModel = UserModel(
-                id: userId,
-                name: userData['name']?.toString() ?? 'Thành viên',
-                email: userData['email']?.toString() ?? '',
-                avatarType: userData['avatar_type']?.toString() ?? 'default',
-                avatarUrl: userData['avatarUrl']?.toString() ?? '',
-              );
-              final rawUserCheckIn =
-                  userData['lastCheckInAt'] ?? userData['last_check_in_at'];
-              if (rawUserCheckIn is Timestamp) {
-                userLastCheckInAt = rawUserCheckIn.toDate();
-              } else if (rawUserCheckIn is String) {
-                userLastCheckInAt = DateTime.tryParse(rawUserCheckIn);
+            UserModel userModel;
+            DateTime? userLastCheckInAt;
+            String? userLastCheckInDate;
+            try {
+              final userDoc = await _firestore
+                  .collection('users')
+                  .doc(userId)
+                  .get()
+                  .timeout(const Duration(seconds: 3));
+              if (userDoc.exists && userDoc.data() != null) {
+                final userData = userDoc.data()!;
+                userModel = UserModel(
+                  id: userId,
+                  name: userData['name']?.toString() ?? 'Thành viên',
+                  email: userData['email']?.toString() ?? '',
+                  avatarType: userData['avatar_type']?.toString() ?? 'default',
+                  avatarUrl: userData['avatarUrl']?.toString() ?? '',
+                );
+                final rawUserCheckIn =
+                    userData['lastCheckInAt'] ?? userData['last_check_in_at'];
+                if (rawUserCheckIn is Timestamp) {
+                  userLastCheckInAt = rawUserCheckIn.toDate();
+                } else if (rawUserCheckIn is String) {
+                  userLastCheckInAt = DateTime.tryParse(rawUserCheckIn);
+                }
+                userLastCheckInDate = userData['lastCheckInDate']?.toString();
+              } else {
+                userModel = UserModel(
+                  id: userId,
+                  name: (memberData['name'] ?? 'Thành viên').toString(),
+                  email: '',
+                );
               }
-              userLastCheckInDate = userData['lastCheckInDate']?.toString();
-            } else {
+            } catch (_) {
               userModel = UserModel(
                 id: userId,
                 name: (memberData['name'] ?? 'Thành viên').toString(),
                 email: '',
               );
             }
-          } catch (_) {
-            userModel = UserModel(
-              id: userId,
-              name: (memberData['name'] ?? 'Thành viên').toString(),
-              email: '',
-            );
-          }
 
-          final bool isOwner = memberData['isOwner'] as bool? ?? false;
-          final role = isOwner ? Role.owner : Role.member;
-          final hierarchyRaw = memberData['hierarchyRole'] ??
-              memberData['hierarchy_role'] ??
-              memberData['role'];
-          final statusRaw = memberData['status']?.toString();
+            final bool isOwner = memberData['isOwner'] as bool? ?? false;
+            final role = isOwner ? Role.owner : Role.member;
+            final hierarchyRaw = memberData['hierarchyRole'] ??
+                memberData['hierarchy_role'] ??
+                memberData['role'];
+            final statusRaw = memberData['status']?.toString();
 
-          DateTime? lastActiveAt;
-          final rawActive =
-              memberData['lastActiveAt'] ?? memberData['last_active_at'];
-          if (rawActive is Timestamp) {
-            lastActiveAt = rawActive.toDate();
-          } else if (rawActive is String) {
-            lastActiveAt = DateTime.tryParse(rawActive);
-          }
+            DateTime? lastActiveAt;
+            final rawActive =
+                memberData['lastActiveAt'] ?? memberData['last_active_at'];
+            if (rawActive is Timestamp) {
+              lastActiveAt = rawActive.toDate();
+            } else if (rawActive is String) {
+              lastActiveAt = DateTime.tryParse(rawActive);
+            }
 
-          DateTime? lastCheckInAt;
-          final rawCheckIn =
-              memberData['lastCheckInAt'] ?? memberData['last_check_in_at'];
-          if (rawCheckIn is Timestamp) {
-            lastCheckInAt = rawCheckIn.toDate();
-          } else if (rawCheckIn is String) {
-            lastCheckInAt = DateTime.tryParse(rawCheckIn);
-          }
-          String? lastCheckInDate = memberData['lastCheckInDate']?.toString();
+            DateTime? lastCheckInAt;
+            final rawCheckIn =
+                memberData['lastCheckInAt'] ?? memberData['last_check_in_at'];
+            if (rawCheckIn is Timestamp) {
+              lastCheckInAt = rawCheckIn.toDate();
+            } else if (rawCheckIn is String) {
+              lastCheckInAt = DateTime.tryParse(rawCheckIn);
+            }
+            String? lastCheckInDate = memberData['lastCheckInDate']?.toString();
 
-          // Đồng bộ trạng thái Check-in toàn tài khoản từ users/{userId} nếu mới hơn
-          if (userLastCheckInAt != null &&
-              (lastCheckInAt == null ||
-                  userLastCheckInAt.isAfter(lastCheckInAt))) {
-            lastCheckInAt = userLastCheckInAt;
-            lastCheckInDate = userLastCheckInDate ?? lastCheckInDate;
-            // Tự động làm lành (heal) bản ghi family_members trong nền
-            memberDoc.reference.update({
-              'lastCheckInAt': Timestamp.fromDate(userLastCheckInAt),
-              'lastCheckInDate': ?lastCheckInDate,
-            }).catchError((_) {});
-          } else if (lastCheckInDate == null && userLastCheckInDate != null) {
-            lastCheckInDate = userLastCheckInDate;
-          }
+            // Đồng bộ trạng thái Check-in toàn tài khoản từ users/{userId} nếu mới hơn
+            if (userLastCheckInAt != null &&
+                (lastCheckInAt == null ||
+                    userLastCheckInAt.isAfter(lastCheckInAt))) {
+              lastCheckInAt = userLastCheckInAt;
+              lastCheckInDate = userLastCheckInDate ?? lastCheckInDate;
+              // Tự động làm lành (heal) bản ghi family_members trong nền
+              memberDoc.reference.update({
+                'lastCheckInAt': Timestamp.fromDate(userLastCheckInAt),
+                'lastCheckInDate': ?lastCheckInDate,
+              }).catchError((_) {});
+            } else if (lastCheckInDate == null && userLastCheckInDate != null) {
+              lastCheckInDate = userLastCheckInDate;
+            }
 
-          final rawStars = memberData['rewardStarsTotal'] ??
-              memberData['reward_stars_total'] ??
-              memberData['stars'] ??
-              0;
-          final int parsedRewardStars = (rawStars is num)
-              ? rawStars.toInt()
-              : (int.tryParse(rawStars.toString()) ?? 0);
+            final rawStars = memberData['rewardStarsTotal'] ??
+                memberData['reward_stars_total'] ??
+                memberData['stars'] ??
+                0;
+            final int parsedRewardStars = (rawStars is num)
+                ? rawStars.toInt()
+                : (int.tryParse(rawStars.toString()) ?? 0);
 
-          members.add(
-            FamilyMemberModel(
+            return FamilyMemberModel(
               familyId: targetFamilyId,
               user: userModel,
               role: role,
@@ -831,11 +872,11 @@ class FamilyDataService implements IFamilyService {
               lastCheckInAt: lastCheckInAt,
               lastCheckInDate: lastCheckInDate,
               rewardStarsTotal: parsedRewardStars,
-            ),
-          );
-        }
+            );
+          }),
+        );
 
-        return members;
+        return resolvedMembers.whereType<FamilyMemberModel>().toList();
       }
     } catch (e) {
       debugPrint('Firestore family members fetch error: $e');

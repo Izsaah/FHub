@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../services/family_state_manager.dart';
 import '../utils/check_in_image_compressor.dart';
+import 'app_toast.dart';
 import 'check_in_camera_screen.dart';
 
 class CheckInSheet extends StatefulWidget {
@@ -69,25 +70,18 @@ class _CheckInSheetState extends State<CheckInSheet> {
       if (!mounted) return;
       Navigator.pop(context);
       widget.onCheckInSuccess();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLanguage.text(
-              '✓ Check-in thành công! Đã cập nhật trạng thái an toàn cho tất cả gia đình của bạn.',
-              '✓ Checked in successfully! Updated safety status across all your families.',
-            ),
-          ),
-          backgroundColor: const Color(0xFF005F50),
-          behavior: SnackBarBehavior.floating,
+      AppToast.showSuccess(
+        context,
+        AppLanguage.text(
+          '✓ Check-in thành công! Đã cập nhật trạng thái an toàn cho tất cả gia đình của bạn.',
+          '✓ Checked in successfully! Updated safety status across all your families.',
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red[700],
-        ),
+      AppToast.showInfo(
+        context,
+        e.toString().replaceAll('Exception: ', ''),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -98,9 +92,11 @@ class _CheckInSheetState extends State<CheckInSheet> {
     if (_selectedImageUrl == null &&
         _capturedImageBytes == null &&
         _captionController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng chọn 1 bức ảnh hoặc nhập lời nhắn.'),
+      AppToast.showInfo(
+        context,
+        AppLanguage.text(
+          'Vui lòng chọn 1 bức ảnh hoặc nhập lời nhắn.',
+          'Please select a photo or enter a caption.',
         ),
       );
       return;
@@ -124,25 +120,18 @@ class _CheckInSheetState extends State<CheckInSheet> {
       if (!mounted) return;
       Navigator.pop(context);
       widget.onCheckInSuccess();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLanguage.text(
-              '✓ Check-in kèm ảnh thành công! Đã đồng bộ lên tất cả gia đình của bạn.',
-              '✓ Photo check-in succeeded! Synced across all your families.',
-            ),
-          ),
-          backgroundColor: const Color(0xFF005F50),
-          behavior: SnackBarBehavior.floating,
+      AppToast.showSuccess(
+        context,
+        AppLanguage.text(
+          '✓ Check-in kèm ảnh thành công! Đã đồng bộ lên tất cả gia đình của bạn.',
+          '✓ Photo check-in succeeded! Synced across all your families.',
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red[700],
-        ),
+      AppToast.showInfo(
+        context,
+        e.toString().replaceAll('Exception: ', ''),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -166,15 +155,11 @@ class _CheckInSheetState extends State<CheckInSheet> {
     } catch (e) {
       debugPrint('CheckInSheet camera screen error: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-          AppLanguage.text(
-            'Không thể mở máy ảnh: $e',
-            'Could not open camera: $e',
-          ),
-          ),
-          backgroundColor: Colors.red[700],
+      AppToast.showInfo(
+        context,
+        AppLanguage.text(
+          'Không thể mở máy ảnh: $e',
+          'Could not open camera: $e',
         ),
       );
     } finally {

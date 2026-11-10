@@ -37,8 +37,8 @@ class FamilyProgressCard extends StatelessWidget {
                 : dateTitle);
 
         return Container(
-          margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          margin: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
             color: isAllDone ? const Color(0xFFE7F5F2) : Colors.white,
             borderRadius: BorderRadius.circular(16),

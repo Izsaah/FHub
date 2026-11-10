@@ -82,34 +82,50 @@ class _AppToastWidgetState extends State<_AppToastWidget>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 260),
+      duration: widget.duration,
     );
 
-    _fadeAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    );
+    _fadeAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 12,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 76,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInCubic)),
+        weight: 12,
+      ),
+    ]).animate(_controller);
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, -0.6),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutBack,
-    ));
+    _slideAnimation = TweenSequence<Offset>([
+      TweenSequenceItem(
+        tween: Tween<Offset>(begin: const Offset(0, -0.6), end: Offset.zero)
+            .chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 12,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<Offset>(Offset.zero),
+        weight: 76,
+      ),
+      TweenSequenceItem(
+        tween: Tween<Offset>(begin: Offset.zero, end: const Offset(0, -0.4))
+            .chain(CurveTween(curve: Curves.easeInCubic)),
+        weight: 12,
+      ),
+    ]).animate(_controller);
 
-    _controller.forward();
-
-    // Tự động đóng toast sau khoảng thời gian duration
-    Future.delayed(widget.duration, () {
-      if (mounted) {
-        _controller.reverse().then((_) {
-          if (mounted) {
-            widget.onDismiss();
-          }
-        });
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        widget.onDismiss();
       }
     });
+
+    _controller.forward();
   }
 
   @override

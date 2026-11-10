@@ -50,7 +50,9 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   void initState() {
     super.initState();
     final famId = PaymentService().currentFamilyId;
-    _jackpotService.initForFamily(famId);
+    if (famId.isNotEmpty) {
+      _jackpotService.initForFamily(famId);
+    }
     _loadFamilyContext();
     _lastRenderedShakeCount = _jackpotService.myShakeCount;
     _shakeAnimController = AnimationController(
@@ -64,11 +66,18 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
   Future<void> _loadFamilyContext() async {
     try {
       final fam = await FamilyDataService().getCurrentFamily();
-      final effectiveFamId = (fam != null && fam.id.isNotEmpty)
-          ? fam.id
-          : (PaymentService().currentFamilyId.isNotEmpty
-              ? PaymentService().currentFamilyId
-              : 'f1');
+      final bool hasPreconfiguredTestFamily =
+          _jackpotService.overrideCanUseJackpotForTest != null &&
+          _jackpotService.jackpot.familyId.isNotEmpty;
+      final effectiveFamId = hasPreconfiguredTestFamily
+          ? _jackpotService.jackpot.familyId
+          : ((fam != null && fam.id.isNotEmpty)
+              ? fam.id
+              : (PaymentService().currentFamilyId.isNotEmpty
+                  ? PaymentService().currentFamilyId
+                  : (_jackpotService.jackpot.familyId.isNotEmpty
+                      ? _jackpotService.jackpot.familyId
+                      : 'f1')));
 
       if (PaymentService().currentFamilyId != effectiveFamId) {
         PaymentService().setFamilyId(effectiveFamId);

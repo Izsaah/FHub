@@ -10,6 +10,8 @@ import '../../models/reminder_model.dart';
 import '../../utils/long_strings.dart';
 import '../../widgets/check_in_button.dart';
 import '../../../Danh/danh_payment_entry.dart';
+import '../../../Danh/models/notification_model.dart';
+import '../../../Danh/services/notification_service.dart';
 import '../../widgets/check_in_sheet.dart';
 import '../../widgets/check_in_feed_view.dart';
 import '../../widgets/check_in_reminder_card.dart';
@@ -90,14 +92,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<Map<String, dynamic>> _fetchHomeData() async {
-    final user = await _familydataService.getCurrentUser();
-    final families = await _familydataService.getMyFamilies();
+    final initialResults = await Future.wait([
+      _familydataService.getCurrentUser(),
+      _familydataService.getMyFamilies(),
+      _familydataService.getMyPendingReminders(acrossAllFamilies: true),
+    ]);
+    final user = initialResults[0] as UserModel;
+    final families = initialResults[1] as List<FamilyModel>;
+    final allReminders = initialResults[2] as List<ReminderModel>;
+
     final family = await _familydataService.getCurrentFamily();
     final members = await _familydataService.getFamilyMembers(
       familyId: family?.id,
-    );
-    final allReminders = await _familydataService.getMyPendingReminders(
-      acrossAllFamilies: true,
     );
 
     // Update owner lastActiveAt in background (throttled in FamilyDataService)
@@ -154,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (isAlreadyCheckedIn) {
-      AppToast.show(
+      AppToast.showInfo(
         context,
         LongStrings.t(
           "Bạn đã điểm danh an toàn hôm nay rồi!",
@@ -187,16 +193,11 @@ class _HomeScreenState extends State<HomeScreen> {
           final dStr =
               '${reminderDate.day.toString().padLeft(2, '0')}/${reminderDate.month.toString().padLeft(2, '0')}/${reminderDate.year}';
           if (mounted) {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  AppLanguage.text(
-                    'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn ($dStr)!',
-                    'This task can only be completed on its scheduled date ($dStr)!',
-                  ),
-                ),
-                backgroundColor: const Color(0xFF455A64),
+            AppToast.showInfo(
+              context,
+              AppLanguage.text(
+                'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn ($dStr)!',
+                'This task can only be completed on its scheduled date ($dStr)!',
               ),
             );
           }
@@ -206,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       await _familydataService.completeReminder(reminderId);
       if (mounted) {
-        AppToast.show(context, LongStrings.completeTaskSuccess);
+        AppToast.showSuccess(context, LongStrings.completeTaskSuccess);
         setState(_loadData);
       }
     } catch (e) {
@@ -333,17 +334,284 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openNotificationsSheet(String familyId) {
+    final currentUserId = _familydataService.currentUserId;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.65,
+          minChildSize: 0.45,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (ctx, scrollController) {
+            return Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: 4),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.notifications_active_rounded,
+                              color: Color(0xFF005F50),
+                              size: 22,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    AppLanguage.text('Thông Báo Gia Đình', 'Family Notifications'),
+                                    style: const TextStyle(
+                                      fontSize: 15.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF005F50),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    AppLanguage.text('Cập nhật nhanh lời nhắc & hoạt động mới', 'Quick updates on reminders & activities'),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF6E7A75),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton(
+                            onPressed: () async {
+                              await NotificationService.instance.markAllAsRead(
+                                familyId,
+                                currentUserId: currentUserId,
+                              );
+                            },
+                            child: Text(
+                              AppLanguage.text('Đọc tất cả', 'Read all'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF005F50),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 20),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: StreamBuilder<List<NotificationModel>>(
+                    stream: NotificationService.instance.watchNotifications(
+                      familyId,
+                      currentUserId: currentUserId,
+                    ),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(color: Color(0xFF005F50)),
+                        );
+                      }
+                      final notifs = snapshot.data ?? [];
+                      if (notifs.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.notifications_none_rounded, size: 48, color: Colors.grey.shade400),
+                              const SizedBox(height: 10),
+                              Text(
+                                AppLanguage.text('Chưa có thông báo nào mới', 'No new notifications'),
+                                style: const TextStyle(fontSize: 14, color: Color(0xFF6E7A75)),
+                              ),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF005F50),
+                                  side: const BorderSide(color: Color(0xFF005F50)),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  if (widget.onNavigateToReminders != null) {
+                                    widget.onNavigateToReminders!();
+                                  }
+                                },
+                                icon: const Icon(Icons.list_alt_rounded, size: 16),
+                                label: Text(LongStrings.viewAllReminders),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        itemCount: notifs.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final n = notifs[index];
+                          final dt = n.createdAt;
+                          final timeStr =
+                              '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} ${dt.day}/${dt.month}';
+                          final isEn = AppLanguage.isEnglish.value;
+                          final title = isEn && n.titleEn != null && n.titleEn!.isNotEmpty
+                              ? n.titleEn!
+                              : n.title;
+                          final body = isEn && n.bodyEn != null && n.bodyEn!.isNotEmpty
+                              ? n.bodyEn!
+                              : n.body;
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                            leading: CircleAvatar(
+                              backgroundColor: n.isRead
+                                  ? const Color(0xFFEDF5F2)
+                                  : const Color(0xFFE0F2EC),
+                              child: Icon(
+                                n.type.startsWith('task_') || n.type.contains('overdue')
+                                    ? Icons.alarm_rounded
+                                    : (n.type.contains('star') || n.type.startsWith('wishlist_')
+                                        ? Icons.stars_rounded
+                                        : Icons.notifications_rounded),
+                                color: const Color(0xFF005F50),
+                                size: 20,
+                              ),
+                            ),
+                            title: Text(
+                              title,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: n.isRead ? FontWeight.w500 : FontWeight.bold,
+                                color: const Color(0xFF151D1B),
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 2),
+                                Text(
+                                  body,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFF6E7A75)),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  timeStr,
+                                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF8E9B96)),
+                                ),
+                              ],
+                            ),
+                            onTap: () {
+                              if (!n.isRead) {
+                                NotificationService.instance.markAsRead(familyId, n.id);
+                              }
+                              Navigator.pop(ctx);
+                              if (widget.onNavigateToReminders != null) {
+                                widget.onNavigateToReminders!();
+                              }
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: AppLanguage.isEnglish,
       builder: (context, _, child) {
+        final activeFamId = _familydataService.selectedFamilyIdNotifier.value ?? '';
         return Scaffold(
           backgroundColor: Colors.white,
           appBar: CustomAppBar(
             title: LongStrings.tabHome,
             subtitle: _currentFamilyName,
             actions: [
+              if (activeFamId.isNotEmpty)
+                StreamBuilder<int>(
+                  stream: NotificationService.instance.watchUnreadCount(
+                    activeFamId,
+                    currentUserId: _familydataService.currentUserId,
+                  ),
+                  builder: (context, snapshot) {
+                    final unread = snapshot.data ?? 0;
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.notifications_none_rounded),
+                          tooltip: AppLanguage.text('Xem thông báo', 'View Notifications'),
+                          onPressed: () => _openNotificationsSheet(activeFamId),
+                        ),
+                        if (unread > 0)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: Container(
+                              padding: const EdgeInsets.all(3.5),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFD32F2F),
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                              child: Text(
+                                unread > 9 ? '9+' : '$unread',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
               IconButton(
                 icon: const Icon(Icons.group_add_outlined),
                 tooltip: LongStrings.familySetupTooltip,
@@ -498,22 +766,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                   );
                                   setState(_loadData);
                                   if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        LongStrings.t(
-                                          '🎉 Bạn đã tiếp quản quyền Owner thành công!',
-                                          '🎉 You claimed ownership successfully!',
-                                        ),
-                                      ),
-                                      backgroundColor: const Color(0xFF005F50),
+                                  AppToast.showSuccess(
+                                    context,
+                                    LongStrings.t(
+                                      '🎉 Bạn đã tiếp quản quyền Owner thành công!',
+                                      '🎉 You claimed ownership successfully!',
                                     ),
                                   );
                                 } catch (e) {
                                   if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(e.toString())),
-                                  );
+                                  AppToast.showInfo(context, e.toString());
                                 }
                               },
                               child: Text(
@@ -1008,34 +1270,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                       onPressed: () {
                                         final dStr =
                                             '${reminder.date.day.toString().padLeft(2, '0')}/${reminder.date.month.toString().padLeft(2, '0')}/${reminder.date.year}';
-                                        ScaffoldMessenger.of(context)
-                                            .hideCurrentSnackBar();
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Row(
-                                              children: [
-                                                const Icon(
-                                                    Icons.lock_clock_rounded,
-                                                    color: Colors.white,
-                                                    size: 20),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: Text(
-                                                    AppLanguage.text(
-                                                      'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn ($dStr)!',
-                                                      'This task can only be completed on its scheduled date ($dStr)!',
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            backgroundColor:
-                                                const Color(0xFF455A64),
-                                            behavior:
-                                                SnackBarBehavior.floating,
-                                            duration:
-                                                const Duration(seconds: 3),
+                                        AppToast.showInfo(
+                                          context,
+                                          AppLanguage.text(
+                                            'Công việc này chỉ có thể hoàn thành vào đúng ngày hẹn ($dStr)!',
+                                            'This task can only be completed on its scheduled date ($dStr)!',
                                           ),
                                         );
                                       },
@@ -1057,13 +1296,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                        ),
                                        onPressed: () {
                                          if (reminder.requiresProofImage) {
-                                           ScaffoldMessenger.of(context).showSnackBar(
-                                             SnackBar(
-                                               content: Text(AppLanguage.text(
-                                                 'Công việc này bắt buộc chụp ảnh nghiệm thu! Vui lòng chạm vào việc để chụp ảnh.',
-                                                 'This task requires proof photo! Please tap the task to take photo.',
-                                               )),
-                                               backgroundColor: Colors.amber[800],
+                                           AppToast.showInfo(
+                                             context,
+                                             AppLanguage.text(
+                                               'Công việc này bắt buộc chụp ảnh nghiệm thu! Vui lòng chạm vào việc để chụp ảnh.',
+                                               'This task requires proof photo! Please tap the task to take photo.',
                                              ),
                                            );
                                            _handleOpenReminderDetail(

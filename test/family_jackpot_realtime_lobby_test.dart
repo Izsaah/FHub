@@ -215,8 +215,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Nhận sao từ hũ'), findsOneWidget);
-      expect(find.text('Góp sao hũ mới'), findsOneWidget);
+      expect(find.textContaining('Vào Cửa Hàng Đổi Quà'), findsOneWidget);
+      expect(find.text('Nuôi Heo Đất đợt mới'), findsOneWidget);
       expect(find.textContaining('Rút Tiền Thưởng Về Ngân Hàng'), findsNothing);
       expect(find.text('Góp Vui Hũ Mới & Chơi Tiếp'), findsNothing);
     });
@@ -235,14 +235,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final emptyBtn = find.textContaining('Hũ Đang Trống (0 ⭐)');
+      final emptyBtn = find.textContaining('Heo Đất Trống (0 ⭐)');
       expect(emptyBtn, findsOneWidget);
       await tester.ensureVisible(emptyBtn);
       await tester.pumpAndSettle();
       await tester.tap(emptyBtn);
       await tester.pump();
 
-      expect(find.textContaining('Cả nhà cùng hoàn thành Điểm danh mỗi ngày'), findsOneWidget);
+      expect(find.textContaining('Điểm danh mỗi ngày'), findsOneWidget);
 
       // Test Lobby: Initiated with 2 targets, second member accepts -> ratio is 2/2, NOT 2/1
       await service.contributeStars(stars: 10, memberId: 'u1', memberName: 'Trần Văn');

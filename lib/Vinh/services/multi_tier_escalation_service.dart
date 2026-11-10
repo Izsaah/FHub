@@ -174,21 +174,23 @@ class MultiTierEscalationService {
     return false;
   }
 
+  static final List<MapEntry<RegExp, String>> _accentRegexps = [
+    MapEntry(RegExp('à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ'), 'a'),
+    MapEntry(RegExp('è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ'), 'e'),
+    MapEntry(RegExp('ì|í|ị|ỉ|ĩ'), 'i'),
+    MapEntry(RegExp('ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ'), 'o'),
+    MapEntry(RegExp('ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ'), 'u'),
+    MapEntry(RegExp('ỳ|ý|ỵ|ỷ|ỹ'), 'y'),
+    MapEntry(RegExp('đ'), 'd'),
+  ];
+  static final RegExp _multiSpaceRegex = RegExp(r'\s+');
+
   String _normalizeName(String s) {
     var res = s.trim().toLowerCase();
-    const accents = {
-      'à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ': 'a',
-      'è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ': 'e',
-      'ì|í|ị|ỉ|ĩ': 'i',
-      'ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ': 'o',
-      'ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ': 'u',
-      'ỳ|ý|ỵ|ỷ|ỹ': 'y',
-      'đ': 'd',
-    };
-    for (final entry in accents.entries) {
-      res = res.replaceAll(RegExp(entry.key), entry.value);
+    for (final entry in _accentRegexps) {
+      res = res.replaceAll(entry.key, entry.value);
     }
-    return res.replaceAll(RegExp(r'\s+'), ' ');
+    return res.replaceAll(_multiSpaceRegex, ' ');
   }
 
   bool _matchesUserName(String nameA, String nameB) {
@@ -262,9 +264,11 @@ class MultiTierEscalationService {
     _globalClockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       try {
         final now = DateTime.now();
-        clockTick.value = now;
+        final prevTick = clockTick.value;
+        bool shouldNotifyUi = now.minute != prevTick.minute ||
+            now.difference(prevTick).inSeconds >= 60;
         if (_trackedReminders.isNotEmpty) {
-          _evaluateDueReminders(
+          final transitioned = _evaluateDueReminders(
             _trackedReminders,
             now: now,
             currentUserId: _lastCurrentUserId,
@@ -274,6 +278,12 @@ class MultiTierEscalationService {
             context: _lastContext,
             onOpenDetail: _lastOnOpenDetail,
           );
+          if (transitioned) {
+            shouldNotifyUi = true;
+          }
+        }
+        if (shouldNotifyUi) {
+          clockTick.value = now;
         }
       } catch (e) {
         debugPrint('MultiTierEscalationService clock tick error: $e');
@@ -669,7 +679,7 @@ class MultiTierEscalationService {
     }
   }
 
-  void _evaluateDueReminders(
+  bool _evaluateDueReminders(
     List<ReminderModel> reminders, {
     required DateTime now,
     String? currentUserId,
@@ -679,6 +689,7 @@ class MultiTierEscalationService {
     BuildContext? context,
     void Function(ReminderModel)? onOpenDetail,
   }) {
+    bool anyTransitioned = false;
     final effectiveUserId = _resolveCurrentUserId(currentUserId);
     final effectiveUserName = currentUserName ?? _lastCurrentUserName;
     final effectiveMemberId = currentUserMemberId ?? _lastCurrentUserMemberId;
@@ -697,6 +708,7 @@ class MultiTierEscalationService {
       final snoozeTarget = snoozeDueAt[r.id];
       if (snoozeTarget != null && !snoozeTarget.isAfter(now)) {
         _fireSnoozeFollowUpIfStillPending(r.id, fallbackReminder: r);
+        anyTransitioned = true;
         continue;
       }
 
@@ -707,6 +719,9 @@ class MultiTierEscalationService {
         final diff = now.difference(dt);
         final justTransitionedFromPending =
             _safePreviouslyPendingIds.remove(r.id);
+        if (justTransitionedFromPending) {
+          anyTransitioned = true;
+        }
 
         if (justTransitionedFromPending || r.status != ReminderStatus.overdue) {
           _syncOverdueToFirestore(r);
@@ -721,6 +736,7 @@ class MultiTierEscalationService {
         )) {
           if ((justTransitionedFromPending || diff.inMinutes < 15) &&
               !alertedDueReminderIds.contains(r.id)) {
+            anyTransitioned = true;
             triggerDueAlarmAndPopup(
               r,
               currentUserId: effectiveUserId,
@@ -739,6 +755,7 @@ class MultiTierEscalationService {
         }
       }
     }
+    return anyTransitioned;
   }
 
   /// Tự động hủy toàn bộ các mốc hẹn giờ rung khi bấm Complete hoặc Delete

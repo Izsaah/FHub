@@ -7,6 +7,7 @@ import '../models/family_member.dart';
 import '../models/wishlist_models.dart';
 import '../services/star_economy_service.dart';
 import '../../Long/services/family_data_service.dart';
+import '../../Long/widgets/app_toast.dart';
 
 /// Màn hình Cửa hàng Đổi Sao (Wishlist Phúc lợi thực tế), Lì xì Sao từ Người thân (RELATIVE),
 /// và Sổ cái Lịch sử Giao dịch Sao (`star_ledger`).
@@ -997,44 +998,32 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
         .getWishlistClaims(widget.familyId)
         .any((c) => c.itemId == item.id && c.status == WishlistClaimStatus.pending);
     if (isAlreadyPending) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLanguage.text(
-              '⚠️ Phần thưởng này đang có yêu cầu đổi chờ phụ huynh duyệt!',
-              '⚠️ This reward already has a pending redemption request awaiting parent approval!',
-            ),
-          ),
-          backgroundColor: const Color(0xFFD84315),
+      AppToast.showInfo(
+        context,
+        AppLanguage.text(
+          '⚠️ Phần thưởng này đang có yêu cầu đổi chờ phụ huynh duyệt!',
+          '⚠️ This reward already has a pending redemption request awaiting parent approval!',
         ),
       );
       return;
     }
     if (widget.currentUserId.isNotEmpty && widget.currentUserId == item.createdBy) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLanguage.text(
-              '⚠️ Bạn là người tạo phần thưởng này, không thể tự đổi vật phẩm của chính mình.',
-              '⚠️ You created this reward and cannot redeem your own item.',
-            ),
-          ),
-          backgroundColor: const Color(0xFFD84315),
+      AppToast.showInfo(
+        context,
+        AppLanguage.text(
+          '⚠️ Bạn là người tạo phần thưởng này, không thể tự đổi vật phẩm của chính mình.',
+          '⚠️ You created this reward and cannot redeem your own item.',
         ),
       );
       return;
     }
     final balance = _myStarBalance;
     if (balance < item.starCost) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLanguage.text(
-              '⚠️ Số dư sao của bạn ($balance ⭐) không đủ để đổi "${item.title}" (Cần ${item.starCost} ⭐). Hãy làm thêm việc nhà để tích sao nhé!',
-              '⚠️ Your star balance ($balance ⭐) is insufficient to redeem "${item.title}" (Need ${item.starCost} ⭐). Do more chores to earn stars!',
-            ),
-          ),
-          backgroundColor: const Color(0xFFD84315),
+      AppToast.showInfo(
+        context,
+        AppLanguage.text(
+          '⚠️ Số dư sao của bạn ($balance ⭐) không đủ để đổi "${item.title}" (Cần ${item.starCost} ⭐). Hãy làm thêm việc nhà để tích sao nhé!',
+          '⚠️ Your star balance ($balance ⭐) is insufficient to redeem "${item.title}" (Need ${item.starCost} ⭐). Do more chores to earn stars!',
         ),
       );
       return;
@@ -1049,24 +1038,18 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
       );
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLanguage.text(
-              '✨ Đã đổi "${item.title}" (-${item.starCost} ⭐)! Đã gửi thông báo cho Phụ huynh duyệt.',
-              '✨ Redeemed "${item.title}" (-${item.starCost} ⭐)! Sent to Parents for approval.',
-            ),
-          ),
-          backgroundColor: const Color(0xFF005F50),
+      AppToast.showSuccess(
+        context,
+        AppLanguage.text(
+          '✨ Đã đổi "${item.title}" (-${item.starCost} ⭐)! Đã gửi thông báo cho Phụ huynh duyệt.',
+          '✨ Redeemed "${item.title}" (-${item.starCost} ⭐)! Sent to Parents for approval.',
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('StateError: ', '')),
-          backgroundColor: const Color(0xFFC62828),
-        ),
+      AppToast.showInfo(
+        context,
+        e.toString().replaceFirst('StateError: ', ''),
       );
     }
   }
@@ -1082,25 +1065,16 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
       );
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLanguage.text(
-              '✅ Đã duyệt trao phần thưởng "${claim.itemName}" cho ${claim.childName}!',
-              '✅ Approved reward "${claim.itemName}" for ${claim.childName}!',
-            ),
-          ),
-          backgroundColor: const Color(0xFF2E7D32),
+      AppToast.showSuccess(
+        context,
+        AppLanguage.text(
+          '✅ Đã duyệt trao phần thưởng "${claim.itemName}" cho ${claim.childName}!',
+          '✅ Approved reward "${claim.itemName}" for ${claim.childName}!',
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: const Color(0xFFC62828),
-        ),
-      );
+      AppToast.showInfo(context, e.toString());
     }
   }
 
@@ -1116,25 +1090,16 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
       );
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLanguage.text(
-              '🔄 Đã từ chối và hoàn lại ${claim.starCost} ⭐ cho ${claim.childName}!',
-              '🔄 Rejected and refunded ${claim.starCost} ⭐ to ${claim.childName}!',
-            ),
-          ),
-          backgroundColor: const Color(0xFFE65100),
+      AppToast.showInfo(
+        context,
+        AppLanguage.text(
+          '🔄 Đã từ chối và hoàn lại ${claim.starCost} ⭐ cho ${claim.childName}!',
+          '🔄 Rejected and refunded ${claim.starCost} ⭐ to ${claim.childName}!',
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: const Color(0xFFC62828),
-        ),
-      );
+      AppToast.showInfo(context, e.toString());
     }
   }
 
@@ -1209,18 +1174,14 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (!mounted) return;
                 setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(AppLanguage.text('✅ Đã cập nhật phúc lợi "$newTitle"!', '✅ Updated reward "$newTitle"!')),
-                    backgroundColor: const Color(0xFF005F50),
-                  ),
+                AppToast.showSuccess(
+                  context,
+                  AppLanguage.text('✅ Đã cập nhật phúc lợi "$newTitle"!', '✅ Updated reward "$newTitle"!'),
                 );
               } catch (e) {
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(e.toString()), backgroundColor: const Color(0xFFC62828)),
-                );
+                AppToast.showInfo(context, e.toString());
               }
             },
             child: Text(AppLanguage.text('Lưu Thay Đổi', 'Save Changes')),
@@ -1264,18 +1225,14 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (!mounted) return;
                 setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(AppLanguage.text('🗑️ Đã xóa phúc lợi "${item.title}"!', '🗑️ Deleted reward "${item.title}"!')),
-                    backgroundColor: const Color(0xFFE65100),
-                  ),
+                AppToast.showInfo(
+                  context,
+                  AppLanguage.text('🗑️ Đã xóa phúc lợi "${item.title}"!', '🗑️ Deleted reward "${item.title}"!'),
                 );
               } catch (e) {
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(e.toString()), backgroundColor: const Color(0xFFC62828)),
-                );
+                AppToast.showInfo(context, e.toString());
               }
             },
             child: Text(AppLanguage.text('Xóa Phúc Lợi', 'Delete Reward')),
@@ -1345,12 +1302,16 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   starCost: cost,
                 );
                 if (ctx.mounted) Navigator.pop(ctx);
-                if (mounted) setState(() {});
+                if (mounted) {
+                  setState(() {});
+                  AppToast.showSuccess(
+                    context,
+                    AppLanguage.text('✨ Đã thêm phúc lợi mới thành công!', '✨ Added new reward successfully!'),
+                  );
+                }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString())),
-                  );
+                  AppToast.showInfo(context, e.toString());
                 }
               }
             },
@@ -1364,11 +1325,9 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
   void _showSponsorStarsDialog() {
     final eligibleReceivers = widget.familyMembers.where((m) => m.id != widget.currentUserId).toList();
     if (eligibleReceivers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppLanguage.text('Gia đình cần có ít nhất 2 thành viên để sử dụng tính năng tặng sao khích lệ!', 'Family must have at least 2 members to sponsor stars!')),
-          backgroundColor: Colors.orange,
-        ),
+      AppToast.showInfo(
+        context,
+        AppLanguage.text('Gia đình cần có ít nhất 2 thành viên để sử dụng tính năng tặng sao khích lệ!', 'Family must have at least 2 members to sponsor stars!'),
       );
       return;
     }
@@ -1465,22 +1424,18 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
               onPressed: () async {
                 final stars = int.tryParse(starsCtrl.text.trim()) ?? 0;
                 if (stars <= 0 || stars > 20) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(AppLanguage.text('Số sao tặng mỗi lần phải từ 1 đến 20 ⭐!', 'Gifted stars must be between 1 and 20 ⭐!')),
-                      backgroundColor: Colors.red,
-                    ),
+                  AppToast.showInfo(
+                    context,
+                    AppLanguage.text('Số sao tặng mỗi lần phải từ 1 đến 20 ⭐!', 'Gifted stars must be between 1 and 20 ⭐!'),
                   );
                   return;
                 }
                 if (stars > _myStarBalance) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(AppLanguage.text(
-                        'Số sao tặng không được vượt quá số sao bạn hiện có ($_myStarBalance ⭐)!',
-                        'Cannot gift more than your current star balance ($_myStarBalance ⭐)!',
-                      )),
-                      backgroundColor: Colors.red,
+                  AppToast.showInfo(
+                    context,
+                    AppLanguage.text(
+                      'Số sao tặng không được vượt quá số sao bạn hiện có ($_myStarBalance ⭐)!',
+                      'Cannot gift more than your current star balance ($_myStarBalance ⭐)!',
                     ),
                   );
                   return;
@@ -1499,25 +1454,19 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                   if (ctx.mounted) Navigator.pop(ctx);
                   if (mounted) {
                     setState(() {});
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          AppLanguage.text(
-                            '🎁 Đã lì xì +$stars ⭐ cho $targetMemberName thành công!',
-                            '🎁 Successfully gifted +$stars ⭐ to $targetMemberName!',
-                          ),
-                        ),
-                        backgroundColor: const Color(0xFF2E7D32),
+                    AppToast.showSuccess(
+                      context,
+                      AppLanguage.text(
+                        '🎁 Đã lì xì +$stars ⭐ cho $targetMemberName thành công!',
+                        '🎁 Successfully gifted +$stars ⭐ to $targetMemberName!',
                       ),
                     );
                   }
                 } catch (e) {
                   if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Text(e.toString().replaceAll('Exception: ', '').replaceAll('StateError: ', '')),
-                        backgroundColor: Colors.red,
-                      ),
+                    AppToast.showInfo(
+                      ctx,
+                      e.toString().replaceAll('Exception: ', '').replaceAll('StateError: ', ''),
                     );
                   }
                 }
