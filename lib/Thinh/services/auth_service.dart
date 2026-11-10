@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/user_model.dart';
+import '../../Danh/danh_payment_entry.dart';
+import '../../Long/services/family_data_service.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -203,8 +205,13 @@ class AuthService {
     }
   }
 
-  /// Đăng xuất: Xóa phiên cả FirebaseAuth và GoogleSignIn nhanh chóng, không gây giật lag
+  /// Đăng xuất: Xóa phiên cả FirebaseAuth và GoogleSignIn nhanh chóng, hủy toàn bộ background listener để không gây giật lag hoặc leak data tài khoản cũ
   Future<void> logout() async {
+    try {
+      FamilyDataService().resetAll();
+      DanhPaymentEntry.clearFamilyContext();
+    } catch (_) {}
+
     try {
       await _auth.signOut();
     } catch (e) {
