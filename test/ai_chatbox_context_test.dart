@@ -1319,5 +1319,47 @@ void main() {
       await AiSpeechPlatform.instance.stopSpeaking();
       expect(AiSpeechPlatform.instance.isSpeaking, isFalse);
     });
+
+    test('46. Chatbox blocks assigning tasks to oneself and advises assigning to others or shared task', () async {
+      final repo = InMemoryReminderRepository();
+      final members = [
+        const FamilyMember(
+          id: 'u_khoa',
+          name: 'Khoa Cao',
+          role: FamilyMember.roleParent,
+          familyId: 'fam_test',
+        ),
+        const FamilyMember(
+          id: 'u_bin',
+          name: 'Bin Su',
+          role: FamilyMember.roleChild,
+          familyId: 'fam_test',
+        ),
+      ];
+
+      final res1 = await FamilyAiAssistantService.instance.processMessage(
+        familyId: 'fam_test',
+        currentUserId: 'u_khoa',
+        currentUserName: 'Khoa Cao',
+        familyMembers: members,
+        repository: repo,
+        userMessage: 'tạo việc rửa chén giao cho bản thân lúc 19:00',
+      );
+
+      expect(res1.attachedReminder, isNull);
+      expect(res1.text, contains('không cho phép tự giao việc cho chính bản thân'));
+
+      final res2 = await FamilyAiAssistantService.instance.processMessage(
+        familyId: 'fam_test',
+        currentUserId: 'u_khoa',
+        currentUserName: 'Khoa Cao',
+        familyMembers: members,
+        repository: repo,
+        userMessage: 'giao cho tôi việc lau nhà lúc 20:00',
+      );
+
+      expect(res2.attachedReminder, isNull);
+      expect(res2.text, contains('không cho phép tự giao việc cho chính bản thân'));
+    });
   });
 }

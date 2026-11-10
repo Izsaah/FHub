@@ -846,6 +846,28 @@ class FamilyAiAssistantService {
         familyMembers: familyMembers,
       );
       final isOpen = assignee.id == 'OPEN';
+
+      final isSelfAssign = lower.contains('cho bản thân') ||
+          lower.contains('cho tôi') ||
+          lower.contains('cho mình') ||
+          lower.contains('cho chính mình') ||
+          lower.contains('tự giao') ||
+          lower.contains('giao bản thân');
+
+      if (!isOpen &&
+          (isSelfAssign ||
+              (assignee.id == currentUserId &&
+                  familyMembers.any((m) => m.id != currentUserId)))) {
+        return AiChatMessage(
+          id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
+          isUser: false,
+          text: AppLanguage.text(
+            'Dạ $salutation ơi! Hệ thống không cho phép tự giao việc cho chính bản thân nhé. Mình hãy phân công cho thành viên khác hoặc tạo việc chung gia đình cho cả nhà cùng làm nhé! ❤️',
+            'Hello $salutation! You cannot assign tasks to yourself. Please assign to another family member or create a shared family task! ❤️',
+          ),
+          timestamp: DateTime.now(),
+        );
+      }
       final customDate = _extractCustomDate(lower, effectiveNow);
       final customTime = _extractCustomTime(lower);
 

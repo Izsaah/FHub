@@ -1050,6 +1050,7 @@ $memoriesInfo
 === NGUYÊN TẮC GỌI TOOL TẠO VIỆC (createFamilyTask) ===
 - CHỈ ĐƯỢC PHÉP gọi tool "createFamilyTask" khi người dùng THỰC SỰ RA LỆNH tạo việc nhà cụ thể (VD: "Tạo việc rửa chén lúc 19h", "Giao Bin quét nhà").
 - CẤM TUYỆT ĐỐI gọi "createFamilyTask" khi người dùng đang ĐẶT CÂU HỎI, THẮC MẮC, TÂM SỰ hoặc HỎI VỀ QUYỀN HẠN/VAI TRÒ (VD: "tôi đóng vai trò gì trong căn nhà này?", "tôi có thể giao việc cho ai không?", "vai trò của tôi là gì?", "hôm nay ai làm việc nhà?").
+- CẤM TUYỆT ĐỐI gọi createFamilyTask để tự giao việc cho chính người đang nói (assignedTo: "$_currentUserId" hoặc tên "$_currentUserName"). Người dùng KHÔNG THỂ tự giao việc cho chính bản thân. Nếu người dùng bảo tạo việc cho bản thân (VD: "nhắc tôi", "giao việc cho tôi", "tạo việc cho bản thân", "giao cho chính mình"), hãy từ chối lễ phép và giải thích: "Dạ, hệ thống không cho phép tự giao việc cho chính bản thân nhé. Bạn hãy chọn thành viên khác trong nhà để giao việc, hoặc tạo công việc chung (Việc chung gia đình) để cả nhà cùng tham gia ạ!"
 - Khi người dùng hỏi thắc mắc quyền hạn/vai trò: Trả lời giải thích trực tiếp bằng ngôn từ tự nhiên, hướng dẫn rõ ràng quyền của họ, TUYỆT ĐỐI KHÔNG TỰ Ý TẠO VIỆC NHÀ.
 
 === PHẠM VI NGHIỆP VỤ & QUY TẮC TỪ CHỐI NGOẠI PHẠM (DOMAIN GUARD) ===
@@ -1869,6 +1870,13 @@ $memoriesInfo
       args['assignedToName'],
     );
 
+    final isOpen = resolvedAssigneeId == 'ALL' || (args['isOpenTask'] == true);
+
+    // Chặn người dùng tự giao việc cho chính bản thân khi tạo việc cá nhân chỉ định
+    if (!isOpen && (resolvedAssigneeId == _currentUserId || resolvedAssigneeName.toLowerCase() == _currentUserName.toLowerCase())) {
+      throw Exception('Không thể tự giao việc cho chính bản thân. Vui lòng phân công cho thành viên khác hoặc tạo việc chung gia đình.');
+    }
+
     // Ràng buộc bảo mật & phân quyền: Con cái không được giao việc nhà bắt buộc cho Phụ huynh
     if (_isChild && resolvedAssigneeId != _currentUserId && resolvedAssigneeId != 'ALL' && resolvedAssigneeId != 'OPEN') {
       final isPoliteRequest = lowerTitle.contains('nhờ') ||
@@ -1924,8 +1932,6 @@ $memoriesInfo
 
     final docRef = _firestore?.collection('reminders').doc();
     final docId = docRef?.id ?? 'rem_${now.millisecondsSinceEpoch}';
-
-    final isOpen = resolvedAssigneeId == 'ALL' || (args['isOpenTask'] == true);
 
     final reminder = ReminderModel(
       id: docId,
