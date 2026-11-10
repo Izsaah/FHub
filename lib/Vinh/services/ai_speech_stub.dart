@@ -193,23 +193,35 @@ class AiSpeechPlatform {
       final prompt = 'Chuyển file âm thanh này thành văn bản $lang chính xác. '
           'Chỉ trả về đúng nội dung câu nói của người dùng, không thêm định dạng, markdown, lời dẫn hay giải thích nào.';
 
-      final model = GenerativeModel(
-        model: 'gemini-3-flash-preview',
-        apiKey: apiKey,
-      );
-      final response = await model.generateContent([
-        Content.multi([
-          DataPart(mimeType, bytes),
-          TextPart(prompt),
-        ]),
-      ]).timeout(const Duration(seconds: 8));
+      final modelsToTry = [
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+      ];
 
-      final text = response.text?.trim();
-      if (text != null &&
-          text.isNotEmpty &&
-          !text.toLowerCase().contains('không có lời nói') &&
-          !text.toLowerCase().contains('chỉ có tiếng bíp')) {
-        return text;
+      for (final candidate in modelsToTry) {
+        try {
+          final model = GenerativeModel(
+            model: candidate,
+            apiKey: apiKey,
+          );
+          final response = await model.generateContent([
+            Content.multi([
+              DataPart(mimeType, bytes),
+              TextPart(prompt),
+            ]),
+          ]).timeout(const Duration(seconds: 8));
+
+          final text = response.text?.trim();
+          if (text != null &&
+              text.isNotEmpty &&
+              !text.toLowerCase().contains('không có lời nói') &&
+              !text.toLowerCase().contains('chỉ có tiếng bíp')) {
+            return text;
+          }
+        } catch (e) {
+          debugPrint('AiSpeechPlatform transcribe audio with $candidate error: $e');
+        }
       }
     } catch (e) {
       debugPrint('AiSpeechPlatform transcribe audio error: $e');

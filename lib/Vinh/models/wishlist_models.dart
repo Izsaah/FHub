@@ -338,6 +338,9 @@ class StarLedgerEntryModel {
       case 'CLAIM_REFUND':
         return 'Hoàn sao đổi quà (${note ?? 'Từ chối'})';
       case 'RELATIVE_SPONSOR':
+        if (amount < 0) {
+          return 'Tặng sao khích lệ cho ${actorName ?? userName ?? 'thành viên'}';
+        }
         return 'Lì xì / Tặng sao khích lệ từ ${actorName ?? 'Người thân'}';
       default:
         return 'Giao dịch sao ($type)';

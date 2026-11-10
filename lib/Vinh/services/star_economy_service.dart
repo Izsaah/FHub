@@ -694,6 +694,8 @@ class StarEconomyService {
         'amount': stars,
         'type': 'RELATIVE_SPONSOR',
         'sourceId': effectiveGiftId,
+        'actorId': senderId,
+        'actorName': senderName,
         'senderId': senderId,
         'senderName': senderName,
         'senderRole': senderRole,
@@ -716,27 +718,26 @@ class StarEconomyService {
       }
 
       final senderSnap = await transaction.get(senderRef);
-      final senderBalance = senderSnap.exists
-          ? (senderSnap.data()?['rewardStarsTotal'] as num?)?.toInt() ??
-            (senderSnap.data()?['reward_stars_total'] as num?)?.toInt() ?? 0
-          : 0;
-
-      if (senderSnap.exists && stars > senderBalance) {
-        throw StateError('Số dư sao không đủ! Bạn chỉ có $senderBalance sao để tặng.');
-      }
-
-      final memberSnap = await transaction.get(memberRef);
-      final currentBalance = memberSnap.exists
-          ? (memberSnap.data()?['rewardStarsTotal'] as num?)?.toInt() ?? 0
-          : 0;
-
       if (senderSnap.exists) {
+        final senderBalance =
+            (senderSnap.data()?['rewardStarsTotal'] as num?)?.toInt() ??
+            (senderSnap.data()?['reward_stars_total'] as num?)?.toInt() ?? 0;
+
+        if (stars > senderBalance) {
+          throw StateError('Số dư sao không đủ! Bạn chỉ có $senderBalance sao để tặng.');
+        }
+
         transaction.update(senderRef, {
           'rewardStarsTotal': senderBalance - stars,
           'reward_stars_total': senderBalance - stars,
           'lastActiveAt': FieldValue.serverTimestamp(),
         });
       }
+
+      final memberSnap = await transaction.get(memberRef);
+      final currentBalance = memberSnap.exists
+          ? (memberSnap.data()?['rewardStarsTotal'] as num?)?.toInt() ?? 0
+          : 0;
 
       if (memberSnap.exists) {
         transaction.update(memberRef, {
@@ -767,6 +768,8 @@ class StarEconomyService {
         'amount': stars,
         'type': 'RELATIVE_SPONSOR',
         'sourceId': effectiveGiftId,
+        'actorId': senderId,
+        'actorName': senderName,
         'senderId': senderId,
         'senderName': senderName,
         'senderRole': senderRole,

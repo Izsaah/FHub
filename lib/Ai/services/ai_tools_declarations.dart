@@ -10,8 +10,8 @@ class AiToolsDeclarations {
     'createFamilyTask',
     'CHỈ GỌI KHI người dùng trực tiếp ra lệnh tạo việc nhà cụ thể (VD: "Giao việc rửa bát lúc 18h", "Nhắc Bin quét nhà"). '
         'CẤM TUYỆT ĐỐI gọi tool này khi người dùng đang hỏi thắc mắc, hỏi quyền hạn, hỏi vai trò, hỏi tiến độ, hoặc tâm sự. '
+        'QUY TẮC CẤM TỰ GIAO VIỆC: Người dùng KHÔNG ĐƯỢC tự giao việc cho chính bản thân mình. Phải phân công cho thành viên khác hoặc tạo việc chung gia đình (assignedTo="ALL", isOpenTask=true). '
         'QUY TẮC PHÂN VAI: Chỉ Bố/Mẹ/Ông/Bà mới được phân công việc nhà cho người khác. '
-        'Nếu người dùng là Con cái (CHILD): CẤM giao việc nhà bắt buộc cho Bố/Mẹ hay người khác (chỉ được tạo việc cho bản thân hoặc việc chung tự nhận). '
         'Nếu con nhờ vả Bố/Mẹ (VD: đón con, mua sách vở), tiêu đề phải ghi rõ "[Lời nhờ từ con] <Nội dung>". '
         'Nếu là việc mở cho các con nhận (Open Task), đặt assignedTo="ALL" và isOpenTask=true.',
     Schema.object(

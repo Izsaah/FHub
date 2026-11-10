@@ -93,14 +93,11 @@ class GeminiChatService {
   bool get _isChild => !_canAssignChores;
 
   static const List<String> _candidateModels = [
-    'gemini-3.1-pro-preview',
-    'gemini-3.1-pro',
-    'gemini-3-flash-preview',
-    'gemini-3.1-flash-lite-preview',
-    'gemini-flash-lite-latest',
     'gemini-2.5-flash',
     'gemini-2.0-flash',
     'gemini-1.5-flash',
+    'gemini-2.5-pro',
+    'gemini-1.5-pro',
   ];
 
   String? _customApiKey;
@@ -823,10 +820,10 @@ class GeminiChatService {
         if (membersSnap.docs.isEmpty) {
           if (_cachedFamilyMembers != null && _cachedFamilyMembers!.isNotEmpty) {
             for (final m in _cachedFamilyMembers!) {
-              membersInfo.writeln('- Họ tên: ${m.name} | Vai trò: ${m.roleDisplayName} | Mã ID: ${m.id} | Điểm danh hôm nay: Chưa điểm danh');
+              membersInfo.writeln('• Thành viên ${m.name} (${m.roleDisplayName}) -> Điểm danh hôm nay: Chưa điểm danh');
             }
           } else {
-            membersInfo.writeln('- Họ tên: $_currentUserName | Vai trò: $_currentUserRole | Mã ID: $_currentUserId | Điểm danh hôm nay: Sẵn sàng');
+            membersInfo.writeln('• Thành viên $_currentUserName ($_currentUserRole) -> Điểm danh hôm nay: Sẵn sàng');
           }
         } else {
           for (final doc in membersSnap.docs) {
@@ -846,7 +843,7 @@ class GeminiChatService {
                 try {
                   final uDoc = await _firestore!.collection('users').doc(uid).get();
                   if (uDoc.exists && uDoc.data() != null) {
-                    final n = (uDoc.data()!['name'] ?? uDoc.data()!['displayName'])?.toString().trim();
+                    final n = (uDoc.data()!['name'] ?? uDoc.data()!['displayName'] ?? uDoc.data()!['fullName'])?.toString().trim();
                     if (n != null && n.isNotEmpty) {
                       name = n;
                     }
@@ -893,19 +890,19 @@ class GeminiChatService {
                     'ĐÃ ĐIỂM DANH lúc ${checkInDate.hour.toString().padLeft(2, '0')}:${checkInDate.minute.toString().padLeft(2, '0')}';
               }
             }
-            membersInfo.writeln('- Họ tên: $name | Vai trò: $roleDisplay ($rawRole) | Mã ID: $uid | Điểm danh hôm nay: $checkInStatus');
+            membersInfo.writeln('• Thành viên $name ($roleDisplay) -> Trạng thái: $checkInStatus');
           }
         }
       } catch (_) {
-        membersInfo.writeln('- Họ tên: $_currentUserName | Vai trò: $_currentUserRole | Mã ID: $_currentUserId');
+        membersInfo.writeln('• Thành viên $_currentUserName ($_currentUserRole) [ID: $_currentUserId]');
       }
     } else {
       if (_cachedFamilyMembers != null && _cachedFamilyMembers!.isNotEmpty) {
         for (final m in _cachedFamilyMembers!) {
-          membersInfo.writeln('- Họ tên: ${m.name} | Vai trò: ${m.roleDisplayName} | Mã ID: ${m.id} | Điểm danh hôm nay: Chưa điểm danh');
+          membersInfo.writeln('• Thành viên ${m.name} (${m.roleDisplayName}) -> Điểm danh hôm nay: Chưa điểm danh');
         }
       } else {
-        membersInfo.writeln('- Họ tên: $_currentUserName | Vai trò: $_currentUserRole | Mã ID: $_currentUserId');
+        membersInfo.writeln('• Thành viên $_currentUserName ($_currentUserRole) [ID: $_currentUserId]');
       }
     }
 
@@ -1069,11 +1066,17 @@ $memoriesInfo
 
 === CÁC CHỈ DẪN TRẢ LỜI NGHIỆP VỤ ===
 1. Khi người dùng hỏi "ai đã điểm danh", "hôm nay ai chưa check-in", "tình hình điểm danh", "liệt kê tên thành viên điểm danh":
-   - BẮT BUỘC liệt kê chính xác bằng HỌ TÊN THỰC TẾ của từng thành viên trong danh sách trên (Ví dụ: "Khoa Cao", "Bin Su", "Bé Bo")!
-   - TUYỆT ĐỐI CẤM liệt kê chung chung vô danh như "Bố/Mẹ (Parent)", "Con cái (Child)". Hãy chỉ rõ tên ai đã điểm danh và lúc mấy giờ, tên ai chưa điểm danh.
+   - BẮT BUỘC liệt kê chính xác bằng HỌ TÊN THỰC TẾ của từng thành viên trong danh sách gia đình trên (Ví dụ: "Khoa Cao", "Bin Su", "Bé Bo")!
+   - BẮT BUỘC bắt đầu mỗi gạch đầu dòng bằng HỌ TÊN THỰC TẾ của người đó theo mẫu chuẩn sau:
+     ✅ Đã điểm danh:
+     • <Họ tên thật>: Đã điểm danh lúc <Giờ>
+     ❌ Chưa điểm danh:
+     • <Họ tên thật>: Chưa thực hiện điểm danh an toàn hôm nay.
+   - CẤM TUYỆT ĐỐI liệt kê bằng vai trò vô danh như "• Bố/Mẹ (Parent):", "• Con cái (Child):". Phải ghi rõ họ tên cụ thể của từng người để người dùng nhận diện ngay!
 2. Khi người dùng yêu cầu tạo việc nhà / lời nhắc:
    - Gọi tool createFamilyTask với đầy đủ thông số:
      + Gán đúng tên người nhận vào assignedToName và ID/Tên vào assignedTo.
+     + CẤM TỰ GIAO VIỆC CHO BẢN THÂN: Nếu người dùng bảo tạo việc cho chính họ (VD: "nhắc tôi", "giao việc cho tôi"), hãy từ chối lịch sự và hướng dẫn giao cho người khác hoặc tạo việc chung.
      + NẾU người dùng bảo "bật nghiệm thu", "chụp ảnh nghiệm thu", "cần chụp ảnh": BẮT BUỘC đặt requiresProof: true.
      + NẾU người dùng nói thưởng sao (VD: "thưởng 2 sao", "cho 5 sao"): BẮT BUỘC đặt rewardStars tương ứng.
      + NẾU là việc mở cho cả nhà tự nhận: đặt assignedTo: "ALL", isOpenTask: true.
@@ -1290,9 +1293,25 @@ $memoriesInfo
 
     // 0.6. TẠO CÔNG VIỆC / NHIỆM VỤ QUÉT NHÀ / RỬA CHÉN / NẤU CƠM
     if (!isDeleteRequest &&
-        (lower.contains('tạo') || lower.contains('soạn') || lower.contains('nhắc')) &&
+        (lower.contains('tạo') || lower.contains('soạn') || lower.contains('nhắc') || lower.contains('giao')) &&
         (lower.contains('nhiệm vụ') || lower.contains('việc') || lower.contains('task') || lower.contains('quét nhà') || lower.contains('rửa chén') || lower.contains('nấu cơm')) &&
         !lower.contains('vai trò') && !lower.contains('quyền') && !lower.contains('ai không')) {
+      final isSelfAssign = lower.contains('cho tôi') ||
+          lower.contains('cho bản thân') ||
+          lower.contains('cho mình') ||
+          lower.contains('giao cho tôi') ||
+          lower.contains('nhắc tôi') ||
+          lower.contains('giao mình') ||
+          lower.contains('tự giao');
+      if (isSelfAssign) {
+        return ChatMessageModel(
+          id: 'msg_${now.millisecondsSinceEpoch}',
+          text: 'Dạ, hệ thống không cho phép tự giao việc cho chính bản thân nhé $salutation. $salutation hãy chọn thành viên khác trong nhà để giao việc, hoặc tạo công việc chung (Việc chung gia đình) để cả nhà cùng tham gia ạ! 🏡💚',
+          sender: ChatSender.ai,
+          timestamp: now,
+        );
+      }
+
       String title = 'Việc nhà';
       if (lower.contains('quét nhà')) {
         title = 'Quét nhà';
@@ -1310,27 +1329,80 @@ $memoriesInfo
         time = '$h:$m';
       }
 
-      final isOpen = lower.contains('thành viên') || lower.contains('cả nhà') || lower.contains('ai phụ');
-      final assignedTo = isOpen ? 'OPEN' : (_currentUserId.isNotEmpty ? _currentUserId : 'u_creator');
-      final assignedToName = isOpen ? 'Cả nhà (Việc chung)' : _currentUserName;
+      final (assigneeId, assigneeName) = _resolveAssignee('', lower);
+      final isOpen = assigneeId == 'ALL' ||
+          lower.contains('thành viên') ||
+          lower.contains('cả nhà') ||
+          lower.contains('ai phụ') ||
+          lower.contains('việc chung') ||
+          lower.contains('mọi người');
+
+      if (!isOpen &&
+          (assigneeId == _currentUserId ||
+              assigneeName.toLowerCase() == _currentUserName.toLowerCase())) {
+        return ChatMessageModel(
+          id: 'msg_${now.millisecondsSinceEpoch}',
+          text: 'Dạ, hệ thống không cho phép tự giao việc cho chính bản thân nhé $salutation. $salutation hãy chọn thành viên khác trong nhà để giao việc, hoặc tạo công việc chung (Việc chung gia đình) để cả nhà cùng tham gia ạ! 🏡💚',
+          sender: ChatSender.ai,
+          timestamp: now,
+        );
+      }
+
+      final requiresProof = lower.contains('nghiệm thu') ||
+          lower.contains('chụp ảnh') ||
+          lower.contains('xác thực') ||
+          lower.contains('ảnh chụp');
+
+      int rewardStars = 0;
+      final starMatch = RegExp(r'(\d+)\s*(sao|star)', caseSensitive: false).firstMatch(lower);
+      if (starMatch != null) {
+        rewardStars = int.tryParse(starMatch.group(1) ?? '0') ?? 0;
+      }
+
+      final docRef = _firestore?.collection('reminders').doc();
+      final docId = docRef?.id ?? 'rem_${now.millisecondsSinceEpoch}';
 
       final created = ReminderModel(
-        id: 'rem_${now.millisecondsSinceEpoch}',
+        id: docId,
         familyId: _currentFamilyId,
         creatorId: _currentUserId.isNotEmpty ? _currentUserId : 'u_creator',
         creatorName: _currentUserName,
-        assignedTo: assignedTo,
-        assignedToName: assignedToName,
+        assignedTo: isOpen ? 'ALL' : assigneeId,
+        assignedToName: isOpen ? 'Cả nhà (Việc chung)' : assigneeName,
         title: title,
         date: todayStr,
         time: time,
         status: isOpen ? ReminderStatus.open : ReminderStatus.pending,
+        requiresProofImage: requiresProof,
+        rewardStars: rewardStars,
         createdAt: now,
       );
 
+      if (docRef != null) {
+        try {
+          await docRef.set({
+            ...created.toJson(),
+            'family_id': _currentFamilyId,
+            'creator_id': created.creatorId,
+            'creator_name': created.creatorName,
+            'assigned_to': created.assignedTo,
+            'assigned_to_name': created.assignedToName,
+            'isOpenTask': isOpen,
+            'requires_proof_image': created.requiresProofImage,
+            'requiresProofImage': created.requiresProofImage,
+            'reward_stars': created.rewardStars,
+            'rewardStars': created.rewardStars,
+          });
+        } catch (_) {}
+      }
+
+      final proofText = requiresProof ? ' (kèm yêu cầu chụp ảnh nghiệm thu 📸)' : '';
+      final starText = rewardStars > 0 ? ' (thưởng $rewardStars ⭐)' : '';
+      final targetDisplay = isOpen ? 'Cả nhà (Việc chung)' : assigneeName;
+
       return ChatMessageModel(
         id: 'msg_${now.millisecondsSinceEpoch}',
-        text: 'Dạ xong ngay ạ! Em đã tạo lời nhắc "$title" cho $assignedToName vào lúc $time ngày $todayStr rồi nhé! ✅',
+        text: 'Dạ xong ngay ạ! Em đã tạo lời nhắc "$title" cho $targetDisplay vào lúc $time ngày $todayStr$proofText$starText rồi nhé! ✅',
         sender: ChatSender.ai,
         timestamp: now,
         createdTask: created,

@@ -610,33 +610,40 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
           ),
           if (_isGuardian) ...[
             const SizedBox(height: 10),
-            Wrap(
-              alignment: WrapAlignment.end,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
+            Row(
               children: [
-                OutlinedButton.icon(
-                  key: Key('btn_reject_claim_${claim.id}'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFC62828),
-                    side: const BorderSide(color: Color(0xFFC62828)),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: Key('btn_reject_claim_${claim.id}'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFC62828),
+                      side: const BorderSide(color: Color(0xFFC62828)),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.replay_rounded, size: 16),
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(AppLanguage.text('Từ chối & Hoàn sao', 'Reject & Refund')),
+                    ),
+                    onPressed: () => _handleRejectClaim(claim),
                   ),
-                  icon: const Icon(Icons.replay_rounded, size: 16),
-                  label: Text(AppLanguage.text('Từ chối & Hoàn sao', 'Reject & Refund')),
-                  onPressed: () => _handleRejectClaim(claim),
                 ),
-                ElevatedButton.icon(
-                  key: Key('btn_approve_claim_${claim.id}'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2E7D32),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    key: Key('btn_approve_claim_${claim.id}'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.check_circle_rounded, size: 16),
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(AppLanguage.text('Đồng ý trao quà', 'Approve & Grant')),
+                    ),
+                    onPressed: () => _handleApproveClaim(claim),
                   ),
-                  icon: const Icon(Icons.check_circle_rounded, size: 16),
-                  label: Text(AppLanguage.text('Đồng ý trao quà', 'Approve & Grant')),
-                  onPressed: () => _handleApproveClaim(claim),
                 ),
               ],
             ),
@@ -916,7 +923,9 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                         child: Icon(
                           isPos
                               ? Icons.stars_rounded
-                              : Icons.shopping_bag_rounded,
+                              : (entry.type == 'RELATIVE_SPONSOR'
+                                  ? Icons.card_giftcard_rounded
+                                  : Icons.shopping_bag_rounded),
                           color: color,
                         ),
                       ),
@@ -929,7 +938,13 @@ class _WishlistAndLedgerScreenState extends State<WishlistAndLedgerScreen>
                       ),
                       subtitle: Text(
                         AppLanguage.text('Thành viên: $memberName', 'Member: $memberName') +
-                        (entry.actorName != null ? AppLanguage.text(' • Duyệt/Gửi bởi: ${entry.actorName}', ' • Reviewed/Sent by: ${entry.actorName}') : ''),
+                        (entry.actorName != null
+                            ? (isPos
+                                ? AppLanguage.text(' • Duyệt/Gửi bởi: ${entry.actorName}', ' • Reviewed/Sent by: ${entry.actorName}')
+                                : (entry.type == 'RELATIVE_SPONSOR'
+                                    ? AppLanguage.text(' • Người nhận: ${entry.actorName}', ' • Recipient: ${entry.actorName}')
+                                    : AppLanguage.text(' • Duyệt bởi: ${entry.actorName}', ' • Reviewed by: ${entry.actorName}')))
+                            : ''),
                         style: const TextStyle(fontSize: 12),
                       ),
                       trailing: Text(
