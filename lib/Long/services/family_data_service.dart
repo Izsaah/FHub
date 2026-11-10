@@ -16,6 +16,7 @@ import '../models/check_in_feed_model.dart';
 import '../models/check_in_reminder_model.dart';
 import 'family_service_interface.dart';
 import 'mock_data_service.dart';
+import '../../Danh/danh_payment_entry.dart';
 
 /// Result of unifiying direct users/{uid}.familyIds with active family_members documents
 class MembershipUnificationResult {
@@ -230,6 +231,7 @@ class FamilyDataService implements IFamilyService {
     if (selectedFamilyIdNotifier.value != null) {
       selectedFamilyIdNotifier.value = null;
     }
+    DanhPaymentEntry.clearFamilyContext();
     if (hadState) {
       membershipRevisionNotifier.value++;
     }
@@ -405,12 +407,25 @@ class FamilyDataService implements IFamilyService {
       _cachedFamilies = resolved;
       _cachedFamilyIdUserId = uid;
 
+      // Dọn dẹp các familyId cũ bị treo trong directFamilyIds nếu không còn quyền truy cập
+      final validResolvedIds = resolved.map((f) => f.id).toSet();
+      final staleInDirect = directFamilyIds.where((id) => !validResolvedIds.contains(id)).toList();
+      if (staleInDirect.isNotEmpty) {
+        _firestore.collection('users').doc(uid).update({
+          'familyIds': FieldValue.arrayRemove(staleInDirect),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }).catchError((_) {});
+      }
+
       if (resolved.isEmpty) {
         _cachedFamilyId = null;
+        DanhPaymentEntry.clearFamilyContext();
         // Tự động xóa con trỏ familyId cũ bị treo trong users/{uid} nếu user đã rời hết gia đình
         _firestore.collection('users').doc(uid).update({
           'familyId': FieldValue.delete(),
           'family_id': FieldValue.delete(),
+          'familyIds': FieldValue.delete(),
+          'family_ids': FieldValue.delete(),
         }).catchError((_) {});
       } else if (_cachedFamilyId == null ||
           !resolved.any((f) => f.id == _cachedFamilyId)) {

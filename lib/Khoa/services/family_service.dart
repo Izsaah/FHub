@@ -423,6 +423,7 @@ class FamilyService {
             'deleting': true,
             'updatedAt': FieldValue.serverTimestamp(),
           });
+          _clearFamilyPointer(transaction, userRef, userSnapshot, familyId);
         } else {
           transaction.delete(myMemberRef);
           _clearFamilyPointer(transaction, userRef, userSnapshot, familyId);

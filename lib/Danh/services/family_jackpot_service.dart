@@ -746,6 +746,37 @@ class FamilyJackpotService extends ChangeNotifier {
 
   bool _isPaymentListenerBound = false;
 
+  /// Hủy toàn bộ listener và xóa sạch dữ liệu hũ của gia đình cũ khi rời gia đình hoặc đăng xuất
+  void clearFamily() {
+    _jackpotSub?.cancel();
+    _jackpotSub = null;
+    _sensorSub?.cancel();
+    _sensorSub = null;
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _currentFamilyId = null;
+    _cachedFamilyMembers.clear();
+    _cachedMemberRoles.clear();
+    _shakeVotes.clear();
+    _dailyCheckIns.clear();
+    _awardedCheckInDates.clear();
+    _localMyShakeCount = 0;
+    _isTransitioningPhase = false;
+    _jackpot = const FamilyJackpotModel(
+      familyId: '',
+      totalPoolAmount: 0,
+      topContributorName: 'Chưa có',
+      topContributorId: null,
+      contributions: {},
+      memberNames: {},
+      shakeCounts: {},
+      prizeResults: {},
+      memberWallets: {},
+      memberBanks: {},
+    );
+    notifyListeners();
+  }
+
   /// Khởi tạo và lắng nghe Hũ của gia đình
   void initForFamily(String? familyId) {
     if (!_isPaymentListenerBound) {
@@ -756,6 +787,14 @@ class FamilyJackpotService extends ChangeNotifier {
     final rawFamilyId = (familyId != null && familyId.isNotEmpty)
         ? familyId
         : PaymentService().currentFamilyId;
+
+    if (rawFamilyId.isEmpty) {
+      if (_hasFirebase && _auth?.currentUser != null) {
+        clearFamily();
+        return;
+      }
+    }
+
     final effectiveFamilyId = rawFamilyId.isNotEmpty ? rawFamilyId : 'f1';
 
     if (_currentFamilyId == effectiveFamilyId && (_jackpotSub != null || _firestore == null)) {
@@ -855,6 +894,11 @@ class FamilyJackpotService extends ChangeNotifier {
       }
     }, onError: (e) {
       debugPrint('FamilyJackpotService stream error: $e');
+      if (e.toString().contains('permission-denied') ||
+          e.toString().contains('PERMISSION_DENIED')) {
+        _jackpotSub?.cancel();
+        _jackpotSub = null;
+      }
     });
 
     _startSensorListener();

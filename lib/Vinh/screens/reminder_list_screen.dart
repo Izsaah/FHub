@@ -671,7 +671,7 @@ class _ReminderListScreenState extends State<ReminderListScreen>
             } catch (_) {}
           }
           if (FamilyDataService().selectedFamilyId != null) {
-            FamilyDataService().resetAll();
+            // FamilyDataService auto handles empty state in getMyFamilies()
           }
         }
       }

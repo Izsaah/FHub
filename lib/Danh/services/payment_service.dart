@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../../Long/services/family_data_service.dart';
 import '../models/subscription_plan_model.dart';
 import '../models/family_subscription_model.dart';
+import 'family_jackpot_service.dart';
 
 /// Service quản lý toàn bộ nghiệp vụ Gói cước, Đồng bộ Firestore Realtime & Thanh toán
 class PaymentService extends ChangeNotifier {
@@ -108,6 +109,7 @@ class PaymentService extends ChangeNotifier {
   void clearFamily() {
     _firestoreSub?.cancel();
     _firestoreSub = null;
+    FamilyJackpotService.instance.clearFamily();
     if (_currentFamilyId.isEmpty && !_currentSubscription.isPremium) return;
     _currentFamilyId = '';
     _currentSubscription = FamilySubscriptionModel.freeDefault('');

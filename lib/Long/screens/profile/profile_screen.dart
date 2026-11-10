@@ -25,6 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _familyDataService = FamilyDataService();
   final ScrollController _familyScrollController = ScrollController();
   late Future<Map<String, dynamic>> _profileDataFuture;
+  Map<String, dynamic>? _cachedProfileData;
   String? _currentFamilyName;
 
   @override
@@ -60,6 +61,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _loadData() {
     _profileDataFuture = _fetchProfileData().then((data) {
+      _cachedProfileData = data;
       final family = data['family'] as FamilyModel?;
       if (mounted && _currentFamilyName != family?.name) {
         setState(() {
@@ -545,7 +547,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: FutureBuilder<Map<String, dynamic>>(
         future: _profileDataFuture,
         builder: (context, snapshot) {
-          if (snapshot.hasError) {
+          final effectiveData = snapshot.data ?? _cachedProfileData;
+          if (effectiveData == null &&
+              snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (effectiveData == null) {
             return Center(
               child: Text(
                 LongStrings.t(
@@ -556,11 +564,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
           }
 
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final data = snapshot.data!;
+          final data = effectiveData;
           final UserModel user = data['user'];
           final List<FamilyModel> families =
               (data['families'] as List<FamilyModel>?) ?? [];

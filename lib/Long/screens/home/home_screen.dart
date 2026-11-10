@@ -43,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _familydataService = FamilyDataService();
 
   late Future<Map<String, dynamic>> _homeDataFuture;
+  Map<String, dynamic>? _cachedHomeData;
   String? _currentFamilyName;
 
   @override
@@ -77,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _loadData() {
     _homeDataFuture = _fetchHomeData().then((data) {
+      _cachedHomeData = data;
       final family = data['family'] as FamilyModel?;
       if (mounted && _currentFamilyName != family?.name) {
         setState(() {
@@ -352,19 +354,20 @@ class _HomeScreenState extends State<HomeScreen> {
           body: FutureBuilder<Map<String, dynamic>>(
             future: _homeDataFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData) {
+              final effectiveData = snapshot.data ?? _cachedHomeData;
+              if (effectiveData == null &&
+                  snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final user = snapshot.data?['user'] as UserModel?;
+              final user = effectiveData?['user'] as UserModel?;
               final families =
-                  snapshot.data?['families'] as List<FamilyModel>? ?? [];
-              final family = snapshot.data?['family'] as FamilyModel?;
-              final members = snapshot.data?['members']
+                  effectiveData?['families'] as List<FamilyModel>? ?? [];
+              final family = effectiveData?['family'] as FamilyModel?;
+              final members = effectiveData?['members']
                       as List<FamilyMemberModel>? ??
                   [];
-              final reminders = snapshot.data?['reminders']
+              final reminders = effectiveData?['reminders']
                       as List<ReminderModel>? ??
                   [];
 

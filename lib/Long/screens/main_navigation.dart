@@ -19,43 +19,39 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
     FamilyDataService().ensureRealtimeSync();
     FamilyStateManager().initialize();
+    _screens = [
+      HomeScreen(
+        onNavigateToFamily: () => setState(() => _currentIndex = 2),
+        onNavigateToReminders: () => setState(() => _currentIndex = 1),
+      ),
+      ReminderListScreen(
+        isActive: _currentIndex == 1,
+        onNavigateToFamily: () => setState(() => _currentIndex = 2),
+      ),
+      const FamilyScreen(),
+      const ProfileScreen(),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    final dataService = FamilyDataService();
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        AppLanguage.isEnglish,
-        dataService.selectedFamilyIdNotifier,
-        dataService.membershipRevisionNotifier,
-      ]),
-      builder: (context, _) {
-        final hasFamily = dataService.hasActiveSelectedFamily;
-        final screens = [
-          HomeScreen(
-            onNavigateToFamily: () => setState(() => _currentIndex = 2),
-            onNavigateToReminders: () => setState(() => _currentIndex = 1),
-          ),
-          ReminderListScreen(
-            isActive: _currentIndex == 1,
-            onNavigateToFamily: () => setState(() => _currentIndex = 2),
-          ),
-          const FamilyScreen(),
-          const ProfileScreen(),
-        ];
-
-        return Scaffold(
-          body: IndexedStack(index: _currentIndex, children: screens),
-          floatingActionButton: (_currentIndex == 1 || !hasFamily)
-              ? null
-              : FloatingActionButton.extended(
+    return Scaffold(
+      body: IndexedStack(index: _currentIndex, children: _screens),
+      floatingActionButton: _currentIndex == 1
+          ? null
+          : ValueListenableBuilder<String?>(
+              valueListenable: FamilyDataService().selectedFamilyIdNotifier,
+              builder: (context, selectedFamId, _) {
+                final hasFamily = selectedFamId != null && selectedFamId.isNotEmpty;
+                if (!hasFamily) return const SizedBox.shrink();
+                return FloatingActionButton.extended(
                   heroTag: 'family_ai_assistant_fab',
                   backgroundColor: const Color(0xFF005F50),
                   foregroundColor: Colors.white,
@@ -66,8 +62,6 @@ class _MainNavigationState extends State<MainNavigation> {
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   onPressed: () {
-                    final selectedFamId = dataService.selectedFamilyId;
-                    if (selectedFamId == null || selectedFamId.isEmpty) return;
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => AiChatScreen(
@@ -76,8 +70,13 @@ class _MainNavigationState extends State<MainNavigation> {
                       ),
                     );
                   },
-                ),
-          bottomNavigationBar: BottomNavigationBar(
+                );
+              },
+            ),
+      bottomNavigationBar: ValueListenableBuilder<bool>(
+        valueListenable: AppLanguage.isEnglish,
+        builder: (context, _, child) {
+          return BottomNavigationBar(
             currentIndex: _currentIndex,
             onTap: (index) {
               setState(() {
@@ -105,9 +104,9 @@ class _MainNavigationState extends State<MainNavigation> {
                 label: LongStrings.tabProfile,
               ),
             ],
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

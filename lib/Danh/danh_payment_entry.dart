@@ -7,6 +7,7 @@ import 'screens/premium_plan_screen.dart';
 import 'screens/manage_subscription_screen.dart';
 import 'screens/family_jackpot_screen.dart';
 import 'services/payment_service.dart';
+import 'services/family_jackpot_service.dart';
 import 'theme/danh_colors.dart';
 import 'theme/danh_svgs.dart';
 import 'widgets/premium_badge_widget.dart';
@@ -106,6 +107,7 @@ class DanhPaymentEntry {
   /// Xóa ngữ cảnh gia đình khi User chưa có hoặc đã rời hết tất cả gia đình
   static void clearFamilyContext() {
     service.clearFamily();
+    FamilyJackpotService.instance.clearFamily();
   }
 
   /// Điều hướng tới Cửa Hàng Đổi Sao & Sổ Cái Phúc Lợi Thực Tế

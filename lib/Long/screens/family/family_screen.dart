@@ -32,6 +32,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   final _joinRequestService = JoinRequestService();
 
   late Future<Map<String, dynamic>> _familyDataFuture;
+  Map<String, dynamic>? _cachedFamilyData;
   String? _currentFamilyName;
   bool _isLeaving = false;
 
@@ -67,6 +68,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   void _loadData() {
     _familyDataFuture = _fetchFamilyData().then((data) {
+      _cachedFamilyData = data;
       final family = data['family'] as FamilyModel?;
       if (mounted && _currentFamilyName != family?.name) {
         setState(() {
@@ -155,6 +157,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
         expectedOwner: isOwner,
       );
       if (!mounted) return;
+      DanhPaymentEntry.clearFamilyContext();
       _familyDataService.resetAll();
       setState(_loadData);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -587,15 +590,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
           body: FutureBuilder<Map<String, dynamic>>(
             future: _familyDataFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData) {
+              final effectiveData = snapshot.data ?? _cachedFamilyData;
+              if (effectiveData == null &&
+                  snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
               final families =
-                  snapshot.data?['families'] as List<FamilyModel>? ?? [];
-              final family = snapshot.data?['family'] as FamilyModel?;
-              final members = snapshot.data?['members']
+                  effectiveData?['families'] as List<FamilyModel>? ?? [];
+              final family = effectiveData?['family'] as FamilyModel?;
+              final members = effectiveData?['members']
                       as List<FamilyMemberModel>? ??
                   [];
 
