@@ -23,6 +23,7 @@ import '../danh_payment_entry.dart';
 import '../../Vinh/screens/reminder_list_screen.dart';
 import '../../Vinh/screens/wishlist_and_ledger_screen.dart';
 import '../../Vinh/models/family_member.dart' as vinh_member;
+import '../../Long/widgets/app_toast.dart';
 
 /// Màn hình Heo Đất Gia Đình (Piggy Bank)
 /// Tính năng độc quyền cho gói Tổ Ấm Premium
@@ -274,7 +275,15 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
               PopupMenuButton<String>(
                 tooltip: 'Tùy chọn khác',
                 icon: const Icon(Icons.more_vert_rounded, color: DanhColors.brand800),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: Color(0xFFE2EAE7), width: 1),
+                ),
+                elevation: 6,
+                shadowColor: Colors.black.withValues(alpha: 0.15),
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                offset: const Offset(0, 44),
                 onSelected: (val) {
                   if (val == 'history') {
                     _openWalletHistoryModal();
@@ -2255,9 +2264,7 @@ class _FamilyJackpotScreenState extends State<FamilyJackpotScreen>
                   InkWell(
                     onTap: () {
                       Clipboard.setData(ClipboardData(text: value));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Đã sao chép "$value"'), duration: const Duration(seconds: 1)),
-                      );
+                      AppToast.show(context, 'Đã sao chép "$value"');
                     },
                     child: const Icon(Icons.copy_rounded, size: 14, color: DanhColors.brand800),
                   ),

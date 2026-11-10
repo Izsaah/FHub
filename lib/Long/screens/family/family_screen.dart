@@ -10,6 +10,7 @@ import '../../models/member_status.dart';
 import '../../models/join_request_model.dart';
 import '../../services/join_request_service.dart';
 import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/family_member_tile.dart';
 import '../../widgets/family_selector_bar.dart';
 import '../../utils/long_strings.dart';
@@ -227,16 +228,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
 
     Clipboard.setData(ClipboardData(text: code));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          LongStrings.t(
-            'Mã $code đã được sao chép! Hãy gửi cho thành viên mới.',
-            'Code $code copied! Share it with family members.',
-          ),
-        ),
-        backgroundColor: const Color(0xFF005F50),
-        behavior: SnackBarBehavior.floating,
+    AppToast.show(
+      context,
+      LongStrings.t(
+        'Mã $code đã được sao chép! Hãy gửi cho thành viên mới.',
+        'Code $code copied! Share it with family members.',
       ),
     );
   }

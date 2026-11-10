@@ -14,6 +14,7 @@ import '../../widgets/check_in_sheet.dart';
 import '../../widgets/check_in_feed_view.dart';
 import '../../widgets/check_in_reminder_card.dart';
 import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/family_member_tile.dart';
 import '../../widgets/family_selector_bar.dart';
 import '../family/family_screen.dart';
@@ -151,16 +152,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (isAlreadyCheckedIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            LongStrings.t(
-              "You're already checked in today!",
-              "You're already checked in today!",
-            ),
-          ),
-          backgroundColor: const Color(0xFF005F50),
-          behavior: SnackBarBehavior.floating,
+      AppToast.show(
+        context,
+        LongStrings.t(
+          "Bạn đã điểm danh an toàn hôm nay rồi!",
+          "You're already checked in today!",
         ),
       );
       return;
@@ -208,12 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       await _familydataService.completeReminder(reminderId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(LongStrings.completeTaskSuccess),
-            backgroundColor: const Color(0xFF005F50),
-          ),
-        );
+        AppToast.show(context, LongStrings.completeTaskSuccess);
         setState(_loadData);
       }
     } catch (e) {
@@ -793,29 +784,75 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     const SizedBox(height: 16),
 
-                    // Pending reminders section
+                    // Pending reminders section with Top "Xem tất cả" button
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(
-                          child: Text(
-                            LongStrings.pendingRemindersTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF6E7A75),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              LongStrings.pendingRemindersTitle,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF6E7A75),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0F2EC),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '${reminders.length}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF005F50),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${reminders.length}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF005F50),
+                        InkWell(
+                          onTap: () {
+                            if (widget.onNavigateToReminders != null) {
+                              widget.onNavigateToReminders!();
+                            } else {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ReminderListScreen(
+                                    familyId: family.id,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  LongStrings.viewAllReminders,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF005F50),
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                const Icon(
+                                  Icons.arrow_forward_ios_rounded,
+                                  size: 11,
+                                  color: Color(0xFF005F50),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],

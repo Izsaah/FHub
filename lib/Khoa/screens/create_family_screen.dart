@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../Danh/danh_payment_entry.dart';
 import '../../Long/services/family_data_service.dart';
+import '../../Long/widgets/app_toast.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/family_member.dart';
 import '../services/family_service.dart';
@@ -107,12 +108,9 @@ class _CreateFamilyScreenState extends State<CreateFamilyScreen> {
                 await Clipboard.setData(ClipboardData(text: family.joinCode));
                 if (dialogContext.mounted) Navigator.of(dialogContext).pop();
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        AppLanguage.text('Đã sao chép mã gia đình.', 'Family code copied.'),
-                      ),
-                    ),
+                  AppToast.show(
+                    context,
+                    AppLanguage.text('Đã sao chép mã gia đình.', 'Family code copied.'),
                   );
                   Navigator.of(context).pop(family);
                 }

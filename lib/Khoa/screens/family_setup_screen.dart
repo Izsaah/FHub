@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../Long/services/family_data_service.dart';
+import '../../Long/widgets/app_toast.dart';
 import '../../Thinh/theme/app_language.dart';
 import '../models/family.dart';
 import '../models/family_member.dart';
@@ -136,15 +137,11 @@ class _FamilySetupScreenState extends State<FamilySetupScreen> {
   Future<void> _copyJoinCode(String code) async {
     await Clipboard.setData(ClipboardData(text: code));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          AppLanguage.text(
-            'Đã sao chép mã mời: $code',
-            'Invitation code copied: $code',
-          ),
-        ),
-        backgroundColor: primary,
+    AppToast.show(
+      context,
+      AppLanguage.text(
+        'Đã sao chép mã mời: $code',
+        'Invitation code copied: $code',
       ),
     );
   }

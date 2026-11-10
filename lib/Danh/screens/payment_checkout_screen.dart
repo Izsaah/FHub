@@ -10,6 +10,7 @@ import '../theme/danh_colors.dart';
 import '../theme/danh_svgs.dart';
 import 'family_jackpot_screen.dart';
 import 'manage_subscription_screen.dart';
+import '../../Long/widgets/app_toast.dart';
 
 /// Màn hình Thanh toán Mã QR VietQR Napas 247 kết nối SePay Sandbox
 class PaymentCheckoutScreen extends StatefulWidget {
@@ -260,13 +261,7 @@ class _PaymentCheckoutScreenState extends State<PaymentCheckoutScreen> {
 
   void _copy(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đã sao chép $label: $text'),
-        backgroundColor: DanhColors.brand800,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    AppToast.show(context, 'Đã sao chép $label: $text');
   }
 
   @override

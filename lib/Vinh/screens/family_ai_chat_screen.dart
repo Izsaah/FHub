@@ -18,6 +18,7 @@ import '../../Ai/services/family_memory_service.dart';
 import '../services/reminder_repository.dart';
 import '../widgets/reminder_detail_bottom_sheet.dart';
 import '../widgets/task_mini_card.dart';
+import '../../Long/widgets/app_toast.dart';
 
 /// Màn hình Chatbot AI Gia đình (Module 7 EPIC)
 /// Hỗ trợ Soạn nhiều việc cùng lúc, Giao việc chung, Tự nhớ thói quen, Báo cáo tiến độ,
@@ -1189,6 +1190,15 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                 tooltip: AppLanguage.text('Tùy chọn AI', 'AI Options'),
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 padding: const EdgeInsets.all(6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: Color(0xFFE2EAE7), width: 1),
+                ),
+                elevation: 6,
+                shadowColor: Colors.black.withValues(alpha: 0.15),
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                offset: const Offset(0, 44),
                 icon: const Icon(
                   Icons.more_vert_rounded,
                   color: Color(0xFF151D1B),
@@ -1203,34 +1213,26 @@ class _FamilyAiChatScreenState extends State<FamilyAiChatScreen> {
                       AiSpeechPlatform.instance.stopSpeaking();
                       setState(() => _speakingMessageId = null);
                     }
-                    ScaffoldMessenger.of(context).clearSnackBars();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        duration: const Duration(seconds: 2),
-                        content: Text(
-                          _autoSpeak
-                              ? AppLanguage.text(
-                                  '🔊 Đã bật chế độ AI tự động đọc phản hồi',
-                                  '🔊 Auto-speak AI responses enabled',
-                                )
-                              : AppLanguage.text(
-                                  '🔇 Đã tắt chế độ tự động đọc',
-                                  '🔇 Auto-speak disabled',
-                                ),
-                        ),
-                      ),
+                    AppToast.show(
+                      context,
+                      _autoSpeak
+                          ? AppLanguage.text(
+                              '🔊 Đã bật chế độ AI tự động đọc',
+                              '🔊 Auto-speak AI responses enabled',
+                            )
+                          : AppLanguage.text(
+                              '🔇 Đã tắt chế độ tự động đọc',
+                              '🔇 Auto-speak disabled',
+                            ),
                     );
                   } else if (val == 'clear_memory') {
                     FamilyMemoryService.instance.clearMemory(widget.familyId);
                     FamilyAiAssistantService.instance.reset(widget.familyId);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          AppLanguage.text(
-                            '🧹 Đã xóa bộ nhớ thói quen của gia đình!',
-                            '🧹 Cleared family habit memory!',
-                          ),
-                        ),
+                    AppToast.show(
+                      context,
+                      AppLanguage.text(
+                        '🧹 Đã xóa bộ nhớ thói quen của gia đình!',
+                        '🧹 Cleared family habit memory!',
                       ),
                     );
                   } else if (val == 'clear_chat') {

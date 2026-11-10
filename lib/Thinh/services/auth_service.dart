@@ -203,7 +203,7 @@ class AuthService {
     }
   }
 
-  /// Đăng xuất: Xóa phiên cả FirebaseAuth và GoogleSignIn để lần sau đổi tài khoản Google khác
+  /// Đăng xuất: Xóa phiên cả FirebaseAuth và GoogleSignIn nhanh chóng, không gây giật lag
   Future<void> logout() async {
     try {
       await _auth.signOut();
@@ -216,14 +216,6 @@ class AuthService {
         await _googleSignIn.signOut();
       } catch (e) {
         debugPrint('GoogleSignIn signOut error: $e');
-      }
-
-      try {
-        if (await _googleSignIn.isSignedIn()) {
-          await _googleSignIn.disconnect();
-        }
-      } catch (e) {
-        debugPrint('GoogleSignIn disconnect error: $e');
       }
     }
   }

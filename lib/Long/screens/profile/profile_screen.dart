@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../services/family_data_service.dart';
 import '../../models/user_model.dart';
 import '../../models/family_model.dart';
 import '../../widgets/custom_app_bar.dart';
+import '../../widgets/app_toast.dart';
 import '../../../Khoa/screens/family_setup_screen.dart';
 import '../../../Thinh/screens/auth_screen.dart';
 import '../../../Thinh/services/auth_service.dart';
@@ -97,16 +100,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await _familyDataService.selectFamily(family.id);
     if (mounted) {
       setState(_loadData);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            LongStrings.t(
-              'Đã chuyển sang gia đình "${family.name}"',
-              'Switched to family "${family.name}"',
-            ),
-          ),
-          backgroundColor: const Color(0xFF005F50),
-          duration: const Duration(seconds: 2),
+      AppToast.show(
+        context,
+        LongStrings.t(
+          'Đã chuyển sang gia đình "${family.name}"',
+          'Switched to family "${family.name}"',
         ),
       );
     }
@@ -481,16 +479,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   label: 'VN',
                   isSelected: !isEn,
                   onTap: () {
-                    AppLanguage.isEnglish.value = false;
-                    setState(() {});
+                    if (AppLanguage.isEnglish.value) {
+                      AppLanguage.isEnglish.value = false;
+                      setState(() {});
+                      AppToast.show(context, 'Đã chuyển sang Tiếng Việt');
+                    }
                   },
                 ),
                 _buildLanguageChip(
                   label: 'EN',
                   isSelected: isEn,
                   onTap: () {
-                    AppLanguage.isEnglish.value = true;
-                    setState(() {});
+                    if (!AppLanguage.isEnglish.value) {
+                      AppLanguage.isEnglish.value = true;
+                      setState(() {});
+                      AppToast.show(context, 'Switched to English');
+                    }
                   },
                 ),
               ],
@@ -594,54 +598,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 72,
-                            height: 72,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.blue[100],
-                              border: Border.all(
-                                color: const Color(0xFF005F50)
-                                    .withValues(alpha: 0.2),
-                                width: 4,
-                              ),
-                            ),
-                            alignment: Alignment.center,
-                            child: user.avatarUrl.isNotEmpty
-                                ? ClipOval(
-                                    child: Image.network(
-                                      user.avatarUrl,
-                                      width: 72,
-                                      height: 72,
-                                      fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (context, error, stackTrace) => Text(
-                                        user.name.isNotEmpty
-                                            ? user.name
-                                                .substring(0, 1)
-                                                .toUpperCase()
-                                            : '?',
-                                        style: TextStyle(
-                                          fontSize: 32,
-                                          color: Colors.blue[900],
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                : Text(
-                                    user.name.isNotEmpty
-                                        ? user.name
-                                            .substring(0, 1)
-                                            .toUpperCase()
-                                        : '?',
-                                    style: TextStyle(
-                                      fontSize: 32,
-                                      color: Colors.blue[900],
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                          ),
+                          _buildUserAvatar(user),
                           const SizedBox(width: 16),
                           Expanded(
                             child: Column(
@@ -752,6 +709,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Text(LongStrings.t('Hủy', 'Cancel')),
                             ),
                             FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF005F50),
+                              ),
                               onPressed: () =>
                                   Navigator.pop(dialogContext, true),
                               child: Text(LongStrings.t('Đăng xuất', 'Log out')),
@@ -764,21 +724,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       try {
                         _familyDataService.resetAll();
                         DanhPaymentEntry.clearFamilyContext();
-                        await AuthService().logout();
                         if (context.mounted) {
+                          // Điều hướng mượt mà ngay lập tức tránh để màn hình cũ lắng nghe Firestore rỗng gây giật lag
                           Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (context) => const AuthScreen(),
+                            PageRouteBuilder(
+                              pageBuilder: (context, animation, secondaryAnimation) =>
+                                  const AuthScreen(),
+                              transitionsBuilder:
+                                  (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(opacity: animation, child: child);
+                              },
+                              transitionDuration: const Duration(milliseconds: 200),
                             ),
                             (route) => false,
                           );
                         }
+                        await AuthService().logout();
                       } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error logging out: $e')),
-                          );
-                        }
+                        debugPrint('Logout error: $e');
                       }
                     },
                     icon: const Icon(Icons.logout),
@@ -802,5 +765,466 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   },
 );
+  }
+
+  Widget _buildUserAvatar(UserModel user) {
+    return GestureDetector(
+      onTap: () => _showAvatarDetailAndSelectionSheet(context, user),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFE4F6EF),
+              border: Border.all(
+                color: const Color(0xFF005F50).withValues(alpha: 0.25),
+                width: 3.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: _buildAvatarContent(user, size: 72, fontSize: 32),
+          ),
+          Positioned(
+            bottom: -2,
+            right: -2,
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: const Color(0xFF005F50),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.edit_rounded,
+                color: Colors.white,
+                size: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatarContent(UserModel user, {required double size, required double fontSize}) {
+    if (user.avatarUrl.isNotEmpty && user.avatarUrl.startsWith('emoji:')) {
+      final emoji = user.avatarUrl.replaceFirst('emoji:', '');
+      return Text(
+        emoji,
+        style: TextStyle(fontSize: fontSize),
+      );
+    }
+
+    if (user.avatarUrl.isNotEmpty &&
+        (user.avatarUrl.startsWith('http://') || user.avatarUrl.startsWith('https://'))) {
+      return ClipOval(
+        child: Image.network(
+          user.avatarUrl,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Text(
+            user.name.isNotEmpty ? user.name.substring(0, 1).toUpperCase() : '?',
+            style: TextStyle(
+              fontSize: fontSize,
+              color: const Color(0xFF005F50),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      );
+    }
+
+    const emojiMap = {
+      'dad': '👨',
+      'mom': '👩',
+      'grandpa': '👴',
+      'grandma': '👵',
+      'boy': '👦',
+      'girl': '👧',
+      'cat': '🐱',
+      'dog': '🐶',
+      'star': '⭐',
+      'superhero': '🦸',
+      'rocket': '🚀',
+      'flower': '🌸',
+    };
+    if (emojiMap.containsKey(user.avatarType)) {
+      return Text(
+        emojiMap[user.avatarType]!,
+        style: TextStyle(fontSize: fontSize),
+      );
+    }
+
+    return Text(
+      user.name.isNotEmpty ? user.name.substring(0, 1).toUpperCase() : '?',
+      style: TextStyle(
+        fontSize: fontSize,
+        color: const Color(0xFF005F50),
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+
+  void _showAvatarDetailAndSelectionSheet(BuildContext context, UserModel user) {
+    final presets = [
+      {'type': 'dad', 'label': LongStrings.t('Bố', 'Dad'), 'emoji': '👨'},
+      {'type': 'mom', 'label': LongStrings.t('Mẹ', 'Mom'), 'emoji': '👩'},
+      {'type': 'boy', 'label': LongStrings.t('Con trai', 'Son'), 'emoji': '👦'},
+      {'type': 'girl', 'label': LongStrings.t('Con gái', 'Daughter'), 'emoji': '👧'},
+      {'type': 'grandpa', 'label': LongStrings.t('Ông', 'Grandpa'), 'emoji': '👴'},
+      {'type': 'grandma', 'label': LongStrings.t('Bà', 'Grandma'), 'emoji': '👵'},
+      {'type': 'cat', 'label': LongStrings.t('Mèo cưng', 'Cat'), 'emoji': '🐱'},
+      {'type': 'dog', 'label': LongStrings.t('Cún cưng', 'Dog'), 'emoji': '🐶'},
+      {'type': 'star', 'label': LongStrings.t('Ngôi sao', 'Star'), 'emoji': '⭐'},
+      {'type': 'superhero', 'label': LongStrings.t('Siêu anh hùng', 'Hero'), 'emoji': '🦸'},
+      {'type': 'rocket', 'label': LongStrings.t('Tên lửa', 'Rocket'), 'emoji': '🚀'},
+      {'type': 'flower', 'label': LongStrings.t('Hoa nhỏ', 'Flower'), 'emoji': '🌸'},
+    ];
+
+    final googlePhoto = FirebaseAuth.instance.currentUser?.photoURL;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Thanh kéo nhẹ
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Tiêu đề & nút đóng
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      LongStrings.t('Ảnh đại diện & Tài khoản', 'Avatar & Account'),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF151D1B),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.pop(sheetContext),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Xem chi tiết Avatar lớn
+                Center(
+                  child: Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFE4F6EF),
+                      border: Border.all(
+                        color: const Color(0xFF005F50),
+                        width: 3,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF005F50).withValues(alpha: 0.15),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    child: _buildAvatarContent(user, size: 88, fontSize: 44),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  user.name.isNotEmpty ? user.name : 'Người dùng FHub',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF151D1B),
+                  ),
+                ),
+                if (user.email.isNotEmpty)
+                  Text(
+                    user.email,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF6E7A75),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+
+                const Divider(height: 1),
+                const SizedBox(height: 14),
+
+                // Mục chọn Avatar biểu tượng
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    LongStrings.t(
+                      'Chọn hình đại diện biểu tượng:',
+                      'Choose an avatar icon:',
+                    ),
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF3E4946),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Grid presets
+                SizedBox(
+                  height: 140,
+                  child: GridView.builder(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 6,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 0.9,
+                    ),
+                    itemCount: presets.length,
+                    itemBuilder: (ctx, index) {
+                      final item = presets[index];
+                      final isSelected = user.avatarUrl == 'emoji:${item['emoji']}' ||
+                          user.avatarType == item['type'];
+
+                      return InkWell(
+                        onTap: () async {
+                          Navigator.pop(sheetContext);
+                          await _updateUserAvatar(
+                            user: user,
+                            avatarType: item['type']!,
+                            avatarUrl: 'emoji:${item['emoji']}',
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFFE0F2EC)
+                                : const Color(0xFFF7FAF9),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFF005F50)
+                                  : const Color(0xFFE2EAE7),
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                item['emoji']!,
+                                style: const TextStyle(fontSize: 24),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                item['label']!,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  color: isSelected
+                                      ? const Color(0xFF005F50)
+                                      : const Color(0xFF6E7A75),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // Tùy chọn ảnh Google hoặc link ảnh web
+                Row(
+                  children: [
+                    if (googlePhoto != null && googlePhoto.isNotEmpty)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            side: const BorderSide(color: Color(0xFFBDC9C4)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          icon: const Icon(Icons.account_circle_outlined, size: 16),
+                          label: Text(
+                            LongStrings.t('Ảnh Google', 'Google Photo'),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          onPressed: () async {
+                            Navigator.pop(sheetContext);
+                            await _updateUserAvatar(
+                              user: user,
+                              avatarType: 'google',
+                              avatarUrl: googlePhoto,
+                            );
+                          },
+                        ),
+                      ),
+                    if (googlePhoto != null && googlePhoto.isNotEmpty)
+                      const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          side: const BorderSide(color: Color(0xFFBDC9C4)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        icon: const Icon(Icons.link_rounded, size: 16),
+                        label: Text(
+                          LongStrings.t('Link ảnh web', 'Image URL'),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(sheetContext);
+                          _showCustomImageUrlDialog(context, user);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _updateUserAvatar({
+    required UserModel user,
+    required String avatarType,
+    required String avatarUrl,
+  }) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.id).update({
+        'avatar_type': avatarType,
+        'avatarUrl': avatarUrl,
+      });
+
+      _familyDataService.clearCache();
+      if (mounted) {
+        setState(_loadData);
+        AppToast.show(
+          context,
+          LongStrings.t(
+            'Đã cập nhật ảnh đại diện thành công!',
+            'Avatar updated successfully!',
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          LongStrings.t(
+            'Không thể cập nhật ảnh: $e',
+            'Could not update avatar: $e',
+          ),
+          isSuccess: false,
+        );
+      }
+    }
+  }
+
+  void _showCustomImageUrlDialog(BuildContext context, UserModel user) {
+    final controller = TextEditingController(
+      text: user.avatarUrl.startsWith('http') ? user.avatarUrl : '',
+    );
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          LongStrings.t('Nhập liên kết ảnh', 'Enter Image URL'),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: 'https://example.com/avatar.png',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgCtx),
+            child: Text(LongStrings.t('Hủy', 'Cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF005F50),
+            ),
+            onPressed: () {
+              final url = controller.text.trim();
+              Navigator.pop(dlgCtx);
+              if (url.isNotEmpty) {
+                _updateUserAvatar(
+                  user: user,
+                  avatarType: 'custom_url',
+                  avatarUrl: url,
+                );
+              }
+            },
+            child: Text(LongStrings.t('Lưu', 'Save')),
+          ),
+        ],
+      ),
+    );
   }
 }

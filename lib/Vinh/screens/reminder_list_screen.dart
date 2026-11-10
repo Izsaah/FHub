@@ -1774,6 +1774,15 @@ class _ReminderListScreenState extends State<ReminderListScreen>
               ),
               // Menu mở rộng: Trợ lý AI, Tạo lời nhắc, Lịch toàn màn hình, Làm mới
               PopupMenuButton<String>(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: Color(0xFFE2EAE7), width: 1),
+                ),
+                elevation: 6,
+                shadowColor: Colors.black.withValues(alpha: 0.15),
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                offset: const Offset(0, 44),
                 tooltip: AppLanguage.text('Tùy chọn khác', 'More options'),
                 padding: EdgeInsets.zero,
                 icon: const Icon(Icons.more_vert, color: primaryColor, size: 22),
